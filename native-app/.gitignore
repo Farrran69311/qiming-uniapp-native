@@ -13,6 +13,7 @@ dist
 *.local
 pack-config.json
 pack-config.local.json
+pack-config.effective.tmp.json
 !pack-config.example.json
 *.keystore
 *.jks

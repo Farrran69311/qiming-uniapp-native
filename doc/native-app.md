@@ -114,6 +114,11 @@ Cloud packaging config:
 - Copy `native-app/pack-config.example.json` to
   `native-app/pack-config.local.json`.
 - Fill Android keystore passwords and iOS certificate paths locally.
+- Instead of writing certificate passwords into `pack-config.local.json`, set
+  `QIMING_ANDROID_CERT_PASSWORD`, `QIMING_ANDROID_STORE_PASSWORD`, and
+  `QIMING_IOS_CERT_PASSWORD` in the current PowerShell session. `pack-native`
+  writes those values only to an ignored temporary config and deletes it after
+  the HBuilderX call.
 - Replace `native-app/src/manifest.json` `appid` with the registered DCloud
   AppID before cloud packaging. The current `__UNI__QIMING` value is only a
   local placeholder.
@@ -297,3 +302,14 @@ The uni-app shell receives messages through the `web-view` `message` event.
   remaining WARNs are DCloud/HBuilderX login verification, no Android device,
   placeholder DCloud AppID, placeholder local pack config values, and missing
   iOS certificate/profile files.
+- Android certificate passwords can now be supplied through
+  `QIMING_ANDROID_CERT_PASSWORD` and `QIMING_ANDROID_STORE_PASSWORD` without
+  writing secrets into `pack-config.local.json`. Android-only pack config
+  validation with those temporary environment variables reports the password
+  field as `configured via env` and leaves only the DCloud AppID WARN.
+- `pack-native` now uses an ignored `pack-config.effective.tmp.json` only for
+  the HBuilderX call and removes it in `finally`; verification confirmed the
+  temporary file does not remain after a blocked packaging attempt.
+- Browser inspection confirmed the live preview still renders the teacher phone
+  shell at `http://localhost:8861/?demoRole=teacher`, with a `395x854` device
+  frame and `393x852` iframe.

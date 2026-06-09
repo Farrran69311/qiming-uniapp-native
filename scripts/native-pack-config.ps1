@@ -57,6 +57,20 @@ function Add-FileCheck([string]$Name, $Path, [string]$MissingDetail) {
   }
 }
 
+function Get-ConfigValue($ConfigValue, [string]$EnvName) {
+  $envValue = [Environment]::GetEnvironmentVariable($EnvName)
+  if (-not (Test-MissingValue $envValue)) {
+    return [pscustomobject]@{
+      Value = $envValue
+      Source = "env"
+    }
+  }
+  return [pscustomobject]@{
+    Value = $ConfigValue
+    Source = "config"
+  }
+}
+
 function Get-PlatformList([string]$Value) {
   return $Value.Split(",") | ForEach-Object { $_.Trim() } | Where-Object { $_ }
 }
@@ -142,10 +156,13 @@ if ($config -and $manifest) {
       Add-FileCheck "android certfile" $android.certfile "android.certfile is required"
       Add-ValueCheck "android certalias" $android.certalias ([string]$android.certalias) "android.certalias is required"
 
-      if ((Test-MissingValue $android.certpassword) -or (Test-MissingValue $android.storepassword)) {
+      $androidCertPassword = Get-ConfigValue $android.certpassword "QIMING_ANDROID_CERT_PASSWORD"
+      $androidStorePassword = Get-ConfigValue $android.storepassword "QIMING_ANDROID_STORE_PASSWORD"
+      if ((Test-MissingValue $androidCertPassword.Value) -or (Test-MissingValue $androidStorePassword.Value)) {
         Add-Result "android passwords" "WARN" "android certpassword/storepassword are missing or placeholders"
       } else {
-        Add-Result "android passwords" "OK" "configured"
+        $passwordSource = if ($androidCertPassword.Source -eq "env" -or $androidStorePassword.Source -eq "env") { "configured via env" } else { "configured" }
+        Add-Result "android passwords" "OK" $passwordSource
       }
     }
   }
@@ -170,16 +187,17 @@ if ($config -and $manifest) {
 
       Add-FileCheck "ios profile" $ios.profile "ios.profile .mobileprovision path is required"
       Add-FileCheck "ios certfile" $ios.certfile "ios.certfile .p12 path is required"
-      Add-ValueCheck "ios certpassword" $ios.certpassword "configured" "ios.certpassword is missing or placeholder"
+      $iosCertPassword = Get-ConfigValue $ios.certpassword "QIMING_IOS_CERT_PASSWORD"
+      Add-ValueCheck "ios certpassword" $iosCertPassword.Value ($(if ($iosCertPassword.Source -eq "env") { "configured via env" } else { "configured" })) "ios.certpassword is missing or placeholder"
     }
   }
 }
 
 $results | Format-Table -AutoSize -Wrap
 
-$okCount = ($results | Where-Object { $_.Status -eq "OK" }).Count
-$warnCount = ($results | Where-Object { $_.Status -eq "WARN" }).Count
-$failCount = ($results | Where-Object { $_.Status -eq "FAIL" }).Count
+$okCount = @($results | Where-Object { $_.Status -eq "OK" }).Count
+$warnCount = @($results | Where-Object { $_.Status -eq "WARN" }).Count
+$failCount = @($results | Where-Object { $_.Status -eq "FAIL" }).Count
 Write-Host ""
 Write-Host "Pack config summary: $okCount OK, $warnCount WARN, $failCount FAIL"
 
