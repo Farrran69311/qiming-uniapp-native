@@ -107,6 +107,12 @@ Cloud packaging config:
 Live browser prototype while developing:
 
 ```powershell
+pnpm native:preview
+```
+
+Manual equivalent:
+
+```powershell
 pnpm dev -- --host 0.0.0.0 --port 8849
 pnpm --dir native-app dev:h5 -- --host 0.0.0.0 --port 8861
 ```
@@ -239,3 +245,9 @@ The uni-app shell receives messages through the `web-view` `message` event.
 - `scripts/pack-native.ps1 -Platform android -SkipPrepare` was tested without a
   local config and correctly stopped at the missing `pack-config.local.json`
   setup requirement.
+- `pnpm native:preview` was added and tested. When the H5 and uni-app shell
+  preview servers are already running, it reuses ports `8851` and `8861` and
+  prints `http://localhost:8861/?demoRole=teacher`.
+- `pnpm exec vue-tsc --noEmit --skipLibCheck`, `pnpm --dir native-app
+  type-check`, and `pnpm --dir native-app build:app` passed after adding the
+  preview launcher.
