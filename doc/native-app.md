@@ -58,6 +58,8 @@ Local tools prepared on this machine:
 - HBuilderX CLI: `G:\qiming-uniapp-native-tools\HBuilderX-5.07\HBuilderX\cli.exe`
 - ADB: `G:\qiming-uniapp-native-tools\android-sdk\platform-tools\adb.exe`
 - Java: `C:\Program Files\Microsoft\jdk-21.0.11.10-hotspot\bin\java.exe`
+- Android release keystore:
+  `G:\qiming-uniapp-native-tools\certs\qiming-android-release.keystore`
 
 Build and sync local H5 into the App shell:
 
@@ -86,6 +88,14 @@ pnpm native:build:ios
 
 The Android/iOS convenience commands currently generate uni-app App resources.
 Final APK/IPA packaging still requires HBuilderX packaging credentials.
+
+Cloud packaging config:
+
+- Copy `native-app/pack-config.example.json` to
+  `native-app/pack-config.local.json`.
+- Fill Android keystore passwords and iOS certificate paths locally.
+- `pack-config.local.json`, keystores, `.p12`, and `.mobileprovision` files are
+  ignored by Git.
 
 Live browser prototype while developing:
 
@@ -159,6 +169,9 @@ The uni-app shell receives messages through the `web-view` `message` event.
 - The public GitHub repo has been created and pushed from a clean root commit.
 - Java, ADB, and HBuilderX are now installed/prepared locally, but no Android
   device was connected during verification.
+- HBuilderX CLI publish/cloud packaging currently reports "this feature needs
+  login". A DCloud account login is required before APK/IPA cloud packaging can
+  run.
 - GitHub Actions no longer contains the CNB sync workflow; only the existing
   lint/pages workflows remain.
 - iOS IPA packaging cannot be fully finished without Apple certificates.
@@ -190,3 +203,10 @@ The uni-app shell receives messages through the `web-view` `message` event.
 - `pnpm --dir native-app build:app` passed again and generated App resources.
 - Build warnings remain for legacy unresolved image/font references and large
   chunks in the original web app; they do not block App resource generation.
+- HBuilderX CLI project import succeeded for
+  `G:\qiming-uniapp-native-public\native-app`.
+- `cli publish app-android --type appResource` and
+  `cli publish app-ios --type appResource` were attempted; both stopped at the
+  DCloud login requirement.
+- A local Android release keystore was generated outside the repo. SHA256:
+  `4D:70:6E:E2:2E:88:3F:46:AB:B6:9C:C7:12:F6:BA:7A:3D:17:CC:4C:8F:8B:DD:0C:92:29:18:06:2B:44:FF:6D`.

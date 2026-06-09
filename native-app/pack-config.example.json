@@ -1,0 +1,24 @@
+{
+  "platform": "android,ios",
+  "iscustom": false,
+  "safemode": true,
+  "sourceMap": false,
+  "isconfusion": false,
+  "android": {
+    "packagename": "cn.intelledu.qiming",
+    "androidpacktype": 0,
+    "certalias": "qiming",
+    "certfile": "G:/qiming-uniapp-native-tools/certs/qiming-android-release.keystore",
+    "certpassword": "CHANGE_ME",
+    "storepassword": "CHANGE_ME",
+    "channels": ""
+  },
+  "ios": {
+    "bundle": "cn.intelledu.qiming",
+    "supporteddevice": "iPhone,iPad",
+    "isprisonbreak": false,
+    "profile": "CHANGE_ME.mobileprovision",
+    "certfile": "CHANGE_ME.p12",
+    "certpassword": "CHANGE_ME"
+  }
+}

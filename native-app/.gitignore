@@ -11,6 +11,13 @@ node_modules
 .DS_Store
 dist
 *.local
+pack-config.json
+pack-config.local.json
+!pack-config.example.json
+*.keystore
+*.jks
+*.p12
+*.mobileprovision
 
 # Editor directories and files
 .idea
