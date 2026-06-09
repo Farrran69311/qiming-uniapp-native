@@ -2,9 +2,11 @@ param(
   [ValidateSet("android", "ios")]
   [string]$Platform = "android",
   [string]$DeviceId = "",
-  [string]$EntryPath = "/welcome/index",
+  [string]$EntryPath = "/home",
   [switch]$SkipPrepare,
-  [switch]$NativeLog
+  [switch]$NativeLog,
+  [switch]$SkipGrantPermissions,
+  [switch]$KeepRuntimeData
 )
 
 $ErrorActionPreference = "Stop"
@@ -13,6 +15,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $nativeProject = Join-Path $repoRoot "native-app"
 $hbuilderCli = "G:\qiming-uniapp-native-tools\HBuilderX-5.07\HBuilderX\cli.exe"
 $adb = "G:\qiming-uniapp-native-tools\android-sdk\platform-tools\adb.exe"
+$androidBaseApk = "G:\qiming-uniapp-native-tools\HBuilderX-5.07\HBuilderX\plugins\launcher\base\android_base.apk"
 $devicesScript = Join-Path $PSScriptRoot "native-devices.ps1"
 
 function Require-File([string]$Path, [string]$Message) {
@@ -46,6 +49,68 @@ function Assert-AndroidDevice([string]$RequestedDeviceId) {
   return $deviceLines.Count
 }
 
+function Get-AndroidDeviceId([string]$RequestedDeviceId) {
+  $deviceLines = Get-AndroidDeviceLines
+  if ($RequestedDeviceId) {
+    return $RequestedDeviceId
+  }
+  $firstLine = $deviceLines | Select-Object -First 1
+  return ($firstLine -split "\s+")[0]
+}
+
+function Grant-HBuilderPermissions([string]$ResolvedDeviceId) {
+  $packageName = "io.dcloud.HBuilder"
+  $permissions = @(
+    "android.permission.READ_EXTERNAL_STORAGE",
+    "android.permission.WRITE_EXTERNAL_STORAGE",
+    "android.permission.CAMERA",
+    "android.permission.RECORD_AUDIO",
+    "android.permission.ACCESS_FINE_LOCATION",
+    "android.permission.ACCESS_COARSE_LOCATION",
+    "android.permission.READ_PHONE_STATE",
+    "android.permission.CALL_PHONE",
+    "android.permission.PROCESS_OUTGOING_CALLS"
+  )
+
+  foreach ($permission in $permissions) {
+    & $adb -s $ResolvedDeviceId shell pm grant $packageName $permission 2>$null
+  }
+  & $adb -s $ResolvedDeviceId shell appops set $packageName MANAGE_EXTERNAL_STORAGE allow 2>$null
+}
+
+function Get-HBuilderVersionName([string]$ResolvedDeviceId) {
+  $packageName = "io.dcloud.HBuilder"
+  $packageInfo = & $adb -s $ResolvedDeviceId shell dumpsys package $packageName 2>$null | Out-String
+  if ($packageInfo -match "versionName=([^\s]+)") {
+    return $Matches[1]
+  }
+  return ""
+}
+
+function Ensure-HBuilderBase([string]$ResolvedDeviceId) {
+  Require-File $androidBaseApk "HBuilderX Android base APK not found: $androidBaseApk"
+  $expectedVersion = "15.07"
+  $installedVersion = Get-HBuilderVersionName $ResolvedDeviceId
+
+  if ($installedVersion -eq $expectedVersion) {
+    Write-Host "HBuilder Android base: $installedVersion"
+    return
+  }
+
+  if ($installedVersion) {
+    Write-Host "HBuilder Android base version is $installedVersion, reinstalling $expectedVersion..."
+  } else {
+    Write-Host "HBuilder Android base is not installed, installing $expectedVersion..."
+  }
+  & $adb -s $ResolvedDeviceId install -r -d $androidBaseApk
+}
+
+function Reset-HBuilderRuntime([string]$ResolvedDeviceId) {
+  $packageName = "io.dcloud.HBuilder"
+  & $adb -s $ResolvedDeviceId shell am force-stop $packageName 2>$null
+  & $adb -s $ResolvedDeviceId shell pm clear $packageName 2>$null
+}
+
 Require-File $hbuilderCli "HBuilderX CLI not found: $hbuilderCli"
 Require-File $nativeProject "native app project not found: $nativeProject"
 Require-File $devicesScript "Native devices script not found: $devicesScript"
@@ -58,6 +123,7 @@ if ($Platform -eq "android") {
   & $devicesScript -Platform android
   $androidDeviceCount = Assert-AndroidDevice $DeviceId
   Write-Host "Android device preflight: $androidDeviceCount device(s) available."
+  $resolvedAndroidDeviceId = Get-AndroidDeviceId $DeviceId
 }
 
 if (-not $SkipPrepare) {
@@ -70,6 +136,14 @@ if (-not $SkipPrepare) {
 }
 
 if ($Platform -eq "android") {
+  if (-not $SkipGrantPermissions) {
+    Ensure-HBuilderBase $resolvedAndroidDeviceId
+    if (-not $KeepRuntimeData) {
+      Reset-HBuilderRuntime $resolvedAndroidDeviceId
+    }
+    Grant-HBuilderPermissions $resolvedAndroidDeviceId
+  }
+
   $launchArgs = @(
     "launch",
     "app-android",
@@ -77,6 +151,8 @@ if ($Platform -eq "android") {
     $nativeProject,
     "--playground",
     "standard",
+    "--cleanCache",
+    "true",
     "--pagePath",
     "pages/index/index",
     "--pageQuery",

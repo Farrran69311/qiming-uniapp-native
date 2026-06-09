@@ -279,7 +279,7 @@ writeFileSync(
     {
       generatedAt: new Date().toISOString(),
       source: "vue-pure-admin-max app h5",
-      route: "./index.html#/account/ai-app"
+      route: "./index.html#/home"
     },
     null,
     2

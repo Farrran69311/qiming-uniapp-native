@@ -81,7 +81,7 @@ type WebMessage = {
   timestamp?: number;
 };
 
-const defaultEntryRoute = "/welcome/index";
+const defaultEntryRoute = "/home";
 const loaded = ref(false);
 const loadError = ref(false);
 const webviewVersion = ref(0);
@@ -94,7 +94,7 @@ let isH5DevPreview = false;
 isH5DevPreview = import.meta.env.DEV;
 // #endif
 
-const localAppEntryBase = "/hybrid/html/index.html#";
+const localAppEntryBase = "./hybrid/html/index.html";
 const previewRoles = ["student", "teacher", "admin"] as const;
 type PreviewRole = (typeof previewRoles)[number];
 const previewRoleLabels = {
@@ -155,15 +155,13 @@ const h5DevEntryPath = computed(() =>
   )
 );
 
-const entryPath = computed(() =>
-  isH5DevPreview
-    ? h5DevEntryPath.value
-    : `${localAppEntryBase}${appEntryRoute.value}`
-);
-
 const webviewSrc = computed(() => {
-  const separator = entryPath.value.includes("?") ? "&" : "?";
-  return `${entryPath.value}${separator}v=${webviewVersion.value}`;
+  if (!isH5DevPreview) {
+    return `${localAppEntryBase}?v=${webviewVersion.value}#${appEntryRoute.value}`;
+  }
+
+  const separator = h5DevEntryPath.value.includes("?") ? "&" : "?";
+  return `${h5DevEntryPath.value}${separator}v=${webviewVersion.value}`;
 });
 
 const isPhonePreview = computed(

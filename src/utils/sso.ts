@@ -11,6 +11,8 @@ import { subBefore, getQueryMap } from "@pureadmin/utils";
  * 4.使用 window.location.replace 跳转正确页面
  */
 (function () {
+  if (location.protocol === "file:") return;
+
   // 获取 url 中的参数
   const params = getQueryMap(location.href) as DataInfo<Date>;
   const must = ["username", "roles", "accessToken"];
