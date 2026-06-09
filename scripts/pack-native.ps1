@@ -11,6 +11,7 @@ $nativeProject = Join-Path $repoRoot "native-app"
 $hbuilderCli = "G:\qiming-uniapp-native-tools\HBuilderX-5.07\HBuilderX\cli.exe"
 $configPath = Join-Path $nativeProject "pack-config.local.json"
 $examplePath = Join-Path $nativeProject "pack-config.example.json"
+$packConfigCheck = Join-Path $PSScriptRoot "native-pack-config.ps1"
 
 function Require-File([string]$Path, [string]$Message) {
   if (-not (Test-Path -LiteralPath $Path)) {
@@ -21,10 +22,11 @@ function Require-File([string]$Path, [string]$Message) {
 Require-File $hbuilderCli "HBuilderX CLI not found: $hbuilderCli"
 Require-File $nativeProject "native app project not found: $nativeProject"
 Require-File $configPath "Missing local pack config: $configPath. Copy $examplePath to pack-config.local.json and fill local certificate values."
+Require-File $packConfigCheck "Missing pack config checker: $packConfigCheck"
 
-$configText = Get-Content -LiteralPath $configPath -Raw -Encoding UTF8
-if ($configText -match "CHANGE_ME") {
-  throw "pack-config.local.json still contains CHANGE_ME placeholders."
+& $packConfigCheck -Mode check -Platform $Platform -Strict
+if ($LASTEXITCODE -ne 0) {
+  throw "Native pack config check failed. Fix the WARN/FAIL items above before calling HBuilderX pack."
 }
 
 if (-not $SkipPrepare) {

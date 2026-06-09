@@ -87,6 +87,8 @@ pnpm native:build:ios
 pnpm native:pack:android
 pnpm native:pack:ios
 pnpm native:pack:all
+pnpm native:pack:init
+pnpm native:pack:check
 pnpm native:doctor
 ```
 
@@ -101,11 +103,20 @@ Android keystore, local pack config, iOS certificate files, and generated App
 resources. Missing optional packaging inputs are reported as `WARN`; missing
 required local tools are reported as `FAIL`.
 
+Run `pnpm native:pack:init` once to create the ignored local
+`native-app/pack-config.local.json` skeleton from the public example. Then run
+`pnpm native:pack:check` before `native:pack:*`; it strictly validates the
+registered DCloud AppID, Android package/certificate fields, iOS bundle/profile/
+p12 fields, and manifest/config package consistency.
+
 Cloud packaging config:
 
 - Copy `native-app/pack-config.example.json` to
   `native-app/pack-config.local.json`.
 - Fill Android keystore passwords and iOS certificate paths locally.
+- Replace `native-app/src/manifest.json` `appid` with the registered DCloud
+  AppID before cloud packaging. The current `__UNI__QIMING` value is only a
+  local placeholder.
 - `pack-config.local.json`, keystores, `.p12`, and `.mobileprovision` files are
   ignored by Git.
 - Without `pack-config.local.json`, `scripts/pack-native.ps1` exits early with a
@@ -270,3 +281,19 @@ The uni-app shell receives messages through the `web-view` `message` event.
 - Browser inspection confirmed `http://localhost:8861/?demoRole=teacher`
   renders the phone preview shell, with a `395x854` device frame and a `393x852`
   iframe loading `http://localhost:8851/#/account/ai-app?demoRole=teacher`.
+- `pnpm native:pack:init` was tested and created the ignored local
+  `native-app/pack-config.local.json`; `git check-ignore` confirmed the file is
+  ignored by `native-app/.gitignore`.
+- `pnpm native:pack:check` was tested in strict mode and correctly fails before
+  packaging while the registered DCloud AppID, Android keystore passwords, and
+  iOS profile/p12/password are still missing.
+- `scripts/pack-native.ps1 -Platform android -SkipPrepare` now runs the strict
+  pack config check first and stops before HBuilderX packaging when WARN/FAIL
+  items remain.
+- `pnpm --dir native-app type-check` and `pnpm --dir native-app build:app`
+  passed after adding the pack config lifecycle scripts.
+- `pnpm native:doctor` reports `10 OK`, `6 WARN`, `0 FAIL` during this update.
+  After the temporary dirty working tree WARN is removed by commit, the real
+  remaining WARNs are DCloud/HBuilderX login verification, no Android device,
+  placeholder DCloud AppID, placeholder local pack config values, and missing
+  iOS certificate/profile files.

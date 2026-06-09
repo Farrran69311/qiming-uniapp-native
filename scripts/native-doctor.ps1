@@ -14,6 +14,7 @@ $keytool = "C:\Program Files\Microsoft\jdk-21.0.11.10-hotspot\bin\keytool.exe"
 $androidKeystore = "G:\qiming-uniapp-native-tools\certs\qiming-android-release.keystore"
 $packConfig = Join-Path $nativeProject "pack-config.local.json"
 $appManifest = Join-Path $nativeProject "dist\build\app\manifest.json"
+$sourceManifest = Join-Path $nativeProject "src\manifest.json"
 
 $checks = New-Object System.Collections.Generic.List[object]
 
@@ -67,7 +68,19 @@ $deviceCount = (($adbDevices -split "`n") | Where-Object { $_ -match "\bdevice\b
 Add-Check "Android device" ($(if ($deviceCount -gt 0) { "OK" } else { "WARN" })) ($(if ($deviceCount -gt 0) { "$deviceCount device(s)" } else { "no device attached" }))
 
 Add-Check "Android keystore" ($(if (Test-Path -LiteralPath $androidKeystore) { "OK" } else { "WARN" })) $androidKeystore
-Add-Check "pack-config.local.json" ($(if (Test-Path -LiteralPath $packConfig) { "OK" } else { "WARN" })) ($(if (Test-Path -LiteralPath $packConfig) { $packConfig } else { "missing; copy native-app/pack-config.example.json and fill local secrets" }))
+if (Test-Path -LiteralPath $sourceManifest) {
+  $manifestAppid = Try-Run { (Get-Content -LiteralPath $sourceManifest -Raw -Encoding UTF8 | ConvertFrom-Json).appid }
+  Add-Check "DCloud AppID" ($(if ($manifestAppid -and $manifestAppid -ne "__UNI__QIMING" -and $manifestAppid -match "^__UNI__") { "OK" } else { "WARN" })) ($(if ($manifestAppid) { $manifestAppid } else { "missing manifest appid" }))
+} else {
+  Add-Check "DCloud AppID" "WARN" "missing native-app/src/manifest.json"
+}
+
+if (Test-Path -LiteralPath $packConfig) {
+  $packConfigText = Get-Content -LiteralPath $packConfig -Raw -Encoding UTF8
+  Add-Check "pack-config.local.json" ($(if ($packConfigText -match "CHANGE_ME") { "WARN" } else { "OK" })) ($(if ($packConfigText -match "CHANGE_ME") { "contains placeholders; run pnpm native:pack:check" } else { $packConfig }))
+} else {
+  Add-Check "pack-config.local.json" "WARN" "missing; run pnpm native:pack:init"
+}
 
 $iosCerts = Get-ChildItem -Path "G:\qiming-uniapp-native-tools" -Recurse -File -Include *.p12,*.mobileprovision -ErrorAction SilentlyContinue
 Add-Check "iOS certificates" ($(if ($iosCerts.Count -gt 0) { "OK" } else { "WARN" })) ($(if ($iosCerts.Count -gt 0) { "$($iosCerts.Count) file(s)" } else { "no .p12/.mobileprovision found" }))

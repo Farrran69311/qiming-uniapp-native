@@ -15,6 +15,8 @@
     "native:pack:android": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pack-native.ps1 -Platform android",
     "native:pack:ios": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pack-native.ps1 -Platform ios",
     "native:pack:all": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pack-native.ps1 -Platform android,ios",
+    "native:pack:init": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/native-pack-config.ps1 -Mode init",
+    "native:pack:check": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/native-pack-config.ps1 -Mode check -Strict",
     "native:preview": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-native-preview.ps1",
     "native:doctor": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/native-doctor.ps1",
     "build:staging": "rimraf dist && vite build --mode staging",
