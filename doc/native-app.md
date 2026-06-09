@@ -114,6 +114,10 @@ The `demoRole` switch is development-only. It exists so the native shell can be
 reviewed live in a browser while code changes hot-reload. Android/iOS packaged
 apps still use the normal login flow.
 
+The H5 preview shell also renders a small bottom-right role switcher for
+student/teacher/admin review. This switcher is wrapped in H5-only conditional
+compilation and is not included in the APP-PLUS build.
+
 ## Android Packaging Checklist
 
 1. Install HBuilderX and sign in to a DCloud account.
@@ -210,3 +214,6 @@ The uni-app shell receives messages through the `web-view` `message` event.
   DCloud login requirement.
 - A local Android release keystore was generated outside the repo. SHA256:
   `4D:70:6E:E2:2E:88:3F:46:AB:B6:9C:C7:12:F6:BA:7A:3D:17:CC:4C:8F:8B:DD:0C:92:29:18:06:2B:44:FF:6D`.
+- The live native H5 preview now includes a bottom-right student/teacher/admin
+  switcher for visual review while developing. `pnpm --dir native-app
+  type-check` and `pnpm --dir native-app build:app` passed after this change.

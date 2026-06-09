@@ -20,6 +20,17 @@
       title="启明智教客户端预览"
       @load="handleLoad"
     />
+    <view v-if="isH5DevPreview" class="preview-switcher">
+      <button
+        v-for="role in previewRoles"
+        :key="role"
+        class="preview-switcher__button"
+        :class="{ 'is-active': previewRole === role }"
+        @click="switchPreviewRole(role)"
+      >
+        {{ previewRoleLabels[role] }}
+      </button>
+    </view>
     <!-- #endif -->
 
     <!-- #ifdef APP-PLUS -->
@@ -60,11 +71,20 @@ let isH5DevPreview = false;
 isH5DevPreview = import.meta.env.DEV;
 // #endif
 const appEntryPath = "/hybrid/html/index.html#/account/ai-app";
-const previewRoles = ["student", "teacher", "admin"];
+const previewRoles = ["student", "teacher", "admin"] as const;
+type PreviewRole = (typeof previewRoles)[number];
+const previewRoleLabels = {
+  student: "学生",
+  teacher: "教师",
+  admin: "管理"
+};
+function isPreviewRole(role: string | null): role is PreviewRole {
+  return !!role && (previewRoles as readonly string[]).includes(role);
+}
 const previewRole = computed(() => {
   if (!isH5DevPreview || typeof window === "undefined") return "teacher";
   const role = new URLSearchParams(window.location.search).get("demoRole");
-  return role && previewRoles.includes(role) ? role : "teacher";
+  return isPreviewRole(role) ? role : "teacher";
 });
 const h5DevEntryPath = computed(
   () => `http://localhost:8851/#/account/ai-app?demoRole=${previewRole.value}`
@@ -76,6 +96,13 @@ const webviewSrc = computed(() => {
   const separator = entryPath.value.includes("?") ? "&" : "?";
   return `${entryPath.value}${separator}v=${webviewVersion.value}`;
 });
+function switchPreviewRole(role: PreviewRole) {
+  if (!isH5DevPreview || typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  url.searchParams.set("demoRole", role);
+  window.history.replaceState(null, "", url);
+  webviewVersion.value += 1;
+}
 const webviewStyles = {
   progress: {
     color: "#2F7DFF"
@@ -166,6 +193,41 @@ onBackPress(() => {
   width: 100%;
   height: 100%;
   border: 0;
+}
+
+.preview-switcher {
+  position: absolute;
+  right: 20rpx;
+  bottom: calc(24rpx + env(safe-area-inset-bottom, 0px));
+  z-index: 10;
+  display: flex;
+  gap: 8rpx;
+  padding: 8rpx;
+  border: 1rpx solid rgba(204, 213, 230, 0.8);
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 12rpx 36rpx rgba(47, 84, 158, 0.16);
+}
+
+.preview-switcher__button {
+  height: 48rpx;
+  min-width: 76rpx;
+  padding: 0 18rpx;
+  border: 0;
+  border-radius: 999rpx;
+  color: #667085;
+  font-size: 22rpx;
+  line-height: 48rpx;
+  background: transparent;
+}
+
+.preview-switcher__button::after {
+  border: 0;
+}
+
+.preview-switcher__button.is-active {
+  color: #fff;
+  background: #2f7dff;
 }
 
 .shell-state {
