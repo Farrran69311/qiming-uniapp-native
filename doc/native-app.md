@@ -115,8 +115,8 @@ p12 fields, and manifest/config package consistency.
 Run `pnpm native:devices` before real-device verification. It checks ADB and
 HBuilderX Android devices and reports iOS device/simulator availability without
 hanging on Windows. `pnpm native:run:android` runs the native shell to a
-connected Android device or emulator and defaults to the full platform entry
-`/home`; it performs device preflight before `native:prepare` and stops early
+connected Android device or emulator and defaults to the full platform workbench
+entry `/welcome/index`; it performs device preflight before `native:prepare` and stops early
 with a clear message when no Android device is attached.
 `pnpm native:run:ios` documents the same flow for iOS, but this Windows host
 stops early because iOS device/simulator launch requires macOS or HBuilderX iOS
@@ -151,28 +151,31 @@ pnpm native:preview
 Manual equivalent:
 
 ```powershell
-pnpm dev -- --host 0.0.0.0 --port 8849
+pnpm dev -- --host 0.0.0.0 --port 8851
 pnpm --dir native-app dev:h5 -- --host 0.0.0.0 --port 8861
 ```
 
 Current preview URLs:
 
-- Teacher: `http://localhost:8861/?demoRole=teacher&entry=%2Fhome`
-- Student: `http://localhost:8861/?demoRole=student&entry=%2Fhome`
-- Admin: `http://localhost:8861/?demoRole=admin&entry=%2Fhome`
+- Teacher: `http://localhost:8861/?demoRole=teacher`
+- Student: `http://localhost:8861/?demoRole=student`
+- Admin: `http://localhost:8861/?demoRole=admin`
 
 The `demoRole` switch is development-only. It exists so the native shell can be
 reviewed live in a browser while code changes hot-reload. Android/iOS packaged
 apps still use the normal login flow.
 
-The native shell defaults to the full platform route `/home`, not a single AI
-App page. Use the optional `entry` query parameter only for targeted debugging,
-for example `entry=%2Faccount%2Fai-app`; packaged APP-PLUS builds also default
-to `/home`.
+The native shell defaults to the full platform workbench route `/welcome/index`,
+not the public landing page and not a single AI App page. Use the optional
+`entry` query parameter only for targeted debugging, for example
+`entry=%2Faccount%2Fai-app`; packaged APP-PLUS builds also default to
+`/welcome/index`.
 
-The H5 preview shell also renders a small bottom-right role switcher for
-student/teacher/admin review. This switcher is wrapped in H5-only conditional
-compilation and is not included in the APP-PLUS build.
+The H5 preview shell also renders a small bottom-right debug bar for
+student/teacher/admin review and quick entry switching across workbench, AI App,
+course, exam paper, student exam, and user management routes. This debug bar is
+wrapped in H5-only conditional compilation and is not included in the APP-PLUS
+build.
 
 By default, the preview shell renders the app inside a 393 x 852 phone canvas so
 mobile layout issues are visible while developing. The bottom-right "full
@@ -366,3 +369,22 @@ The uni-app shell receives messages through the `web-view` `message` event.
   config, temporarily injected the AppID into `native-app/src/manifest.json`,
   restored the manifest byte-for-byte, and removed
   `pack-config.effective.tmp.json`.
+- The native shell default entry was changed from the public landing page
+  `/home` to the full platform workbench `/welcome/index`. Browser inspection
+  confirmed `http://localhost:8861/?demoRole=teacher` loads
+  `http://localhost:8851/#/welcome/index?demoRole=teacher&v=0`.
+- The live H5 preview now includes an H5-only quick entry switcher for
+  workbench, AI App, course, exam paper, student exam, and user management
+  routes. Browser inspection confirmed these focused entries route through the
+  uni-app shell:
+  - teacher AI App:
+    `http://localhost:8851/#/account/ai-app?demoRole=teacher&v=0`
+  - teacher exam paper:
+    `http://localhost:8851/#/exam-paper/index?demoRole=teacher&v=0`
+  - student exam center:
+    `http://localhost:8851/#/student-exam-center/list?demoRole=student&v=0`
+  - admin user list:
+    `http://localhost:8851/#/user/list?demoRole=admin&v=0`
+- `pnpm --dir native-app type-check`, `pnpm exec vue-tsc --noEmit
+  --skipLibCheck`, and `pnpm --dir native-app build:app` passed after the full
+  platform preview entry update.

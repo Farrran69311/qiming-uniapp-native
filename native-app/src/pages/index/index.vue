@@ -24,6 +24,17 @@
         />
       </view>
       <view class="preview-toolbar">
+        <view class="preview-entrybar">
+          <button
+            v-for="entry in previewEntries"
+            :key="entry.path"
+            class="preview-entrybar__button"
+            :class="{ 'is-active': activePreviewEntry === entry.path }"
+            @click="switchPreviewEntry(entry.path)"
+          >
+            {{ entry.label }}
+          </button>
+        </view>
         <view class="preview-switcher">
           <button
             v-for="role in previewRoles"
@@ -70,18 +81,19 @@ type WebMessage = {
   timestamp?: number;
 };
 
+const defaultEntryRoute = "/welcome/index";
 const loaded = ref(false);
 const loadError = ref(false);
 const webviewVersion = ref(0);
 const lastMessage = ref<WebMessage | null>(null);
-const previewMode = ref<"phone" | "full">("phone");
-const appEntryRoute = ref("/home");
+const previewMode = ref<"phone" | "full">("full");
+const appEntryRoute = ref(defaultEntryRoute);
 
 let isH5DevPreview = false;
 // #ifdef H5
 isH5DevPreview = import.meta.env.DEV;
 // #endif
-const defaultEntryRoute = "/home";
+
 const localAppEntryBase = "/hybrid/html/index.html#";
 const previewRoles = ["student", "teacher", "admin"] as const;
 type PreviewRole = (typeof previewRoles)[number];
@@ -90,9 +102,19 @@ const previewRoleLabels = {
   teacher: "教师",
   admin: "管理"
 };
+const previewEntries = [
+  { label: "工作台", path: "/welcome/index" },
+  { label: "AI App", path: "/account/ai-app" },
+  { label: "课程", path: "/account" },
+  { label: "试卷", path: "/exam-paper/index" },
+  { label: "学生考试", path: "/student-exam-center/list" },
+  { label: "用户", path: "/user/list" }
+] as const;
+
 function isPreviewRole(role: string | null): role is PreviewRole {
   return !!role && (previewRoles as readonly string[]).includes(role);
 }
+
 function normalizeEntryRoute(route: string | null | undefined) {
   let value = route?.trim() || defaultEntryRoute;
   try {
@@ -105,20 +127,26 @@ function normalizeEntryRoute(route: string | null | undefined) {
   if (value.startsWith("//") || value.includes("://")) return defaultEntryRoute;
   return value;
 }
+
 function appendQuery(url: string, key: string, value: string) {
   const separator = url.includes("?") ? "&" : "?";
   return `${url}${separator}${key}=${encodeURIComponent(value)}`;
 }
+
 const previewRole = computed(() => {
   if (!isH5DevPreview || typeof window === "undefined") return "teacher";
   const role = new URLSearchParams(window.location.search).get("demoRole");
   return isPreviewRole(role) ? role : "teacher";
 });
+
 const previewEntryRoute = computed(() => {
   if (!isH5DevPreview || typeof window === "undefined") return defaultEntryRoute;
   const entry = new URLSearchParams(window.location.search).get("entry");
   return normalizeEntryRoute(entry);
 });
+
+const activePreviewEntry = computed(() => previewEntryRoute.value);
+
 const h5DevEntryPath = computed(() =>
   appendQuery(
     `http://localhost:8851/#${previewEntryRoute.value}`,
@@ -126,28 +154,22 @@ const h5DevEntryPath = computed(() =>
     previewRole.value
   )
 );
+
 const entryPath = computed(() =>
   isH5DevPreview
     ? h5DevEntryPath.value
     : `${localAppEntryBase}${appEntryRoute.value}`
 );
+
 const webviewSrc = computed(() => {
   const separator = entryPath.value.includes("?") ? "&" : "?";
   return `${entryPath.value}${separator}v=${webviewVersion.value}`;
 });
+
 const isPhonePreview = computed(
   () => isH5DevPreview && previewMode.value === "phone"
 );
-function switchPreviewRole(role: PreviewRole) {
-  if (!isH5DevPreview || typeof window === "undefined") return;
-  const url = new URL(window.location.href);
-  url.searchParams.set("demoRole", role);
-  window.history.replaceState(null, "", url);
-  webviewVersion.value += 1;
-}
-function togglePreviewMode() {
-  previewMode.value = previewMode.value === "phone" ? "full" : "phone";
-}
+
 const webviewStyles = {
   progress: {
     color: "#2F7DFF"
@@ -156,7 +178,9 @@ const webviewStyles = {
 
 const stateText = computed(() => {
   if (loadError.value) return "页面加载失败，请检查离线资源或网络连接。";
-  if (lastMessage.value?.type === "offline") return "当前网络不可用，已保留本地页面。";
+  if (lastMessage.value?.type === "offline") {
+    return "当前网络不可用，已保留本地页面。";
+  }
   return "正在打开学习助手...";
 });
 
@@ -194,6 +218,26 @@ function reloadWebview() {
   loaded.value = false;
   loadError.value = false;
   webviewVersion.value += 1;
+}
+
+function switchPreviewRole(role: PreviewRole) {
+  if (!isH5DevPreview || typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  url.searchParams.set("demoRole", role);
+  window.history.replaceState(null, "", url);
+  reloadWebview();
+}
+
+function switchPreviewEntry(entryPath: string) {
+  if (!isH5DevPreview || typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  url.searchParams.set("entry", normalizeEntryRoute(entryPath));
+  window.history.replaceState(null, "", url);
+  reloadWebview();
+}
+
+function togglePreviewMode() {
+  previewMode.value = previewMode.value === "phone" ? "full" : "phone";
 }
 
 onLoad(options => {
@@ -298,22 +342,37 @@ onBackPress(() => {
   position: absolute;
   right: 20rpx;
   bottom: calc(24rpx + env(safe-area-inset-bottom, 0px));
+  left: 20rpx;
   z-index: 10;
   display: flex;
   gap: 10rpx;
   align-items: center;
+  justify-content: flex-end;
+  pointer-events: none;
 }
 
+.preview-entrybar,
 .preview-switcher {
   display: flex;
   gap: 8rpx;
   padding: 8rpx;
   border: 1rpx solid rgba(204, 213, 230, 0.8);
   border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.88);
+  background: rgba(255, 255, 255, 0.9);
   box-shadow: 0 12rpx 36rpx rgba(47, 84, 158, 0.16);
+  pointer-events: auto;
 }
 
+.preview-entrybar {
+  max-width: min(920rpx, calc(100vw - 380rpx));
+  overflow-x: auto;
+}
+
+.preview-entrybar::-webkit-scrollbar {
+  display: none;
+}
+
+.preview-entrybar__button,
 .preview-switcher__button {
   height: 48rpx;
   min-width: 76rpx;
@@ -323,13 +382,16 @@ onBackPress(() => {
   color: #667085;
   font-size: 22rpx;
   line-height: 48rpx;
+  white-space: nowrap;
   background: transparent;
 }
 
+.preview-entrybar__button::after,
 .preview-switcher__button::after {
   border: 0;
 }
 
+.preview-entrybar__button.is-active,
 .preview-switcher__button.is-active {
   color: #fff;
   background: #2f7dff;
@@ -346,6 +408,7 @@ onBackPress(() => {
   line-height: 64rpx;
   background: rgba(255, 255, 255, 0.9);
   box-shadow: 0 12rpx 36rpx rgba(47, 84, 158, 0.14);
+  pointer-events: auto;
 }
 
 .preview-mode-button::after {
@@ -411,5 +474,20 @@ onBackPress(() => {
   font-size: 28rpx;
   line-height: 88rpx;
   background: #2f7dff;
+}
+
+@media (max-width: 760px) {
+  .preview-toolbar {
+    right: 14rpx;
+    bottom: calc(18rpx + env(safe-area-inset-bottom, 0px));
+    left: 14rpx;
+    flex-wrap: wrap;
+  }
+
+  .preview-entrybar {
+    order: -1;
+    width: 100%;
+    max-width: none;
+  }
 }
 </style>

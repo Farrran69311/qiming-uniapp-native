@@ -1,7 +1,7 @@
 param(
   [ValidateSet("student", "teacher", "admin")]
   [string]$Role = "teacher",
-  [string]$EntryPath = "/home",
+  [string]$EntryPath = "/welcome/index",
   [int]$H5Port = 8851,
   [int]$ShellPort = 8861
 )
