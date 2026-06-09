@@ -6,6 +6,7 @@ param(
   [switch]$SkipPrepare,
   [switch]$NativeLog,
   [switch]$SkipGrantPermissions,
+  [switch]$KeepBaseApk,
   [switch]$KeepRuntimeData,
   [int]$LaunchTimeoutSeconds = 180
 )
@@ -158,28 +159,57 @@ function Get-HBuilderVersionName([string]$ResolvedDeviceId) {
   return ""
 }
 
-function Ensure-HBuilderBase([string]$ResolvedDeviceId) {
+function Install-HBuilderBase([string]$ResolvedDeviceId, [string]$Reason) {
+  $packageName = "io.dcloud.HBuilder"
+  Write-Host "$Reason Installing HBuilder Android base 15.07..."
+  & $adb -s $ResolvedDeviceId shell am force-stop $packageName 2>$null
+  & $adb -s $ResolvedDeviceId uninstall $packageName 2>$null | Out-Null
+  & $adb -s $ResolvedDeviceId install -r -d $androidBaseApk
+  $installedVersion = Get-HBuilderVersionName $ResolvedDeviceId
+  if ($installedVersion -ne "15.07") {
+    throw "HBuilder Android base install verification failed. Expected 15.07, got '$installedVersion'."
+  }
+  Write-Host "HBuilder Android base installed: $installedVersion"
+}
+
+function Ensure-HBuilderBase([string]$ResolvedDeviceId, [bool]$PreserveInstalledBase) {
   Require-File $androidBaseApk "HBuilderX Android base APK not found: $androidBaseApk"
   $expectedVersion = "15.07"
   $installedVersion = Get-HBuilderVersionName $ResolvedDeviceId
 
-  if ($installedVersion -eq $expectedVersion) {
+  if ($PreserveInstalledBase -and $installedVersion -eq $expectedVersion) {
     Write-Host "HBuilder Android base: $installedVersion"
     return
   }
 
-  if ($installedVersion) {
-    Write-Host "HBuilder Android base version is $installedVersion, reinstalling $expectedVersion..."
-  } else {
-    Write-Host "HBuilder Android base is not installed, installing $expectedVersion..."
+  if (-not $PreserveInstalledBase -and $installedVersion -eq $expectedVersion) {
+    Install-HBuilderBase $ResolvedDeviceId "Refreshing matching base to avoid stale 5.01/5.07 runtime resources."
+    return
   }
-  & $adb -s $ResolvedDeviceId install -r -d $androidBaseApk
+
+  if ($installedVersion) {
+    Install-HBuilderBase $ResolvedDeviceId "HBuilder Android base version is $installedVersion, expected $expectedVersion."
+  } else {
+    Install-HBuilderBase $ResolvedDeviceId "HBuilder Android base is not installed."
+  }
 }
 
 function Reset-HBuilderRuntime([string]$ResolvedDeviceId) {
   $packageName = "io.dcloud.HBuilder"
   & $adb -s $ResolvedDeviceId shell am force-stop $packageName 2>$null
   & $adb -s $ResolvedDeviceId shell pm clear $packageName 2>$null
+}
+
+function Clear-NativeBuildOutput {
+  $paths = @(
+    (Join-Path $nativeProject "dist\build"),
+    (Join-Path $nativeProject "dist\dev")
+  )
+  foreach ($path in $paths) {
+    if (Test-Path -LiteralPath $path) {
+      Remove-Item -LiteralPath $path -Recurse -Force
+    }
+  }
 }
 
 function Stop-NativeAppCompilerJobs {
@@ -294,12 +324,14 @@ if (-not $SkipPrepare) {
 
 if ($Platform -eq "android") {
   if (-not $SkipGrantPermissions) {
-    Ensure-HBuilderBase $resolvedAndroidDeviceId
+    Ensure-HBuilderBase $resolvedAndroidDeviceId $KeepBaseApk.IsPresent
     if (-not $KeepRuntimeData) {
       Reset-HBuilderRuntime $resolvedAndroidDeviceId
     }
     Grant-HBuilderPermissions $resolvedAndroidDeviceId
   }
+
+  Clear-NativeBuildOutput
 
   $launchArgs = @(
     "launch",

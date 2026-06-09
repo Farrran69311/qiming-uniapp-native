@@ -388,3 +388,18 @@ The uni-app shell receives messages through the `web-view` `message` event.
 - `pnpm --dir native-app type-check`, `pnpm exec vue-tsc --noEmit
   --skipLibCheck`, and `pnpm --dir native-app build:app` passed after the full
   platform preview entry update.
+- The Android native launch path now refreshes the HBuilderX 15.07 debug base by
+  default, clears native build output, and then relaunches the current app
+  resource bundle. This prevents stale 5.01 resources from being reused by the
+  5.07 mobile SDK. Use `scripts/run-native.ps1 -KeepBaseApk` only when the
+  installed base APK must be preserved.
+- Android emulator validation after the base refresh passed with
+  `scripts/run-native.ps1 -Platform android -DeviceId emulator-5554 -EntryPath
+  /home -SkipPrepare`: the runtime loaded `hybrid/html/index.html#/home`, logs
+  reported `weexjsb:15.07`, and no HBuilderX 5.01/5.07 mismatch dialog appeared.
+  The captured verification screen is `native-after-base-refresh.png`.
+- Physical-device validation is still blocked on this Windows host because ADB
+  and HBuilderX only see `emulator-5554`. Windows detects the connected
+  Huawei/Honor USB composite device with problem code 39, so the phone is not
+  currently usable by the native launch script until the USB/HDB/ADB driver layer
+  is repaired.
