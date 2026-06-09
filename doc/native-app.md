@@ -3,6 +3,12 @@
 This repo is an isolated G drive copy of the current web project. All native
 app work lives here and does not touch the original desktop workspace.
 
+Public repository:
+
+```text
+https://github.com/Farrran69311/qiming-uniapp-native
+```
+
 ## Current Strategy
 
 The first production path is a uni-app App shell plus the existing H5 build in
@@ -63,7 +69,7 @@ pnpm --dir native-app build:app
 Open the HBuilderX project:
 
 ```powershell
-& "G:\qiming-uniapp-native-tools\HBuilderX-5.07\HBuilderX\cli.exe" open --project "G:\qiming-uniapp-native\native-app"
+& "G:\qiming-uniapp-native-tools\HBuilderX-5.07\HBuilderX\cli.exe" open --project "G:\qiming-uniapp-native-public\native-app"
 ```
 
 Convenience commands:
@@ -128,11 +134,11 @@ The uni-app shell receives messages through the `web-view` `message` event.
 
 ## Known Blockers
 
-- This machine currently has Node/pnpm and SSH access to GitHub.
+- The public GitHub repo has been created and pushed from a clean root commit.
 - Java, ADB, and HBuilderX are now installed/prepared locally, but no Android
   device was connected during verification.
-- Creating a new GitHub public repo requires GitHub CLI auth or a GitHub token;
-  SSH alone can push to an existing repo but cannot create one.
+- GitHub Actions no longer contains the CNB sync workflow; only the existing
+  lint/pages workflows remain.
 - iOS IPA packaging cannot be fully finished without Apple certificates.
 
 ## Verification Log
@@ -151,3 +157,5 @@ The uni-app shell receives messages through the `web-view` `message` event.
 - HBuilderX 5.07 was downloaded from DCloud and opened with the native app
   project.
 - ADB 37.0.0 was installed from Android platform-tools; no device was attached.
+- Public GitHub repo push succeeded on `main`.
+- `.github/workflows/sync-to-cnb.yml` was removed and pushed.
