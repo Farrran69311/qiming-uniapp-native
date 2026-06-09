@@ -75,12 +75,14 @@ const loadError = ref(false);
 const webviewVersion = ref(0);
 const lastMessage = ref<WebMessage | null>(null);
 const previewMode = ref<"phone" | "full">("phone");
+const appEntryRoute = ref("/home");
 
 let isH5DevPreview = false;
 // #ifdef H5
 isH5DevPreview = import.meta.env.DEV;
 // #endif
-const appEntryPath = "/hybrid/html/index.html#/account/ai-app";
+const defaultEntryRoute = "/home";
+const localAppEntryBase = "/hybrid/html/index.html#";
 const previewRoles = ["student", "teacher", "admin"] as const;
 type PreviewRole = (typeof previewRoles)[number];
 const previewRoleLabels = {
@@ -91,16 +93,43 @@ const previewRoleLabels = {
 function isPreviewRole(role: string | null): role is PreviewRole {
   return !!role && (previewRoles as readonly string[]).includes(role);
 }
+function normalizeEntryRoute(route: string | null | undefined) {
+  let value = route?.trim() || defaultEntryRoute;
+  try {
+    value = decodeURIComponent(value);
+  } catch {
+    value = defaultEntryRoute;
+  }
+  value = value.replace(/^#/, "");
+  if (!value.startsWith("/")) value = `/${value}`;
+  if (value.startsWith("//") || value.includes("://")) return defaultEntryRoute;
+  return value;
+}
+function appendQuery(url: string, key: string, value: string) {
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}${key}=${encodeURIComponent(value)}`;
+}
 const previewRole = computed(() => {
   if (!isH5DevPreview || typeof window === "undefined") return "teacher";
   const role = new URLSearchParams(window.location.search).get("demoRole");
   return isPreviewRole(role) ? role : "teacher";
 });
-const h5DevEntryPath = computed(
-  () => `http://localhost:8851/#/account/ai-app?demoRole=${previewRole.value}`
+const previewEntryRoute = computed(() => {
+  if (!isH5DevPreview || typeof window === "undefined") return defaultEntryRoute;
+  const entry = new URLSearchParams(window.location.search).get("entry");
+  return normalizeEntryRoute(entry);
+});
+const h5DevEntryPath = computed(() =>
+  appendQuery(
+    `http://localhost:8851/#${previewEntryRoute.value}`,
+    "demoRole",
+    previewRole.value
+  )
 );
 const entryPath = computed(() =>
-  isH5DevPreview ? h5DevEntryPath.value : appEntryPath
+  isH5DevPreview
+    ? h5DevEntryPath.value
+    : `${localAppEntryBase}${appEntryRoute.value}`
 );
 const webviewSrc = computed(() => {
   const separator = entryPath.value.includes("?") ? "&" : "?";
@@ -167,7 +196,10 @@ function reloadWebview() {
   webviewVersion.value += 1;
 }
 
-onLoad(() => {
+onLoad(options => {
+  appEntryRoute.value = normalizeEntryRoute(
+    (options as { entry?: string })?.entry
+  );
   uni.setNavigationBarTitle({ title: "启明智教" });
 });
 

@@ -142,13 +142,18 @@ pnpm --dir native-app dev:h5 -- --host 0.0.0.0 --port 8861
 
 Current preview URLs:
 
-- Teacher: `http://localhost:8861/?demoRole=teacher`
-- Student: `http://localhost:8861/?demoRole=student`
-- Admin: `http://localhost:8861/?demoRole=admin`
+- Teacher: `http://localhost:8861/?demoRole=teacher&entry=%2Fhome`
+- Student: `http://localhost:8861/?demoRole=student&entry=%2Fhome`
+- Admin: `http://localhost:8861/?demoRole=admin&entry=%2Fhome`
 
 The `demoRole` switch is development-only. It exists so the native shell can be
 reviewed live in a browser while code changes hot-reload. Android/iOS packaged
 apps still use the normal login flow.
+
+The native shell defaults to the full platform route `/home`, not a single AI
+App page. Use the optional `entry` query parameter only for targeted debugging,
+for example `entry=%2Faccount%2Fai-app`; packaged APP-PLUS builds also default
+to `/home`.
 
 The H5 preview shell also renders a small bottom-right role switcher for
 student/teacher/admin review. This switcher is wrapped in H5-only conditional
@@ -313,3 +318,10 @@ The uni-app shell receives messages through the `web-view` `message` event.
 - Browser inspection confirmed the live preview still renders the teacher phone
   shell at `http://localhost:8861/?demoRole=teacher`, with a `395x854` device
   frame and `393x852` iframe.
+- The native shell default entry was changed from `/account/ai-app` to `/home`
+  so the uni-app container previews and packages the whole agent-branch
+  platform by default. Browser inspection confirmed
+  `http://localhost:8861/?demoRole=teacher&entry=%2Fhome` loads
+  `http://localhost:8851/#/home?demoRole=teacher&v=0`, while the optional
+  `entry=%2Faccount%2Fai-app` override still routes to the AI App page for
+  focused debugging.

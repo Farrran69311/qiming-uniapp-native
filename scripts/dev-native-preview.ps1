@@ -1,6 +1,7 @@
 param(
   [ValidateSet("student", "teacher", "admin")]
   [string]$Role = "teacher",
+  [string]$EntryPath = "/home",
   [int]$H5Port = 8851,
   [int]$ShellPort = 8861
 )
@@ -52,7 +53,8 @@ Start-PreviewProcess `
 
 Write-Host ""
 Write-Host "Live native preview:"
-Write-Host "  http://localhost:$ShellPort/?demoRole=$Role"
+$encodedEntry = [Uri]::EscapeDataString($EntryPath)
+Write-Host "  http://localhost:$ShellPort/?demoRole=$Role&entry=$encodedEntry"
 Write-Host ""
 Write-Host "Logs:"
 Write-Host "  $h5Out"
