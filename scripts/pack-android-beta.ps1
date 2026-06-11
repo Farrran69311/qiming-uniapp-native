@@ -120,7 +120,7 @@ if (Test-Path -LiteralPath $icon) {
   Copy-Item -LiteralPath $icon -Destination (Join-Path $stagingWww "icon.png") -Force
 }
 
-$launchPath = "hybrid/html/index.html?v=$VersionCode#/home"
+$launchPath = "hybrid/html/index.html?v=$VersionCode#/home?qimingNative=1"
 $runtimeManifest = [ordered]@{
   id = "HBuilder"
   name = "启明智教"

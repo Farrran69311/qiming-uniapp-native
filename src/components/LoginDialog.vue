@@ -595,6 +595,12 @@ const nativeOverlayVars = computed<StyleValue | undefined>(() => {
   };
 });
 
+const handleNativeBack = (event: Event) => {
+  if (!props.visible) return;
+  event.preventDefault();
+  emit("update:visible", false);
+};
+
 // 登录类型
 const loginType = ref<"password" | "sms">("password");
 const isRegister = ref(false);
@@ -959,12 +965,14 @@ onMounted(() => {
   window.addEventListener("resize", syncNativeOverlayBounds);
   window.addEventListener("orientationchange", syncNativeOverlayBounds);
   window.addEventListener("scroll", syncNativeOverlayBounds, true);
+  window.addEventListener("qiming:native-back", handleNativeBack);
 });
 
 onUnmounted(() => {
   window.removeEventListener("resize", syncNativeOverlayBounds);
   window.removeEventListener("orientationchange", syncNativeOverlayBounds);
   window.removeEventListener("scroll", syncNativeOverlayBounds, true);
+  window.removeEventListener("qiming:native-back", handleNativeBack);
 });
 </script>
 
@@ -1459,7 +1467,6 @@ onUnmounted(() => {
     height: 28px;
   }
 }
-
 </style>
 
 <style lang="scss">
@@ -1493,7 +1500,7 @@ onUnmounted(() => {
 html.qiming-native-webview .login-overlay {
   position: absolute !important;
   inset: auto !important;
-  top: var(--qiming-login-overlay-top, 0px) !important;
+  top: var(--qiming-login-overlay-top, 0) !important;
   right: auto !important;
   bottom: auto !important;
   left: 0 !important;
@@ -1514,8 +1521,7 @@ html.qiming-native-webview .login-overlay {
     --qiming-login-overlay-height,
     var(--qiming-native-vh, 100dvh)
   ) !important;
-  padding:
-    calc(var(--qiming-native-status-top, 0px) + 14px) 16px
+  padding: calc(var(--qiming-native-status-top, 0px) + 14px) 16px
     calc(env(safe-area-inset-bottom, 0px) + 16px);
   overflow: auto;
   overscroll-behavior: contain;
@@ -1526,7 +1532,11 @@ html.qiming-native-webview .login-card {
   width: min(100%, 360px);
   max-width: calc(100vw - 32px);
   max-height: calc(
-    var(--qiming-native-vh, 100dvh) - var(--qiming-native-status-top, 0px) - env(safe-area-inset-bottom, 0px) - 34px
+    var(--qiming-native-vh, 100dvh) - var(
+        --qiming-native-status-top,
+        0px
+      ) - env(safe-area-inset-bottom, 0px) -
+      34px
   );
   padding: 24px 20px;
   overflow-y: auto;

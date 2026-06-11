@@ -77,7 +77,10 @@ function applyNativeWebViewRuntime() {
       root.clientHeight ||
       0;
     const viewportWidth =
-      window.visualViewport?.width || window.innerWidth || root.clientWidth || 0;
+      window.visualViewport?.width ||
+      window.innerWidth ||
+      root.clientWidth ||
+      0;
 
     if (viewportHeight > 0) {
       root.style.setProperty("--qiming-native-vh", `${viewportHeight}px`);
@@ -207,7 +210,7 @@ function applyNativeWebViewRuntime() {
         localStorage.getItem("qiming-demo-role") ||
         ""
     );
-    const isStudentRole = !role || role === "student";
+    const isStudentRole = role === "student";
     if (isStudentRole && currentRoute.path === "/home") {
       navigateNativeBack(
         "/account",
@@ -221,10 +224,24 @@ function applyNativeWebViewRuntime() {
   });
   window.setTimeout(normalizeNativeRoleRoute, 300);
 
+  const dispatchNativeBackEvent = () => {
+    const event = new CustomEvent("qiming:native-back", {
+      cancelable: true
+    });
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+
   (window as any).__qimingNativeBack = () => {
+    if (dispatchNativeBackEvent()) {
+      return "handled";
+    }
+
     const currentRoute = router.currentRoute.value;
     const currentPath = currentRoute.path;
-    const currentMenu = String(getSingleQueryValue(currentRoute.query.menu) || "");
+    const currentMenu = String(
+      getSingleQueryValue(currentRoute.query.menu) || ""
+    );
     const role = String(
       getSingleQueryValue(currentRoute.query.demoRole) ||
         localStorage.getItem("qiming-demo-role") ||
@@ -242,7 +259,10 @@ function applyNativeWebViewRuntime() {
       return "root";
     }
 
-    if (currentPath === "/account/ai-app" || currentPath.startsWith("/course/")) {
+    if (
+      currentPath === "/account/ai-app" ||
+      currentPath.startsWith("/course/")
+    ) {
       navigateNativeBack(
         "/account",
         buildNativeBackQuery({ menu: "home" }, ["mode"])
@@ -263,6 +283,36 @@ function applyNativeWebViewRuntime() {
 
     return "root";
   };
+
+  let lastNativeRootBackAt = 0;
+  const registerNativeHardwareBack = () => {
+    const plusApi = (window as any).plus;
+    if (!plusApi?.key?.addEventListener) return;
+    if ((window as any).__qimingNativeHardwareBackReady) return;
+    (window as any).__qimingNativeHardwareBackReady = true;
+
+    plusApi.key.addEventListener("backbutton", () => {
+      const result = (window as any).__qimingNativeBack?.();
+      if (result === "handled") return;
+
+      const now = Date.now();
+      if (now - lastNativeRootBackAt < 1800) {
+        plusApi.runtime?.quit?.();
+        return;
+      }
+
+      lastNativeRootBackAt = now;
+      plusApi.nativeUI?.toast?.("再按一次退出启明智教");
+    });
+  };
+
+  if ((window as any).plus) {
+    registerNativeHardwareBack();
+  } else {
+    document.addEventListener("plusready", registerNativeHardwareBack, {
+      once: true
+    });
+  }
 
   document.addEventListener("UniAppJSBridgeReady", () => {
     notifyNativeShell("bridge-ready");
