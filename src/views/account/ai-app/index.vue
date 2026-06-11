@@ -53,9 +53,10 @@ import {
   getSavedCourseTheme
 } from "@/utils/courseTheme";
 import {
+  createAssistantConversation,
   getAssistantBootstrap,
+  getAssistantConversation,
   getAssistantConversationGroups,
-  getAssistantConversationMessages,
   streamAssistantChat,
   type AssistantBootstrapCourse,
   type AssistantBootstrapResp,
@@ -101,6 +102,8 @@ type ChatMessageView = {
   content: string;
   avatar?: string;
   resources?: AssistantChatResource[];
+  metadata?: Record<string, any>;
+  profileEvent?: Record<string, any>;
   streaming?: boolean;
   error?: boolean;
 };
@@ -484,9 +487,20 @@ const handleAssistantStreamEvent = (
   assistantMessageId: string | number
 ) => {
   const hasBackendHumanState = applyDigitalHumanDirective(event);
+  const directiveText =
+    event.digital_human?.speech_text ||
+    event.digital_human?.highlight_text ||
+    "";
 
   if (event.conversation_id) {
     activeConversationId.value = event.conversation_id;
+  }
+
+  if (event.event === "digital_human.directive") {
+    if (event.digital_human?.speak && directiveText) {
+      speakDigitalHumans(directiveText);
+    }
+    return;
   }
 
   if (event.event === "conversation.created") {
@@ -510,20 +524,22 @@ const handleAssistantStreamEvent = (
         messages.value.find(item => item.id === assistantMessageId)?.content ||
         "学习助手已完成回复。",
       resources: event.resources || [],
+      profileEvent: event.profile_event,
       streaming: false
     });
     agentTrace.value = event.trace || [];
     generatedResources.value = event.resources || [];
+    if (event.profile_event) {
+      ElMessage.success("学习画像已同步更新");
+    }
     if (!hasBackendHumanState) digitalHumanStreamState.value = "saying";
-    speakDigitalHumans(
-      event.digital_human?.speech_text ||
-        content ||
-        event.digital_human?.highlight_text ||
-        ""
-    );
+    speakDigitalHumans(directiveText || content || "");
     isChatStreaming.value = false;
     window.setTimeout(() => {
-      if (!isChatStreaming.value && digitalHumanStreamState.value === "saying") {
+      if (
+        !isChatStreaming.value &&
+        digitalHumanStreamState.value === "saying"
+      ) {
         digitalHumanStreamState.value = null;
       }
     }, 2400);
@@ -762,20 +778,26 @@ const loadConversationGroups = async () => {
 const loadConversationMessages = async (conversation: ConversationView) => {
   if (!conversation.conversation_id) return;
   try {
-    const { data } = await getAssistantConversationMessages(
+    const { data } = await getAssistantConversation(
       conversation.conversation_id
     );
     activeConversationId.value = conversation.conversation_id;
+    const detailConversation = data.conversation || conversation;
+    if (detailConversation.metadata)
+      conversation.metadata = detailConversation.metadata;
     const course =
-      myCourses.value.find(item => item.id === conversation.course_id) ||
-      myCourses.value.find(item => item.name === conversation.course);
+      myCourses.value.find(
+        item =>
+          item.id === (detailConversation.course_id || conversation.course_id)
+      ) || myCourses.value.find(item => item.name === conversation.course);
     if (course) activeCourse.value = course;
-    messages.value = (data.list || []).map(item => ({
+    messages.value = (data.messages || data.list || []).map(item => ({
       id: item.message_id,
       role: item.role === "user" ? currentUserRoleLabel.value : "智能助教",
       type: item.role === "user" ? "user" : "system",
       content: item.content_text || "",
-      avatar: item.role === "user" ? currentUserAvatar.value : undefined
+      avatar: item.role === "user" ? currentUserAvatar.value : undefined,
+      metadata: item.metadata
     }));
     if (!messages.value.length) resetChatGreeting();
   } catch (error: any) {
@@ -827,17 +849,57 @@ const handleQuickInteraction = (text: string) => {
   speakDigitalHumans(text);
 };
 
-const handleNewChat = (payload: { course: string }) => {
+const handleNewChat = async (payload: { course: string }) => {
   const course = myCourses.value.find(item => item.name === payload.course);
   if (course) activeCourse.value = course;
-  activeConversationId.value = "";
   resetChatGreeting();
-  if (quickMessage.value.trim()) {
+  try {
+    const { data } = await createAssistantConversation({
+      course_id: course?.id || selectedCourseId.value,
+      target_student_id: selectedTargetStudentId.value,
+      title: payload.course ? `${payload.course} 学习辅导` : "学习辅导",
+      metadata: {
+        ui_entry: "ai_app_sidebar",
+        selected_agent: selectedAgentKey.value,
+        selected_model: selectedModelKey.value,
+        thinking_mode: thinkingModeKey.value,
+        skill_keys: selectedSkillKeys.value
+      }
+    });
+    const conversationId =
+      data.conversation?.conversation_id || data.conversation_id;
+    if (!conversationId) {
+      throw new Error("后端未返回会话 ID");
+    }
+    const conversation: AssistantConversationItem = data.conversation || {
+      conversation_id: conversationId,
+      title:
+        data.title ||
+        (payload.course ? `${payload.course} 学习辅导` : "学习辅导"),
+      message_count: 0,
+      course_id: course?.id || selectedCourseId.value,
+      target_student_id: selectedTargetStudentId.value
+    };
+    activeConversationId.value = conversation.conversation_id;
+    conversations.value = [
+      normalizeConversation(conversation, course?.name),
+      ...conversations.value.filter(
+        item => item.conversation_id !== conversation.conversation_id
+      )
+    ];
+  } catch (error: any) {
+    console.error("[AiApp] 创建学习助手会话失败:", error);
+    ElMessage.error(error?.message || "创建会话失败");
+    return;
+  }
+
+  const pendingMessage = quickMessage.value.trim();
+  if (pendingMessage) {
     // 切换到聊天栏目，确保数字人状态与课程上下文同步。
     activeRail.value = "chat";
     // 微延时等待课程上下文切换完成。
     setTimeout(() => {
-      handleSendMessage(quickMessage.value);
+      handleSendMessage(pendingMessage);
       quickMessage.value = "";
     }, 100);
   }
@@ -941,7 +1003,9 @@ onUnmounted(() => {
         <!-- 收起 / 展开 把手 -->
         <button
           class="absolute top-3 -right-3 w-6 h-6 rounded-md bg-white border border-gray-200 shadow-sm flex items-center justify-center text-gray-500 hover:text-primary hover:border-primary/40 hover:scale-110 transition-all z-30"
-          :class="{ 'is-mobile-collapsed-trigger': sidebarCollapsed && isMobileViewport }"
+          :class="{
+            'is-mobile-collapsed-trigger': sidebarCollapsed && isMobileViewport
+          }"
           :title="sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'"
           @click="toggleSidebar"
         >
@@ -1048,8 +1112,8 @@ onUnmounted(() => {
                   class="flex-1 bg-white/70 backdrop-blur-xl rounded-[2.5rem] shadow-[0_8px_32px_rgba(0,0,0,0.04)] border border-white/50 overflow-hidden relative"
                 >
                   <VirtualHumanPanel
-                    ref="virtualHumanRef"
                     v-show="!humanCollapsed"
+                    ref="virtualHumanRef"
                   />
 
                   <div
@@ -1703,7 +1767,8 @@ onUnmounted(() => {
 .ai-app-root :deep([class*=" el-icon-"]),
 .ai-app-root :deep(.iconify) {
   font-family:
-    "iconfont", element-icons, "IconifyIconOnline", "IconifyIconOffline", sans-serif !important;
+    "iconfont", element-icons, "IconifyIconOnline", "IconifyIconOffline",
+    sans-serif !important;
 }
 
 /* 让 Lottie 空状态动画的白色区域与渐变背景融合，呈现真正的"透明"效果 */
@@ -1944,8 +2009,7 @@ onUnmounted(() => {
   .ai-chat-scene,
   .ai-chat-welcome,
   main > div[class*="p-4"] {
-    padding:
-      calc(54px + var(--pure-safe-area-top, 0px)) 12px
+    padding: calc(54px + var(--pure-safe-area-top, 0px)) 12px
       calc(74px + var(--pure-safe-area-bottom, 0px)) !important;
     gap: 10px !important;
   }

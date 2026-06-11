@@ -176,7 +176,9 @@ const fetchData = async () => {
       pageSize: pagination.pageSize
     });
     const userIds = Array.from(
-      new Set((responseData.list || []).map((item: PendingItem) => item.authorId))
+      new Set(
+        (responseData.list || []).map((item: PendingItem) => item.authorId)
+      )
     );
     let avatarMap = new Map<number, string>();
     if (userIds.length > 0) {
@@ -1894,7 +1896,7 @@ onActivated(() => {
   background: transparent;
 }
 
-@media (max-width: 768px) {
+@media (width <= 768px) {
   .discussion-manage {
     padding-bottom: calc(
       var(--pure-mobile-tab-height) + var(--pure-safe-area-bottom) + 28px
@@ -2030,7 +2032,7 @@ onActivated(() => {
   }
 }
 
-@media (max-width: 420px) {
+@media (width <= 420px) {
   .discussion-manage {
     .discussion-stats-grid {
       gap: 14px;

@@ -1731,7 +1731,7 @@ watch(theme, () => {
   margin-top: 24px;
 }
 
-@media (max-width: 768px) {
+@media (width <= 768px) {
   .statistics-container {
     padding-bottom: calc(
       var(--pure-mobile-tab-height) + var(--pure-safe-area-bottom) + 28px
@@ -1851,7 +1851,7 @@ watch(theme, () => {
   }
 }
 
-@media (max-width: 420px) {
+@media (width <= 420px) {
   .stats-grid--compact,
   .search-form__actions {
     grid-template-columns: 1fr;

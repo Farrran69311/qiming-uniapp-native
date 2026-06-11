@@ -140,7 +140,6 @@ import { useRouter, useRoute } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { storageLocal } from "@pureadmin/utils";
 import { formatAvatar } from "@/utils/avatar";
-import { getSavedCourseTheme, setSavedCourseTheme } from "@/utils/courseTheme";
 import { userKey } from "@/utils/auth";
 import { useUserStoreHook } from "@/store/modules/user";
 
@@ -177,7 +176,9 @@ const baseCourseId = ref<number | null>(null);
 const courseId = computed(() => baseCourseId.value);
 const courseDetail = ref<any>(null);
 const loading = ref(false);
-const currentTheme = ref(getSavedCourseTheme("light"));
+const currentTheme = ref(
+  (storageLocal().getItem("course_theme") as string) || "light"
+);
 const activeMenu = ref(
   (storageLocal().getItem(
     `course_detail_active_menu_${route.params.id}`
@@ -370,71 +371,77 @@ const fetchExamList = async () => {
 const fetchHtmlAnimations = async () => {
   if (!courseDetail.value) return;
   htmlAnimationLoading.value = true;
-  htmlAnimationList.value = [];
 
   try {
     const chapters = courseDetail.value.courseChapterList || [];
-    const promises = chapters.map(async (ch: any) => {
-      try {
-        const { data } = await getHtmlAnimationDisplay({
-          courseId: courseDetail.value.courseId,
-          chapterId: ch.chapterId
-        });
-        if (data && data.url) {
-          htmlAnimationList.value.push({
-            chapterId: ch.chapterId,
-            chapterName: ch.name || ch.chapterName,
-            version: data.version,
-            url: data.url,
-            coverUrl: data.coverUrl || data.previewUrl,
-            previewUrl: data.previewUrl || data.coverUrl,
-            previewVideoUrl: data.previewVideoUrl,
-            available: data.available !== false,
-            message: data.message,
-            status: "ready"
+    const results = await Promise.all(
+      chapters.map(async (ch: any) => {
+        try {
+          const response: any = await getHtmlAnimationDisplay({
+            courseId: courseDetail.value.courseId,
+            chapterId: ch.chapterId
           });
-        } else if (data?.available === false) {
-          htmlAnimationList.value.push({
-            chapterId: ch.chapterId,
-            chapterName: ch.name || ch.chapterName,
-            version: "",
-            url: "",
-            available: false,
-            message: data.message || "暂无可用HTML动画版本",
-            status: "unavailable"
-          });
+          const data = response?.data || response;
+          if (data?.url) {
+            return {
+              chapterId: ch.chapterId,
+              chapterName: ch.name || ch.chapterName,
+              version: data.version,
+              url: data.url,
+              coverUrl: data.coverUrl || data.previewUrl,
+              previewUrl: data.previewUrl || data.coverUrl,
+              previewVideoUrl: data.previewVideoUrl,
+              available: data.available !== false,
+              message: data.message,
+              status: "ready"
+            };
+          }
+          if (data?.available === false) {
+            return {
+              chapterId: ch.chapterId,
+              chapterName: ch.name || ch.chapterName,
+              version: "",
+              url: "",
+              available: false,
+              message: data.message || "暂无可用HTML动画版本",
+              status: "unavailable"
+            };
+          }
+        } catch (e) {
+          const status = e?.response?.status;
+          const message =
+            e?.response?.data?.message ||
+            e?.response?.data?.msg ||
+            e?.message ||
+            "";
+          if (status === 404) {
+            return {
+              chapterId: ch.chapterId,
+              chapterName: ch.name || ch.chapterName,
+              version: "",
+              url: "",
+              available: false,
+              message: message || "暂无可展示动画",
+              status:
+                message.includes("对象不存在") || message.includes("版本对象")
+                  ? "missing"
+                  : "unavailable"
+            };
+          }
+          return null;
         }
-      } catch (e) {
-        const status = e?.response?.status;
-        const message =
-          e?.response?.data?.message ||
-          e?.response?.data?.msg ||
-          e?.message ||
-          "";
-        if (status === 404) {
-          htmlAnimationList.value.push({
-            chapterId: ch.chapterId,
-            chapterName: ch.name || ch.chapterName,
-            version: "",
-            url: "",
-            available: false,
-            message: message || "暂无可展示动画",
-            status:
-              message.includes("对象不存在") || message.includes("版本对象")
-                ? "missing"
-                : "unavailable"
-          });
-        }
-        // 忽略无展示版本
-      }
-    });
-    await Promise.all(promises);
+        return null;
+      })
+    );
+
+    const animationData = results.filter(item => item !== null);
     const uniqueMap = new Map();
-    htmlAnimationList.value.forEach(item => {
+    animationData.forEach(item => {
       if (!uniqueMap.has(item.chapterId)) {
         uniqueMap.set(item.chapterId, item);
       }
     });
+
     htmlAnimationList.value = Array.from(uniqueMap.values());
   } finally {
     htmlAnimationLoading.value = false;
@@ -496,7 +503,7 @@ watch(activeMenu, newVal => {
 watch(
   currentTheme,
   val => {
-    setSavedCourseTheme(val);
+    storageLocal().setItem("course_theme", val);
     const other = val === "light" ? "dark" : "light";
     document.documentElement.classList.remove(other);
     document.documentElement.classList.add(val);
@@ -504,6 +511,11 @@ watch(
     document.body.classList.add(val);
 
     // 同步到管理后台主题设置
+    const layout = storageLocal().getItem("responsive-layout") as any;
+    if (layout) {
+      layout.darkMode = val === "dark";
+      storageLocal().setItem("responsive-layout", layout);
+    }
   },
   { immediate: true }
 );

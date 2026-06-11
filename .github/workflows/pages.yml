@@ -1,11 +1,14 @@
 name: Build and Deploy
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 permissions:
   contents: write
 on:
   push:
     branches:
       - pages
-      
+
 jobs:
   deploy:
     concurrency: ci-${{ github.ref }}

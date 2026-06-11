@@ -1065,15 +1065,14 @@ onActivated(() => {
   }
 }
 
-@media (max-width: 768px) {
+@media (width <= 768px) {
   .report-manage {
     padding-bottom: calc(
       var(--pure-mobile-tab-height) + var(--pure-safe-area-bottom) + 28px
     );
 
     .report-stats-grid {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 8px;
+      gap: 12px;
     }
 
     .report-panel {
@@ -1105,48 +1104,9 @@ onActivated(() => {
     }
 
     .stat-card {
-      border-radius: 18px;
-
-      :deep(.el-card__body) {
-        padding: 10px 8px;
-      }
-
       .stat-content {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        align-items: center;
-        justify-content: center;
-        min-height: 76px;
-        padding: 0;
-        text-align: center;
-
-        .stat-number {
-          min-width: 0;
-          margin-bottom: 0;
-          font-size: 18px;
-          line-height: 1;
-        }
-
-        .stat-label {
-          min-width: 0;
-          font-size: 11px;
-          line-height: 1.2;
-          white-space: normal;
-        }
-      }
-    }
-
-    @media (max-width: 360px) {
-      .report-stats-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .stat-card .stat-content {
-        flex-direction: row;
-        justify-content: flex-start;
-        min-height: 58px;
-        text-align: left;
+        min-height: 110px;
+        padding: 10px 8px;
       }
     }
 
@@ -1193,7 +1153,7 @@ onActivated(() => {
   }
 }
 
-@media (max-width: 360px) {
+@media (width <= 420px) {
   .report-manage {
     .report-stats-grid {
       grid-template-columns: 1fr;
