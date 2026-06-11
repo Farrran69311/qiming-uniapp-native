@@ -71,9 +71,7 @@ html.qiming-native-webview {
   --qiming-native-vh: 100dvh;
   --qiming-native-vw: 100vw;
   --pure-mobile-tab-height: calc(58px + var(--pure-safe-area-bottom));
-  --pure-mobile-content-bottom-gap: calc(
-    var(--pure-mobile-tab-height) + 96px
-  );
+  --pure-mobile-content-bottom-gap: calc(var(--pure-mobile-tab-height) + 96px);
   --pure-main-content-margin: 10px 10px 0;
 }
 
@@ -148,7 +146,8 @@ html.qiming-native-webview.dark .el-input__wrapper,
 html.qiming-native-webview.dark .el-textarea__inner,
 html.qiming-native-webview.dark .el-select__wrapper,
 html.qiming-native-webview.dark .el-date-editor,
-html.qiming-native-webview.dark .el-button:not(.el-button--primary):not(.is-link):not(.is-text),
+html.qiming-native-webview.dark
+  .el-button:not(.el-button--primary):not(.is-link):not(.is-text),
 html.qiming-native-webview.dark .analysis-sort-box {
   color: var(--qiming-native-text-regular);
   background: var(--qiming-native-surface-soft-bg) !important;
@@ -162,7 +161,10 @@ html.qiming-native-webview.dark .analysis-sort-box .el-radio-button__inner {
   border-color: rgb(148 163 184 / 30%) !important;
 }
 
-html.qiming-native-webview.dark .analysis-sort-box .el-radio-button__original-radio:checked + .el-radio-button__inner {
+html.qiming-native-webview.dark
+  .analysis-sort-box
+  .el-radio-button__original-radio:checked
+  + .el-radio-button__inner {
   color: #f8fafc !important;
   background: #7fa2f7 !important;
   border-color: #7fa2f7 !important;
@@ -314,7 +316,9 @@ html.qiming-native-webview.dark .quick-chat-box .el-textarea__inner {
   background: transparent !important;
 }
 
-html.qiming-native-webview.dark .quick-chat-box .el-textarea__inner::placeholder {
+html.qiming-native-webview.dark
+  .quick-chat-box
+  .el-textarea__inner::placeholder {
   color: var(--qiming-native-text-secondary) !important;
   -webkit-text-fill-color: var(--qiming-native-text-secondary) !important;
 }
@@ -325,23 +329,45 @@ html.qiming-native-webview.dark .quick-chat-box > div:last-child .el-icon {
   -webkit-text-fill-color: #cbd5e1 !important;
 }
 
-html.qiming-native-webview.dark .quick-chat-box > div:last-child > div:first-child > .el-dropdown:first-child span {
+html.qiming-native-webview.dark
+  .quick-chat-box
+  > div:last-child
+  > div:first-child
+  > .el-dropdown:first-child
+  span {
   color: #bfdbfe !important;
   -webkit-text-fill-color: #bfdbfe !important;
   background: rgb(59 130 246 / 16%) !important;
   border-color: rgb(96 165 250 / 24%) !important;
 }
 
-html.qiming-native-webview.dark .quick-chat-box > div:last-child > div:first-child > span,
-html.qiming-native-webview.dark .quick-chat-box > div:last-child > div:first-child > .el-dropdown:not(:first-child) span,
-html.qiming-native-webview.dark .quick-chat-box > div:last-child > div:last-child > span {
+html.qiming-native-webview.dark
+  .quick-chat-box
+  > div:last-child
+  > div:first-child
+  > span,
+html.qiming-native-webview.dark
+  .quick-chat-box
+  > div:last-child
+  > div:first-child
+  > .el-dropdown:not(:first-child)
+  span,
+html.qiming-native-webview.dark
+  .quick-chat-box
+  > div:last-child
+  > div:last-child
+  > span {
   color: #dbeafe !important;
   -webkit-text-fill-color: #dbeafe !important;
   background: rgb(30 41 59 / 78%) !important;
   border: 1px solid rgb(148 163 184 / 16%) !important;
 }
 
-html.qiming-native-webview.ua-mobile.dark .quick-chat-box > div:last-child > div:last-child > span {
+html.qiming-native-webview.ua-mobile.dark
+  .quick-chat-box
+  > div:last-child
+  > div:last-child
+  > span {
   display: inline-flex !important;
   align-items: center;
   justify-content: space-between;
@@ -352,7 +378,10 @@ html.qiming-native-webview.ua-mobile.dark .quick-chat-box > div:last-child > div
   outline: none !important;
 }
 
-html.qiming-native-webview.dark .quick-chat-box > div:last-child button:disabled {
+html.qiming-native-webview.dark
+  .quick-chat-box
+  > div:last-child
+  button:disabled {
   color: rgb(148 163 184 / 62%) !important;
   background: rgb(30 41 59 / 72%) !important;
   border-color: rgb(148 163 184 / 16%) !important;
@@ -385,7 +414,9 @@ html.qiming-native-webview.dark .ai-chat-module__composer .el-textarea__inner {
   background: transparent !important;
 }
 
-html.qiming-native-webview.dark .ai-chat-module__composer .el-textarea__inner::placeholder {
+html.qiming-native-webview.dark
+  .ai-chat-module__composer
+  .el-textarea__inner::placeholder {
   color: var(--qiming-native-text-secondary) !important;
   -webkit-text-fill-color: var(--qiming-native-text-secondary) !important;
 }
@@ -396,14 +427,20 @@ html.qiming-native-webview.dark .ai-chat-module__toolbar .el-icon {
   -webkit-text-fill-color: #cbd5e1 !important;
 }
 
-html.qiming-native-webview.dark .ai-chat-module__toolbar-main > .el-dropdown:first-child span {
+html.qiming-native-webview.dark
+  .ai-chat-module__toolbar-main
+  > .el-dropdown:first-child
+  span {
   color: #bfdbfe !important;
   -webkit-text-fill-color: #bfdbfe !important;
   background: rgb(59 130 246 / 16%) !important;
   border-color: rgb(96 165 250 / 24%) !important;
 }
 
-html.qiming-native-webview.dark .ai-chat-module__toolbar-main > .el-dropdown:not(:first-child) span,
+html.qiming-native-webview.dark
+  .ai-chat-module__toolbar-main
+  > .el-dropdown:not(:first-child)
+  span,
 html.qiming-native-webview.dark .ai-chat-module__toolbar-main > span,
 html.qiming-native-webview.dark .ai-chat-module__toolbar > .el-dropdown span {
   color: #dbeafe !important;
@@ -412,14 +449,20 @@ html.qiming-native-webview.dark .ai-chat-module__toolbar > .el-dropdown span {
   border: 1px solid rgb(148 163 184 / 16%) !important;
 }
 
-html.qiming-native-webview.dark .ai-chat-module__composer .el-button:not(.el-button--primary) {
+html.qiming-native-webview.dark
+  .ai-chat-module__composer
+  .el-button:not(.el-button--primary) {
   color: #cbd5e1 !important;
   background: rgb(30 41 59 / 82%) !important;
   border-color: rgb(148 163 184 / 20%) !important;
 }
 
-html.qiming-native-webview.dark .ai-chat-module__composer .el-button.is-disabled,
-html.qiming-native-webview.dark .ai-chat-module__composer .el-button.is-disabled:hover {
+html.qiming-native-webview.dark
+  .ai-chat-module__composer
+  .el-button.is-disabled,
+html.qiming-native-webview.dark
+  .ai-chat-module__composer
+  .el-button.is-disabled:hover {
   color: rgb(148 163 184 / 72%) !important;
   background: rgb(30 41 59 / 68%) !important;
   border-color: rgb(148 163 184 / 14%) !important;
@@ -432,23 +475,40 @@ html.qiming-native-webview.dark .virtual-human-panel > div:first-child {
   border-color: rgb(148 163 184 / 20%) !important;
 }
 
-html.qiming-native-webview.dark .virtual-human-panel > div:first-child span:nth-child(2) {
+html.qiming-native-webview.dark
+  .virtual-human-panel
+  > div:first-child
+  span:nth-child(2) {
   color: #f8fafc !important;
   -webkit-text-fill-color: #f8fafc !important;
 }
 
-html.qiming-native-webview.dark .virtual-human-panel > div:first-child span:nth-child(3) {
+html.qiming-native-webview.dark
+  .virtual-human-panel
+  > div:first-child
+  span:nth-child(3) {
   color: #94a3b8 !important;
   -webkit-text-fill-color: #94a3b8 !important;
 }
 
-html.qiming-native-webview.dark .virtual-human-panel > div:first-child .el-button {
+html.qiming-native-webview.dark
+  .virtual-human-panel
+  > div:first-child
+  .el-button {
   color: #cbd5e1 !important;
 }
 
 html.qiming-native-webview {
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-width: none;
+}
+
+html.qiming-native-webview::-webkit-scrollbar,
+html.qiming-native-webview *::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 html.qiming-native-webview body,
@@ -465,11 +525,18 @@ html.qiming-native-webview .nav-mobile-container {
   padding-bottom: var(--pure-safe-area-bottom);
 }
 
-html.qiming-native-webview.ua-mobile .main-container > .el-scrollbar > .el-scrollbar__wrap,
-html.qiming-native-webview.ua-mobile .app-main > .el-scrollbar > .el-scrollbar__wrap {
+html.qiming-native-webview.ua-mobile
+  .main-container
+  > .el-scrollbar
+  > .el-scrollbar__wrap,
+html.qiming-native-webview.ua-mobile
+  .app-main
+  > .el-scrollbar
+  > .el-scrollbar__wrap {
   padding-bottom: var(--pure-mobile-content-bottom-gap);
-  scroll-padding-top: calc(86px + var(--pure-safe-area-top, 0px));
+  scroll-padding-top: calc(86px + var(--pure-safe-area-top, 0));
   box-sizing: border-box;
+  scrollbar-width: none;
 }
 
 html.qiming-native-webview.ua-mobile,
@@ -517,7 +584,7 @@ html.qiming-native-webview.ua-mobile.dark .navbar {
 html.qiming-native-webview.ua-mobile [id],
 html.qiming-native-webview.ua-mobile .chart-card,
 html.qiming-native-webview.ua-mobile .analysis-panel {
-  scroll-margin-top: calc(86px + var(--pure-safe-area-top, 0px));
+  scroll-margin-top: calc(86px + var(--pure-safe-area-top, 0));
 }
 
 html.qiming-native-webview.ua-mobile .main-content > :first-child {
@@ -550,7 +617,8 @@ html.qiming-native-webview.ua-mobile .el-scrollbar__wrap {
 
 html.qiming-native-webview.ua-mobile .main-container::-webkit-scrollbar,
 html.qiming-native-webview.ua-mobile .app-main::-webkit-scrollbar,
-html.qiming-native-webview.ua-mobile .app-main-nofixed-header::-webkit-scrollbar,
+html.qiming-native-webview.ua-mobile
+  .app-main-nofixed-header::-webkit-scrollbar,
 html.qiming-native-webview.ua-mobile .el-scrollbar__wrap::-webkit-scrollbar {
   width: 0;
   height: 0;

@@ -3,7 +3,6 @@ import { nextTick, ref, watch, computed, onMounted, onUnmounted } from "vue";
 import { ElMessage } from "element-plus";
 import { useRoute } from "vue-router";
 import { storageLocal } from "@pureadmin/utils";
-import { useAppStoreHook } from "@/store/modules/app";
 import { userKey } from "@/utils/auth";
 import FloatButton from "./FloatButton.vue";
 import CaptureOverlay from "./CaptureOverlay.vue";
@@ -24,7 +23,6 @@ defineOptions({
 });
 
 const route = useRoute();
-const appStore = useAppStoreHook();
 const instanceId = createAiScreenCaptureInstanceId();
 const isPrimaryInstance = ref(false);
 
@@ -161,17 +159,6 @@ const studentBlockedPathPrefixes = [
   "/exam-paper"
 ];
 
-const isNativeMobileAiApp = computed(() => {
-  const isNative =
-    typeof document !== "undefined" &&
-    document.documentElement.classList.contains("qiming-native-webview");
-  return (
-    isNative &&
-    route.path === "/account/ai-app" &&
-    (appStore.getDevice === "mobile" || appStore.getViewportWidth <= 768)
-  );
-});
-
 const shouldShowAssistant = computed(() => {
   const routeVisible =
     !isStudent.value ||
@@ -180,7 +167,6 @@ const shouldShowAssistant = computed(() => {
   return (
     isPrimaryInstance.value &&
     routeVisible &&
-    !isNativeMobileAiApp.value &&
     (overrideVisible === null ? true : overrideVisible)
   );
 });
@@ -316,8 +302,7 @@ onUnmounted(() => {
     v-if="shouldShowAssistant"
     class="ai-screen-capture"
     :class="{
-      'is-busy':
-        chatDialogVisible || captureLoadingVisible || status !== 'idle'
+      'is-busy': chatDialogVisible || captureLoadingVisible || status !== 'idle'
     }"
   >
     <FloatButton

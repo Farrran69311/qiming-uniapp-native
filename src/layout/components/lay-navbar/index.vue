@@ -117,14 +117,14 @@ const {
         @toggleClick="toggleSideBar"
       />
 
-      <span
-        v-if="device === 'mobile'"
-        class="mobile-brand"
-      >
-        <img :src="getLogo()" alt="logo" class="app-logo-img mobile-brand-logo" />
+      <span v-if="device === 'mobile'" class="mobile-brand">
+        <img
+          :src="getLogo()"
+          alt="logo"
+          class="app-logo-img mobile-brand-logo"
+        />
         <span>{{ title }}</span>
-      </span
-      >
+      </span>
 
       <div v-if="device !== 'mobile'" class="flex items-center ml-4">
         <span
@@ -293,8 +293,8 @@ const {
 @media screen and (max-width: 768px) {
   .navbar {
     align-items: flex-end;
-    height: calc(56px + var(--pure-safe-area-top, 0px));
-    padding-top: var(--pure-safe-area-top, 0px);
+    height: calc(56px + var(--pure-safe-area-top, 0));
+    padding-top: var(--pure-safe-area-top, 0);
     background: transparent !important;
     border-bottom: 0 !important;
     backdrop-filter: none !important;
@@ -308,9 +308,9 @@ const {
   }
 
   .navbar > div {
-    height: 56px;
-    min-height: 56px;
-    transform: translateY(4px);
+    height: 58px;
+    min-height: 58px;
+    transform: translateY(8px);
   }
 
   .navbar > div:first-child {
@@ -322,13 +322,13 @@ const {
 
   .hamburger-container {
     position: relative;
-    flex: 0 0 42px;
-    width: 42px;
-    height: 44px;
+    flex: 0 0 48px;
+    width: 48px;
+    height: 46px;
     box-sizing: border-box;
     padding: 0 !important;
-    margin: 0 8px 0 10px !important;
-    border-radius: 13px;
+    margin: 0 9px 0 14px !important;
+    border-radius: 15px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -339,11 +339,12 @@ const {
 
     &::before {
       position: absolute;
-      inset: 4px;
+      inset: 4px 5px;
       content: "";
       background: var(--qiming-native-control-bg, rgb(255 255 255 / 92%));
-      border: 1px solid var(--qiming-native-control-border, rgb(210 220 238 / 92%));
-      border-radius: 12px;
+      border: 1px solid
+        var(--qiming-native-control-border, rgb(210 220 238 / 92%));
+      border-radius: 14px;
       box-shadow:
         0 8px 18px rgb(15 23 42 / 9%),
         inset 0 1px 0 rgb(255 255 255 / 70%);
@@ -425,7 +426,6 @@ const {
     height: 24px !important;
   }
 }
-
 </style>
 
 <style lang="scss">
