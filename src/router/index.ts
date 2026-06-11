@@ -125,6 +125,22 @@ const demoRoleTypes = {
 };
 const nativeDemoSessionReady = new Set<DemoRole>();
 
+const isNativeWebViewRuntime = () => {
+  return (
+    typeof document !== "undefined" &&
+    document.documentElement.classList.contains("qiming-native-webview")
+  );
+};
+
+const hasNativeStoredSession = (userInfo?: DataInfo<number> | null) => {
+  return (
+    isNativeWebViewRuntime() &&
+    !!userInfo?.accessToken &&
+    Array.isArray(userInfo?.roles) &&
+    userInfo.roles.length > 0
+  );
+};
+
 router.beforeEach((to: ToRouteType, _from, next) => {
   console.log(`[Router Guard] ${to.path} <- ${_from.path}`);
   if (to.meta?.keepAlive) {
@@ -156,15 +172,9 @@ router.beforeEach((to: ToRouteType, _from, next) => {
     nativeDemoSessionReady.add(normalizedDemoRole);
   }
 
-  if (
-    import.meta.env.DEV &&
-    normalizedDemoRole &&
-    !demoSessionMatchesRole
-  ) {
+  if (import.meta.env.DEV && normalizedDemoRole && !demoSessionMatchesRole) {
     import("@/views/home/demoSession")
-      .then(({ ensureDemoSession }) =>
-        ensureDemoSession(normalizedDemoRole)
-      )
+      .then(({ ensureDemoSession }) => ensureDemoSession(normalizedDemoRole))
       .then(() => {
         nativeDemoSessionReady.add(normalizedDemoRole);
         next({ ...to, replace: true });
@@ -182,6 +192,9 @@ router.beforeEach((to: ToRouteType, _from, next) => {
     userInfo?.roleType
   );
   NProgress.start();
+
+  const hasSessionMarker =
+    !!Cookies.get(multipleTabsKey) || hasNativeStoredSession(userInfo);
 
   // 注意：在没有后端的开发环境下，跳过 cookie 检查
   // 如果 userInfo 存在但 cookie 不存在，尝试恢复 cookie 而不是强制退出
@@ -213,7 +226,7 @@ router.beforeEach((to: ToRouteType, _from, next) => {
     }
   }
 
-  if (Cookies.get(multipleTabsKey) && userInfo) {
+  if (hasSessionMarker && userInfo) {
     console.log("[Router Guard] 登录状态校验通过");
     // 管理端默认权限白名单（这些路由任何已登录用户都可以访问）
     const publicRoutes = [

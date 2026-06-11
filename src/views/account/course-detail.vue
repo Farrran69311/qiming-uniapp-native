@@ -525,6 +525,25 @@ const goBack = () => {
   }
 };
 
+const goBackToCourseList = () => {
+  router.push({
+    path: "/account",
+    query: {
+      ...route.query,
+      menu: "course",
+      qimingNative: "1"
+    }
+  });
+};
+
+const handleNativeBack = (event: Event) => {
+  if (!document.documentElement.classList.contains("qiming-native-webview")) {
+    return;
+  }
+  event.preventDefault();
+  goBackToCourseList();
+};
+
 // 跳转账号管理
 const goToAccount = () => {
   // 课程详情页是从学生中心进入的，账号管理应跳转回学生中心
@@ -1077,6 +1096,7 @@ onMounted(async () => {
   ) as HTMLElement | null;
   baseCourseId.value = Number(route.params.id);
   window.addEventListener("resize", handleViewportResize, { passive: true });
+  window.addEventListener("qiming:native-back", handleNativeBack);
 
   // 获取用户ID（如果还没有）
   if (!userStore.userId) {
@@ -1160,6 +1180,7 @@ onBeforeUnmount(() => {
   setAiScreenCaptureVisibilityOverride(null);
   document.body.classList.remove("course-page");
   window.removeEventListener("resize", handleViewportResize);
+  window.removeEventListener("qiming:native-back", handleNativeBack);
   if (mobileOffsetRafId !== null) {
     cancelAnimationFrame(mobileOffsetRafId);
     mobileOffsetRafId = null;

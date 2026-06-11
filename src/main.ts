@@ -259,10 +259,15 @@ function applyNativeWebViewRuntime() {
       return "root";
     }
 
-    if (
-      currentPath === "/account/ai-app" ||
-      currentPath.startsWith("/course/")
-    ) {
+    if (currentPath.startsWith("/course/")) {
+      navigateNativeBack(
+        "/account",
+        buildNativeBackQuery({ menu: "course" }, ["mode"])
+      );
+      return "handled";
+    }
+
+    if (currentPath === "/account/ai-app") {
       navigateNativeBack(
         "/account",
         buildNativeBackQuery({ menu: "home" }, ["mode"])

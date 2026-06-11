@@ -1,4 +1,6 @@
 import { http } from "@/utils/http";
+import { storageLocal } from "@pureadmin/utils";
+import { getToken, userKey, type DataInfo } from "@/utils/auth";
 
 export type UserResult = {
   success: boolean;
@@ -215,8 +217,15 @@ const isNativeWebViewPreview = () => {
 
 const getNativeAccessToken = () => {
   try {
-    const userInfo = JSON.parse(localStorage.getItem("user-info") || "{}");
-    return userInfo?.accessToken || userInfo?.refreshToken || "";
+    const token = getToken();
+    const userInfo = storageLocal().getItem<DataInfo<number>>(userKey);
+    return (
+      token?.accessToken ||
+      token?.refreshToken ||
+      userInfo?.accessToken ||
+      userInfo?.refreshToken ||
+      ""
+    );
   } catch {
     return "";
   }
@@ -225,6 +234,19 @@ const getNativeAccessToken = () => {
 async function requestUserDetailWithNativeFallback(
   request: () => Promise<UserCenterDetailResult>
 ) {
+  if (isNativeWebViewPreview()) {
+    const token = getNativeAccessToken();
+    if (token) {
+      try {
+        return await fetchNativeUserDetail(token);
+      } catch (fetchError) {
+        console.warn("[NativeFetchFallback] user detail request failed", {
+          error: fetchError
+        });
+      }
+    }
+  }
+
   try {
     return await request();
   } catch (error) {
@@ -233,27 +255,11 @@ async function requestUserDetailWithNativeFallback(
     const token = getNativeAccessToken();
     if (!token) throw error;
 
-    const url = apiUrl("/edu/v1/user/detail");
     let lastFetchError: unknown = error;
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
-        const response = await fetch(url, {
-          method: "POST",
-          headers: {
-            Accept: "application/json",
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json"
-          },
-          body: "{}"
-        });
-
-        if (response.ok) {
-          return (await response.json()) as UserCenterDetailResult;
-        }
-        lastFetchError = new Error(
-          `Native user detail failed: ${response.status}`
-        );
+        return await fetchNativeUserDetail(token);
       } catch (fetchError) {
         lastFetchError = fetchError;
       }
@@ -262,11 +268,29 @@ async function requestUserDetailWithNativeFallback(
     }
 
     console.warn("[NativeFetchFallback] user detail request failed", {
-      url,
       error: lastFetchError
     });
     throw error;
   }
+}
+
+async function fetchNativeUserDetail(token: string) {
+  const url = apiUrl("/edu/v1/user/detail");
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: "{}"
+  });
+
+  if (!response.ok) {
+    throw new Error(`Native user detail failed: ${response.status}`);
+  }
+
+  return (await response.json()) as UserCenterDetailResult;
 }
 
 /** 登录 */
