@@ -60,6 +60,12 @@ export default {
         ignorePseudoClasses: ["deep", "global"]
       }
     ],
+    "selector-type-no-unknown": [
+      true,
+      {
+        ignoreTypes: ["page"]
+      }
+    ],
     "selector-pseudo-element-no-unknown": [
       true,
       {
@@ -78,6 +84,7 @@ export default {
           "function",
           "if",
           "each",
+          "for",
           "include",
           "mixin",
           "use"

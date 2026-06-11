@@ -1703,7 +1703,7 @@ onUnmounted(() => {
 .ai-app-root :deep([class*=" el-icon-"]),
 .ai-app-root :deep(.iconify) {
   font-family:
-    "iconfont", element-icons, "IconifyIconOnline", "IconifyIconOffline" !important;
+    "iconfont", element-icons, "IconifyIconOnline", "IconifyIconOffline", sans-serif !important;
 }
 
 /* 让 Lottie 空状态动画的白色区域与渐变背景融合，呈现真正的"透明"效果 */
