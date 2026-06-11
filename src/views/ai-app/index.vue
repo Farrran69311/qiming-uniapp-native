@@ -525,6 +525,7 @@ const handleAssistantStreamEvent = (
     }
     if (!hasBackendHumanState) digitalHumanStreamState.value = "saying";
     speakDigitalHumans(directiveText || content || "");
+    speakDigitalHumans(directiveText || content || "");
     isChatStreaming.value = false;
     window.setTimeout(() => {
       if (
