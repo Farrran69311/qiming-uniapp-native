@@ -3,15 +3,22 @@
 
 ### Checkout from the pics first Stu Teacher and Admin
 
+<p align="center">
 <img width="400" height="833" alt="image" src="https://github.com/user-attachments/assets/1e7b4d23-2014-42de-b5da-1b194b4cf4c8" />
 <img width="397" height="829" alt="image" src="https://github.com/user-attachments/assets/c85d7aab-e49d-494c-8164-2b88d071fe74" />
 <img width="392" height="804" alt="image" src="https://github.com/user-attachments/assets/9878a4fd-1d0d-42e0-8f81-4e1c7493d36c" />
 <img width="394" height="828" alt="image" src="https://github.com/user-attachments/assets/4b27c936-a290-4e26-8a25-cee2c16d861a" />
+  </p>
+  <p align="center">
 <img width="396" height="830" alt="image" src="https://github.com/user-attachments/assets/18137d8e-bd39-42d1-8d21-2b532c8584f5" />
 <img width="403" height="830" alt="image" src="https://github.com/user-attachments/assets/64c7b42d-6a13-4d25-a23a-0aa05e30a8dd" />
 <img width="398" height="831" alt="image" src="https://github.com/user-attachments/assets/29ed07d3-17c8-4046-8834-6d84c6dee125" />
 <img width="395" height="836" alt="image" src="https://github.com/user-attachments/assets/9fd5810d-91e4-4360-9986-f2a13cbf91c0" />
-
+  </p>
+    <p align="center">
+<img width="389" height="817" alt="image" src="https://github.com/user-attachments/assets/1b7edce3-3e92-4076-be37-d1ff6b2d6e9d" />
+<img width="401" height="834" alt="image" src="https://github.com/user-attachments/assets/1d3918cc-837d-49ca-a812-5b2a32762ed6" />
+  </p>
 
 ## 项目简介
 
