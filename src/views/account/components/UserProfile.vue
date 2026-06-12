@@ -2398,4 +2398,97 @@ onMounted(async () => {
     }
   }
 }
+
+html.qiming-native-webview.ua-mobile {
+  .student-profile-dialog {
+    width: calc(100vw - 24px) !important;
+    max-width: 560px !important;
+    max-height: calc(100vh - 24px);
+    max-height: calc(100dvh - 24px);
+    margin: 12px auto !important;
+    overflow: hidden;
+    border-radius: 20px;
+
+    .el-dialog__header {
+      padding: 18px 18px 8px;
+    }
+
+    .el-dialog__body {
+      max-width: 100%;
+      padding: 16px 18px 8px !important;
+      overflow-x: hidden;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .el-form {
+      width: 100%;
+      max-width: 100%;
+    }
+
+    .el-form-item {
+      display: block;
+      margin-bottom: 18px;
+    }
+
+    .el-form-item__label {
+      justify-content: flex-start;
+      width: auto !important;
+      max-width: 100%;
+      height: auto;
+      margin-bottom: 8px;
+      line-height: 1.35;
+    }
+
+    .el-form-item__content {
+      width: 100%;
+      max-width: 100%;
+      margin-left: 0 !important;
+    }
+
+    .el-input,
+    .el-textarea,
+    .el-select,
+    .el-radio-group {
+      width: 100%;
+      max-width: 100%;
+    }
+
+    .el-radio-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+    }
+
+    .el-dialog__footer {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      padding: 12px 18px 18px;
+    }
+
+    .el-dialog__footer .el-button {
+      min-height: 42px;
+      padding: 0 18px;
+    }
+  }
+
+  .student-profile-cropper-dialog {
+    width: calc(100vw - 20px) !important;
+    max-width: calc(100vw - 20px) !important;
+
+    .cropper-container {
+      max-width: 100%;
+      padding: 12px;
+      overflow: hidden;
+    }
+  }
+
+  .student-profile-preset-dialog {
+    .preset-banners-grid {
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      padding: 4px;
+    }
+  }
+}
 </style>

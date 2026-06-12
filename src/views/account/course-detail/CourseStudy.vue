@@ -422,6 +422,9 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, nextTick } from "vue";
+import MarkdownIt from "markdown-it";
+import katex from "katex";
+import "katex/dist/katex.min.css";
 import CourseHeader from "./CourseHeader.vue";
 import VideoAnalysisPanel from "./VideoAnalysisPanel.vue";
 
@@ -499,6 +502,67 @@ const handleSeekVideo = (timeMs: number) => {
 const internalMsg = ref("");
 const videoPlayerRef = ref(null);
 const catalogScrollRef = ref(null);
+const markdown = new MarkdownIt({
+  html: false,
+  breaks: true,
+  linkify: true,
+  typographer: true
+});
+
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+const renderMath = (source: string) => {
+  const blockMath: string[] = [];
+  const inlineMath: string[] = [];
+  let normalized = source.replace(/\$\$([\s\S]+?)\$\$/g, (_, expression) => {
+    const token = `@@QIMING_BLOCK_MATH_${blockMath.length}@@`;
+    try {
+      blockMath.push(
+        katex.renderToString(expression.trim(), {
+          displayMode: true,
+          throwOnError: false
+        })
+      );
+    } catch {
+      blockMath.push(`<pre>${escapeHtml(expression)}</pre>`);
+    }
+    return token;
+  });
+
+  normalized = normalized.replace(
+    /\\\(([\s\S]+?)\\\)|(?<!\\)\$([^\n$]+?)(?<!\\)\$/g,
+    (_match, parenExpression, dollarExpression) => {
+      const expression = parenExpression || dollarExpression;
+      const token = `@@QIMING_INLINE_MATH_${inlineMath.length}@@`;
+      try {
+        inlineMath.push(
+          katex.renderToString(expression.trim(), {
+            displayMode: false,
+            throwOnError: false
+          })
+        );
+      } catch {
+        inlineMath.push(`<code>${escapeHtml(expression)}</code>`);
+      }
+      return token;
+    }
+  );
+
+  return markdown
+    .render(normalized)
+    .replace(/@@QIMING_BLOCK_MATH_(\d+)@@/g, (_match, index) => {
+      return `<div class="math-block">${blockMath[Number(index)] || ""}</div>`;
+    })
+    .replace(/@@QIMING_INLINE_MATH_(\d+)@@/g, (_match, index) => {
+      return `<span class="math-inline">${inlineMath[Number(index)] || ""}</span>`;
+    });
+};
 
 // 监听 activeNode 变化，自动滚动到当前课时
 watch(
@@ -557,7 +621,7 @@ watch(
 
 const parseMarkdown = (text: string) => {
   if (!text) return "";
-  return text.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+  return renderMath(text);
 };
 
 defineExpose({
@@ -1650,9 +1714,105 @@ $shadow-xl:
       line-height: 1.6;
 
       &.ai-text {
+        word-break: break-word;
+
+        :deep(p) {
+          margin: 0 0 10px;
+
+          &:last-child {
+            margin-bottom: 0;
+          }
+        }
+
+        :deep(h1),
+        :deep(h2),
+        :deep(h3),
+        :deep(h4) {
+          margin: 12px 0 8px;
+          font-weight: 700;
+          line-height: 1.35;
+          color: $gray-900;
+
+          .dark & {
+            color: #fff;
+          }
+        }
+
+        :deep(h1) {
+          font-size: 20px;
+        }
+
+        :deep(h2) {
+          font-size: 18px;
+        }
+
+        :deep(h3) {
+          font-size: 16px;
+        }
+
+        :deep(h4) {
+          font-size: 15px;
+        }
+
         :deep(strong) {
           font-weight: 600;
           color: $primary;
+        }
+
+        :deep(ul),
+        :deep(ol) {
+          padding-left: 20px;
+          margin: 8px 0 12px;
+        }
+
+        :deep(li) {
+          margin: 4px 0;
+        }
+
+        :deep(code) {
+          padding: 2px 6px;
+          font-size: 0.9em;
+          color: #475569;
+          background: rgb(99 102 241 / 10%);
+          border-radius: 6px;
+
+          .dark & {
+            color: #dbeafe;
+            background: rgb(99 102 241 / 18%);
+          }
+        }
+
+        :deep(pre) {
+          padding: 10px 12px;
+          margin: 10px 0;
+          overflow-x: auto;
+          color: #e2e8f0;
+          background: #0f172a;
+          border-radius: 10px;
+        }
+
+        :deep(pre code) {
+          padding: 0;
+          color: inherit;
+          background: transparent;
+        }
+
+        :deep(.math-block) {
+          max-width: 100%;
+          margin: 10px 0;
+          overflow-x: auto;
+          text-align: center;
+        }
+
+        :deep(.math-inline) {
+          display: inline-block;
+          max-width: 100%;
+          overflow-x: auto;
+          vertical-align: middle;
+        }
+
+        :deep(.katex) {
+          font-size: 1em;
         }
       }
     }

@@ -471,9 +471,9 @@
 
             <!-- 课程网格 -->
             <template v-else>
-              <div v-if="coursesData.list.length > 0" class="course-grid">
+              <div v-if="filteredCourseList.length > 0" class="course-grid">
                 <div
-                  v-for="course in coursesData.list"
+                  v-for="course in filteredCourseList"
                   :key="course.courseId"
                   class="course-item"
                   @click="handleCourseClick(course.courseId)"
@@ -539,7 +539,7 @@
             </template>
 
             <!-- 分页 -->
-            <div v-if="coursesData.list.length > 0" class="pagination">
+            <div v-if="filteredCourseList.length > 0" class="pagination">
               <el-button :disabled="currentPage === 1" @click="handlePrevPage">
                 <el-icon><ArrowLeft /></el-icon>
                 上一页
@@ -848,6 +848,20 @@ const coursesData = ref({
   loading: false // 加载状态
 });
 
+const getCourseStatus = (course: any) => {
+  const finishedHours = Number(course?.finishedHours || 0);
+  const totalHours = Number(course?.totalHours || 0);
+  if (totalHours > 0 && finishedHours >= totalHours) return "completed";
+  if (finishedHours > 0) return "ongoing";
+  return "upcoming";
+};
+
+const filteredCourseList = computed(() => {
+  const list = coursesData.value.list || [];
+  if (courseFilter.value === "all") return list;
+  return list.filter(course => getCourseStatus(course) === courseFilter.value);
+});
+
 // 获取课程列表
 const fetchCourseList = async () => {
   try {
@@ -915,16 +929,20 @@ const loadHomeData = async () => {
 const loadCoursePageData = async () => {
   coursesData.value.loading = true;
   try {
-    // 分页获取课程列表
+    // 状态筛选在部分后端环境下不生效，移动端先拉足够多的数据再本地过滤。
+    const isFiltering = courseFilter.value !== "all";
     const { code, data, msg } = await getFrontendCourseList({
-      pageNum: currentPage.value,
-      pageSize: pageSize.value,
-      status: courseFilter.value === "all" ? undefined : courseFilter.value
+      pageNum: isFiltering ? 1 : currentPage.value,
+      pageSize: isFiltering ? 100 : pageSize.value
     });
 
     if (code === 200 && data) {
-      coursesData.value.list = data.list || [];
-      total.value = data.total || 0;
+      const list = data.list || [];
+      coursesData.value.list = list;
+      total.value = isFiltering
+        ? list.filter(course => getCourseStatus(course) === courseFilter.value)
+            .length
+        : data.total || 0;
     } else {
       ElMessage.error(msg || "获取课程列表失败");
       coursesData.value.list = [];
@@ -943,8 +961,6 @@ const loadCoursePageData = async () => {
 // 处理菜单选择
 const handleMenuSelect = (index: string) => {
   if (index === "ai-app") {
-    activeMenu.value = "home";
-    storageLocal().setItem("account_active_menu", "home");
     router.push({
       path: "/account/ai-app",
       query: buildRouteQuery(

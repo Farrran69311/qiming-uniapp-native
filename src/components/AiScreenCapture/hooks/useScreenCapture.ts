@@ -41,33 +41,31 @@ export function useScreenCapture() {
       throw new Error("当前 App WebView 不支持原生截图");
     }
 
-    const bitmap = new BitmapCtor(`qiming-ai-screen-${Date.now()}`);
-    const clip = {
-      top: `${Math.max(0, Math.round(area.y))}px`,
-      left: `${Math.max(0, Math.round(area.x))}px`,
-      width: `${Math.max(1, Math.round(area.width))}px`,
-      height: `${Math.max(1, Math.round(area.height))}px`
+    const normalizeBitmapBase64 = (base64: unknown) => {
+      if (!base64) return "";
+      const base64Text = String(base64);
+      const payload = base64Text.split(",", 2)[1] || "";
+      const inferredMime = payload.startsWith("/9j/")
+        ? "image/jpeg"
+        : "image/png";
+      return base64Text.replace(
+        /^data:image\/null;base64,/i,
+        `data:${inferredMime};base64,`
+      );
     };
 
-    try {
+    const drawBitmap = async (
+      bitmap: any,
+      options: Record<string, unknown>
+    ): Promise<string> => {
       return await withTimeout(
         new Promise<string>((resolve, reject) => {
           currentWebview.draw(
             bitmap,
             () => {
-              const base64 = bitmap.toBase64Data?.();
-              if (base64) {
-                const base64Text = String(base64);
-                const payload = base64Text.split(",", 2)[1] || "";
-                const inferredMime = payload.startsWith("/9j/")
-                  ? "image/jpeg"
-                  : "image/png";
-                resolve(
-                  base64Text.replace(
-                    /^data:image\/null;base64,/i,
-                    `data:${inferredMime};base64,`
-                  )
-                );
+              const normalized = normalizeBitmapBase64(bitmap.toBase64Data?.());
+              if (normalized) {
+                resolve(normalized);
               } else {
                 reject(new Error("原生截图为空"));
               }
@@ -79,23 +77,91 @@ export function useScreenCapture() {
                   : new Error(`原生截图失败: ${JSON.stringify(error)}`)
               );
             },
-            {
-              check: false,
-              checkKeyboard: false,
-              clip
-            }
+            options
           );
         }),
-        6000,
+        7000,
         "原生截图超时"
       );
-    } finally {
+    };
+
+    const disposeBitmap = (bitmap: any) => {
       try {
         bitmap.recycle?.();
       } catch {}
       try {
         bitmap.clear?.();
       } catch {}
+    };
+
+    const cropDataUrl = async (dataUrl: string) => {
+      const image = new Image();
+      image.decoding = "async";
+      image.src = dataUrl;
+      await new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve();
+        image.onerror = () => reject(new Error("整屏截图解码失败"));
+      });
+
+      const fullWidth = image.naturalWidth || image.width;
+      const fullHeight = image.naturalHeight || image.height;
+      const scaleX = fullWidth / Math.max(1, window.innerWidth);
+      const scaleY = fullHeight / Math.max(1, window.innerHeight);
+      const cropX = Math.max(0, Math.round(area.x * scaleX));
+      const cropY = Math.max(0, Math.round(area.y * scaleY));
+      const cropWidth = Math.max(1, Math.round(area.width * scaleX));
+      const cropHeight = Math.max(1, Math.round(area.height * scaleY));
+      const safeWidth = Math.max(1, Math.min(cropWidth, fullWidth - cropX));
+      const safeHeight = Math.max(1, Math.min(cropHeight, fullHeight - cropY));
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("无法裁剪原生截图");
+
+      canvas.width = safeWidth;
+      canvas.height = safeHeight;
+      ctx.drawImage(
+        image,
+        cropX,
+        cropY,
+        safeWidth,
+        safeHeight,
+        0,
+        0,
+        safeWidth,
+        safeHeight
+      );
+      return canvas.toDataURL("image/png");
+    };
+
+    const clip = {
+      top: `${Math.max(0, Math.round(area.y))}px`,
+      left: `${Math.max(0, Math.round(area.x))}px`,
+      width: `${Math.max(1, Math.round(area.width))}px`,
+      height: `${Math.max(1, Math.round(area.height))}px`
+    };
+
+    const clippedBitmap = new BitmapCtor(`qiming-ai-screen-clip-${Date.now()}`);
+    try {
+      return await drawBitmap(clippedBitmap, {
+        check: false,
+        checkKeyboard: false,
+        clip
+      });
+    } catch (error) {
+      console.warn("原生框选截图失败，尝试整屏截图裁剪:", error);
+    } finally {
+      disposeBitmap(clippedBitmap);
+    }
+
+    const fullBitmap = new BitmapCtor(`qiming-ai-screen-full-${Date.now()}`);
+    try {
+      const fullDataUrl = await drawBitmap(fullBitmap, {
+        check: false,
+        checkKeyboard: false
+      });
+      return await cropDataUrl(fullDataUrl);
+    } finally {
+      disposeBitmap(fullBitmap);
     }
   };
 

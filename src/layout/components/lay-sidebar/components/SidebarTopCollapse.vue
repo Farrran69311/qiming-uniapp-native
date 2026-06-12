@@ -28,7 +28,7 @@ const toggleClick = () => {
     :title="
       isActive ? t('buttons.pureClickCollapse') : t('buttons.pureClickExpand')
     "
-    @click="toggleClick"
+    @click.stop="toggleClick"
   >
     <IconifyIconOffline
       :icon="isActive ? MenuFold : MenuUnfold"

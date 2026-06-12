@@ -95,6 +95,17 @@ function applyNativeWebViewRuntime() {
   const root = document.documentElement;
   root.classList.add("qiming-native-webview");
   root.dataset.qimingNative = "true";
+  let maxObservedViewportHeight = 0;
+  let focusedNativeInput = false;
+
+  const isEditableElement = (target: EventTarget | null) => {
+    return (
+      target instanceof HTMLElement &&
+      target.matches(
+        "input, textarea, [contenteditable='true'], .el-textarea__inner"
+      )
+    );
+  };
 
   const setViewportVars = () => {
     const viewportHeight =
@@ -114,6 +125,50 @@ function applyNativeWebViewRuntime() {
     if (viewportWidth > 0) {
       root.style.setProperty("--qiming-native-vw", `${viewportWidth}px`);
     }
+
+    const activeEditable = isEditableElement(document.activeElement);
+    const screenHeight =
+      window.screen?.height > 240 && window.screen.height < 1200
+        ? window.screen.height
+        : 0;
+    const heightCandidates = [
+      viewportHeight,
+      window.innerHeight || 0,
+      root.clientHeight || 0,
+      screenHeight
+    ].filter(Boolean);
+
+    if (!focusedNativeInput && !activeEditable) {
+      maxObservedViewportHeight = Math.max(
+        maxObservedViewportHeight,
+        ...heightCandidates
+      );
+    } else if (maxObservedViewportHeight <= 0) {
+      maxObservedViewportHeight = Math.max(...heightCandidates);
+    }
+
+    const stableViewportHeight =
+      maxObservedViewportHeight || Math.max(...heightCandidates);
+    const visualKeyboardHeight = Math.max(
+      0,
+      (window.innerHeight || root.clientHeight || 0) - viewportHeight
+    );
+    const shrinkKeyboardHeight = Math.max(
+      0,
+      stableViewportHeight - viewportHeight
+    );
+    const keyboardOpen =
+      visualKeyboardHeight > Math.max(96, stableViewportHeight * 0.16) ||
+      ((focusedNativeInput || activeEditable) &&
+        shrinkKeyboardHeight > Math.max(96, stableViewportHeight * 0.16));
+    const keyboardHeight = keyboardOpen
+      ? Math.max(visualKeyboardHeight, shrinkKeyboardHeight)
+      : 0;
+    root.classList.toggle("qiming-native-keyboard-open", keyboardOpen);
+    root.style.setProperty(
+      "--qiming-native-keyboard-height",
+      keyboardOpen ? `${keyboardHeight}px` : "0px"
+    );
   };
 
   setViewportVars();
@@ -121,6 +176,39 @@ function applyNativeWebViewRuntime() {
   window.visualViewport?.addEventListener("resize", setViewportVars, {
     passive: true
   });
+  window.visualViewport?.addEventListener("scroll", setViewportVars, {
+    passive: true
+  });
+
+  document.addEventListener(
+    "focusin",
+    event => {
+      const target = event.target;
+      if (!isEditableElement(target)) return;
+
+      focusedNativeInput = true;
+      setViewportVars();
+      window.setTimeout(() => {
+        setViewportVars();
+        (target as HTMLElement).scrollIntoView({
+          block: "center",
+          inline: "nearest",
+          behavior: "smooth"
+        });
+      }, 240);
+    },
+    true
+  );
+  document.addEventListener(
+    "focusout",
+    () => {
+      window.setTimeout(() => {
+        focusedNativeInput = isEditableElement(document.activeElement);
+        setViewportVars();
+      }, 180);
+    },
+    true
+  );
 
   const statusTop = Number(nativeStatusTop);
   if (Number.isFinite(statusTop) && statusTop > 0) {

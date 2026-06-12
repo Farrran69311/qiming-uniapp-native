@@ -94,6 +94,7 @@ useResizeObserver(appWrapperRef, entries => {
     : entry.borderBoxSize;
   const width = borderBox?.inlineSize ?? entry.contentRect.width;
   const height = borderBox?.blockSize ?? entry.contentRect.height;
+  const wasMobileLayout = appStore.getDevice === "mobile";
 
   appStore.setViewportSize({ width, height });
   appStore.refreshUA(width);
@@ -101,7 +102,11 @@ useResizeObserver(appWrapperRef, entries => {
   const forceMobileLayout = appStore.getUA.isMobile || appStore.getUA.isTablet;
   if (forceMobileLayout) {
     setTheme("vertical");
-    toggle("mobile", false);
+    if (!wasMobileLayout) {
+      toggle("mobile", false);
+    } else {
+      appStore.toggleDevice("mobile");
+    }
     isAutoCloseSidebar = true;
     return;
   }

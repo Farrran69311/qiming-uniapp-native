@@ -261,7 +261,8 @@ router.beforeEach((to: ToRouteType, _from, next) => {
       "/error/403",
       "/error/404",
       "/error/500",
-      "/account"
+      "/account",
+      "/account/ai-app"
     ];
     const isPublicRoute = publicRoutes.some(route => to.path.startsWith(route));
 

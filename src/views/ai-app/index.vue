@@ -40,6 +40,7 @@ import AiLearningProfile from "./components/AiLearningProfile.vue";
 import AiAssessment from "./components/AiAssessment.vue";
 import VirtualHumanPanel from "./components/VirtualHumanPanel.vue";
 import FloatingDigitalHuman2D from "@/views/account/ai-app/components/FloatingDigitalHuman2D.vue";
+import NavMobile from "@/layout/components/NavMobile.vue";
 
 import emptyStateDevelopmentAnimation from "@/assets/aiapplottie/empty-state-development-animation.json";
 import onlineChartAnimation from "@/assets/aiapplottie/online-chart-animation.json";
@@ -210,8 +211,9 @@ const sidebarCollapsed = ref(false);
 const humanCollapsed = ref(false);
 const toggleSidebar = () => (sidebarCollapsed.value = !sidebarCollapsed.value);
 const toggleHuman = () => (humanCollapsed.value = !humanCollapsed.value);
+const shouldShowNativeMobileNav = computed(() => isMobileViewport.value);
 const shouldShowFloatingHuman = computed(
-  () => !isMobileViewport.value || Boolean(activeCourse.value)
+  () => !shouldShowNativeMobileNav.value
 );
 const humanPanelStyle = computed(() => ({
   width: humanCollapsed.value
@@ -952,7 +954,8 @@ onUnmounted(() => {
       activeRail === 'chat'
         ? 'bg-gradient-to-br from-[rgb(253,229,250)] via-[rgb(233,231,255)] to-[rgb(254,214,233)]'
         : '',
-      currentTheme
+      currentTheme,
+      { 'is-native-mobile-workspace': shouldShowNativeMobileNav }
     ]"
   >
     <div class="flex-1 flex overflow-hidden">
@@ -1042,12 +1045,12 @@ onUnmounted(() => {
           <!-- 【场景 A1】 智能辅导对谈框 (已选课) -->
           <div
             v-if="activeRail === `chat` && activeCourse"
-            class="h-full w-full flex stretch p-4 gap-4 overflow-hidden"
+            class="ai-chat-scene h-full w-full min-w-0 flex stretch p-4 gap-4 overflow-hidden"
           >
             <!-- 对话流核心面板 -->
             <transition appear name="panel-slide">
               <div
-                class="flex-1 h-full bg-white/70 backdrop-blur-xl rounded-[2.5rem] shadow-[0_8px_32px_rgba(0,0,0,0.04)] border border-white/50 overflow-hidden relative group transition-all duration-500 hover:shadow-[0_20px_40px_rgba(94,127,248,0.1)]"
+                class="ai-chat-card flex-1 h-full bg-white/70 backdrop-blur-xl rounded-[2.5rem] shadow-[0_8px_32px_rgba(0,0,0,0.04)] border border-white/50 overflow-hidden relative group transition-all duration-500 hover:shadow-[0_20px_40px_rgba(94,127,248,0.1)]"
               >
                 <!-- 柔和的顶部遮罩渐变 -->
                 <div
@@ -1078,7 +1081,7 @@ onUnmounted(() => {
             <!-- 数字人面板 -->
             <transition appear name="panel-reveal">
               <div
-                class="flex-shrink-0 h-full flex flex-col gap-4 transition-all duration-300 relative"
+                class="ai-app-human-panel flex-shrink-0 h-full flex flex-col gap-4 transition-all duration-300 relative"
                 :style="humanPanelStyle"
               >
                 <!-- 收起 / 展开 把手：挂在外层，避免被圆角容器裁切 -->
@@ -1125,7 +1128,7 @@ onUnmounted(() => {
                 <transition name="el-zoom-in-bottom">
                   <div
                     v-show="!humanCollapsed"
-                    class="flex-1 min-h-[168px] bg-white/80 backdrop-blur-md rounded-2xl border border-white/60 p-3 shadow-md flex flex-col gap-2 overflow-hidden z-[100]"
+                    class="ai-human-actions flex-1 min-h-[168px] bg-white/80 backdrop-blur-md rounded-2xl border border-white/60 p-3 shadow-md flex flex-col gap-2 overflow-hidden z-[100]"
                   >
                     <div
                       class="text-[10px] font-bold text-gray-500 uppercase tracking-widest text-center border-b border-gray-100 pb-1.5 mb-1"
@@ -1154,7 +1157,7 @@ onUnmounted(() => {
           <!-- 【场景 A2】 智能辅导欢迎中心 (未选课) -->
           <div
             v-else-if="activeRail === `chat` && !activeCourse"
-            class="h-full w-full p-4 flex items-center justify-center relative"
+            class="ai-chat-welcome h-full w-full p-4 flex items-center justify-center relative"
           >
             <!-- 背景装饰 -->
             <div class="absolute inset-0 overflow-hidden pointer-events-none">
@@ -1167,8 +1170,22 @@ onUnmounted(() => {
             </div>
 
             <div
-              class="w-full max-w-3xl px-6 space-y-10 relative z-10 transform -translate-y-8"
+              class="ai-chat-welcome-card w-full max-w-3xl px-6 space-y-10 relative z-10 transform -translate-y-8"
             >
+              <div class="ai-chat-welcome-human">
+                <VirtualHumanPanel ref="virtualHumanRef" />
+                <div class="ai-chat-welcome-actions">
+                  <button
+                    v-for="msg in quickInteractionMessages"
+                    :key="`welcome-${msg}`"
+                    type="button"
+                    @click="handleQuickInteraction(msg)"
+                  >
+                    {{ msg }}
+                  </button>
+                </div>
+              </div>
+
               <div class="text-center space-y-4">
                 <h1
                   class="text-3xl sm:text-[38px] font-bold tracking-tight gradient-text-animate"
@@ -1184,7 +1201,7 @@ onUnmounted(() => {
               </div>
 
               <div
-                class="bg-white rounded-[24px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 focus-within:shadow-[0_8px_30px_rgb(0,0,0,0.08)] focus-within:border-primary/20 transition-all duration-500 overflow-hidden"
+                class="quick-chat-box bg-white rounded-[24px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 focus-within:shadow-[0_8px_30px_rgb(0,0,0,0.08)] focus-within:border-primary/20 transition-all duration-500 overflow-hidden"
               >
                 <el-input
                   v-model="quickMessage"
@@ -1624,6 +1641,8 @@ onUnmounted(() => {
       "
     />
 
+    <NavMobile v-if="shouldShowNativeMobileNav" />
+
     <!-- 栈操作可视化预览弹窗 -->
     <el-dialog
       v-model="stackPreviewVisible"
@@ -1736,6 +1755,45 @@ onUnmounted(() => {
   font-family:
     "iconfont", element-icons, "IconifyIconOnline", "IconifyIconOffline",
     sans-serif !important;
+}
+
+.ai-app-root.is-native-mobile-workspace {
+  width: 100%;
+  height: var(--qiming-native-vh, 100dvh) !important;
+  min-height: var(--qiming-native-vh, 100dvh);
+  padding-bottom: calc(
+    var(--pure-mobile-tab-height, 56px) + var(--pure-safe-area-bottom, 0px)
+  );
+  border-radius: 0;
+}
+
+.ai-app-root.is-native-mobile-workspace > .flex-1 {
+  min-height: 0;
+}
+
+@media (max-width: 768px) {
+  .ai-app-root.is-native-mobile-workspace {
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .ai-app-root.is-native-mobile-workspace .ai-app-left-rail {
+    bottom: calc(
+      var(--pure-mobile-tab-height, 56px) + 18px +
+        var(--pure-safe-area-bottom, 0px)
+    );
+  }
+
+  .ai-app-root.is-native-mobile-workspace .ai-app-left-rail.is-collapsed {
+    bottom: auto;
+  }
+
+  .ai-app-root.is-native-mobile-workspace :deep(.floating-human-2d) {
+    bottom: calc(
+      var(--pure-mobile-tab-height, 56px) + 16px +
+        var(--pure-safe-area-bottom, 0px)
+    ) !important;
+  }
 }
 
 /* 让 Lottie 空状态动画的白色区域与渐变背景融合，呈现真正的"透明"效果 */

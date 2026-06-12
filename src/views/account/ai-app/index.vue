@@ -222,9 +222,7 @@ const sidebarCollapsed = ref(
 const humanCollapsed = ref(false);
 const toggleSidebar = () => (sidebarCollapsed.value = !sidebarCollapsed.value);
 const toggleHuman = () => (humanCollapsed.value = !humanCollapsed.value);
-const shouldShowFloatingHuman = computed(
-  () => !isMobileViewport.value || Boolean(activeCourse.value)
-);
+const shouldShowFloatingHuman = computed(() => !isMobileViewport.value);
 
 type DigitalHumanState = "standby" | "listening" | "thinking" | "saying";
 

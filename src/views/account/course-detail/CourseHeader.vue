@@ -525,7 +525,7 @@ const handleButtonMouseMove = (e: MouseEvent) => {
 /* stylelint-disable-next-line order/order */
 @media (max-width: 767px) {
   .layout-header {
-    top: 12px;
+    top: calc(12px + var(--pure-safe-area-top, 0px));
     right: 12px;
     left: 12px;
     height: 64px;

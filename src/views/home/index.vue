@@ -3552,7 +3552,8 @@ onUnmounted(() => {
 
   .nx-hero__inner {
     max-width: 100%;
-    text-align: left;
+    padding: 0 6px;
+    text-align: center;
   }
 
   .nx-hero__title {
@@ -3562,8 +3563,8 @@ onUnmounted(() => {
   }
 
   .nx-hero__sub {
-    max-width: none;
-    margin: 16px 0 0;
+    max-width: 34em;
+    margin: 16px auto 0;
     font-size: 15px;
     line-height: 1.55;
   }
