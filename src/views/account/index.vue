@@ -1,5 +1,8 @@
 <template>
-  <div class="account-container" :class="currentTheme">
+  <div
+    class="account-container"
+    :class="[currentTheme, { 'is-native-mobile': isNativeAccountView }]"
+  >
     <!-- 顶部导航 -->
     <div class="header" :class="{ 'header-scrolled': isScrolled }">
       <div class="header-content">
@@ -744,6 +747,12 @@ const normalizeAccountMenu = (menu: unknown) => {
   return typeof value === "string" && accountMenuKeys.has(value) ? value : "";
 };
 
+const isNativeAccountView = computed(() => {
+  if (String(route.query.qimingNative || "") === "1") return true;
+  if (typeof document === "undefined") return false;
+  return document.documentElement.classList.contains("qiming-native-webview");
+});
+
 const buildRouteQuery = (
   extra: Record<string, string | number> = {},
   omitKeys: string[] = []
@@ -934,9 +943,17 @@ const loadCoursePageData = async () => {
 // 处理菜单选择
 const handleMenuSelect = (index: string) => {
   if (index === "ai-app") {
+    activeMenu.value = "home";
+    storageLocal().setItem("account_active_menu", "home");
     router.push({
       path: "/account/ai-app",
-      query: buildRouteQuery({ mode: accountAiAppMode.value }, ["menu"])
+      query: buildRouteQuery(
+        {
+          mode: accountAiAppMode.value,
+          ...(isNativeAccountView.value ? { qimingNative: "1" } : {})
+        },
+        ["menu"]
+      )
     });
     return;
   }

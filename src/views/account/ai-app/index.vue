@@ -921,7 +921,9 @@ watch([activeRail, humanCollapsed], () => {
 });
 
 const updateMobileViewportState = () => {
-  isMobileViewport.value = window.innerWidth <= 768;
+  isMobileViewport.value =
+    window.innerWidth <= 768 ||
+    document.documentElement.classList.contains("qiming-native-webview");
   if (isMobileViewport.value) {
     sidebarCollapsed.value = true;
     humanCollapsed.value = false;
@@ -1937,8 +1939,8 @@ onUnmounted(() => {
 
   .ai-app-left-rail {
     position: fixed !important;
-    top: calc(24px + var(--pure-safe-area-top, 0px));
-    bottom: calc(82px + var(--pure-safe-area-bottom, 0px));
+    top: calc(24px + var(--pure-safe-area-top, 0));
+    bottom: calc(82px + var(--pure-safe-area-bottom, 0));
     left: 18px;
     z-index: 120 !important;
     width: min(292px, calc(100vw - 36px)) !important;
@@ -1949,7 +1951,7 @@ onUnmounted(() => {
   }
 
   .ai-app-left-rail.is-collapsed {
-    top: calc(24px + var(--pure-safe-area-top, 0px));
+    top: calc(24px + var(--pure-safe-area-top, 0));
     bottom: auto;
     width: 46px !important;
     min-width: 46px !important;
@@ -2009,8 +2011,8 @@ onUnmounted(() => {
   .ai-chat-scene,
   .ai-chat-welcome,
   main > div[class*="p-4"] {
-    padding: calc(54px + var(--pure-safe-area-top, 0px)) 12px
-      calc(74px + var(--pure-safe-area-bottom, 0px)) !important;
+    padding: calc(54px + var(--pure-safe-area-top, 0)) 12px
+      calc(74px + var(--pure-safe-area-bottom, 0)) !important;
     gap: 10px !important;
   }
 
@@ -2087,7 +2089,7 @@ onUnmounted(() => {
   .ai-chat-welcome {
     align-items: stretch !important;
     justify-content: flex-start !important;
-    padding-bottom: calc(24px + var(--pure-safe-area-bottom, 0px)) !important;
+    padding-bottom: calc(24px + var(--pure-safe-area-bottom, 0)) !important;
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch;
   }
@@ -2195,7 +2197,7 @@ onUnmounted(() => {
     box-shadow: 0 16px 42px rgba(94, 127, 248, 0.12);
   }
 
-  :global(html.dark) .ai-chat-welcome-human {
+  .ai-app-root.dark .ai-chat-welcome-human {
     background: rgb(15 23 42 / 82%);
     border-color: rgb(148 163 184 / 22%);
     box-shadow: 0 18px 44px rgb(0 0 0 / 30%);
@@ -2218,7 +2220,7 @@ onUnmounted(() => {
     border-top: 1px solid rgba(226, 232, 240, 0.7);
   }
 
-  :global(html.dark) .ai-chat-welcome-actions {
+  .ai-app-root.dark .ai-chat-welcome-actions {
     background: rgb(2 6 23 / 74%);
     border-top-color: rgb(148 163 184 / 20%);
   }
@@ -2238,7 +2240,7 @@ onUnmounted(() => {
     border-radius: 12px;
   }
 
-  :global(html.dark) .ai-chat-welcome-actions button {
+  .ai-app-root.dark .ai-chat-welcome-actions button {
     color: #c7d2fe;
     background: rgb(30 41 59 / 80%);
     border-color: rgb(129 140 248 / 24%);

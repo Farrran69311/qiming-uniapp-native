@@ -2,11 +2,14 @@
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import { Refresh, FullScreen, Warning, Loading } from "@element-plus/icons-vue";
 
-// 数字人已集成到项目 public/virtual-people 目录下，由 Vite 统一托管
 const humanUrl = computed(() => {
-  // 获取当前基础路径，动态兼容部署环境
-  const base = window.location.origin;
-  return `${base}/virtual-people/index.html?embed=ai-app`;
+  const suffix = "virtual-people/index.html?embed=ai-app";
+  if (window.location.protocol === "file:") {
+    return `./${suffix}`;
+  }
+
+  const base = `${window.location.origin}${import.meta.env.BASE_URL || "/"}`;
+  return new URL(suffix, base).toString();
 });
 
 const iframeRef = ref<HTMLIFrameElement | null>(null);

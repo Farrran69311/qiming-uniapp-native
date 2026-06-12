@@ -43523,6 +43523,123 @@ class FileLoader extends Loader {
 		const mimeType = this.mimeType;
 		const responseType = this.responseType;
 
+		if ( typeof window !== 'undefined' && /^file:\/\//i.test( req.url ) ) {
+
+			const request = new XMLHttpRequest();
+			const requestUrl = req.url;
+
+			request.open( 'GET', requestUrl, true );
+
+			if ( responseType ) request.responseType = responseType;
+
+			for ( const header in this.requestHeader ) {
+
+				request.setRequestHeader( header, this.requestHeader[ header ] );
+
+			}
+
+			request.onprogress = event => {
+
+				const callbacks = loading[ url ] || [];
+
+				for ( let i = 0, il = callbacks.length; i < il; i ++ ) {
+
+					const callback = callbacks[ i ];
+					if ( callback.onProgress ) callback.onProgress( event );
+
+				}
+
+			};
+
+			request.onload = () => {
+
+				const callbacks = loading[ url ];
+				delete loading[ url ];
+
+				if ( request.status === 200 || request.status === 0 ) {
+
+					let data;
+
+					switch ( responseType ) {
+
+						case 'arraybuffer':
+
+							data = request.response;
+							break;
+
+						case 'blob':
+
+							data = request.response;
+							break;
+
+						case 'document':
+
+							data = request.responseXML || new DOMParser().parseFromString( request.responseText, mimeType );
+							break;
+
+						case 'json':
+
+							data = typeof request.response === 'string' ? JSON.parse( request.response ) : request.response;
+							break;
+
+						default:
+
+							data = request.responseText;
+
+					}
+
+					Cache.add( url, data );
+
+					for ( let i = 0, il = callbacks.length; i < il; i ++ ) {
+
+						const callback = callbacks[ i ];
+						if ( callback.onLoad ) callback.onLoad( data );
+
+					}
+
+				} else {
+
+					const error = new Error( `file request for "${requestUrl}" responded with ${request.status}` );
+
+					for ( let i = 0, il = callbacks.length; i < il; i ++ ) {
+
+						const callback = callbacks[ i ];
+						if ( callback.onError ) callback.onError( error );
+
+					}
+
+					this.manager.itemError( url );
+
+				}
+
+				this.manager.itemEnd( url );
+
+			};
+
+			request.onerror = () => {
+
+				const callbacks = loading[ url ];
+				delete loading[ url ];
+				const error = new Error( `file request for "${requestUrl}" failed` );
+
+				for ( let i = 0, il = callbacks.length; i < il; i ++ ) {
+
+					const callback = callbacks[ i ];
+					if ( callback.onError ) callback.onError( error );
+
+				}
+
+				this.manager.itemError( url );
+				this.manager.itemEnd( url );
+
+			};
+
+			this.manager.itemStart( url );
+			request.send( null );
+			return;
+
+		}
+
 		// start the fetch
 		fetch( req )
 			.then( response => {

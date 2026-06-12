@@ -789,10 +789,10 @@
   <script type="importmap-shim">
       {
         "imports": {
-          "three": "/virtual-people/vendor/three/build/three.module.js",
-          "three/addons/": "/virtual-people/vendor/three/examples/jsm/",
-          "@pixiv/three-vrm": "/virtual-people/vendor/pixiv/three-vrm/lib/three-vrm.module.js",
-          "pinyin-pro": "/node_modules/pinyin-pro/dist/index.mjs"
+          "three": "./vendor/three/build/three.module.js",
+          "three/addons/": "./vendor/three/examples/jsm/",
+          "@pixiv/three-vrm": "./vendor/pixiv/three-vrm/lib/three-vrm.module.js",
+          "pinyin-pro": "./vendor/pinyin-pro/index.mjs"
         }
       }
     </script>
@@ -805,6 +805,58 @@
     import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
     import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
     import { pinyin } from 'pinyin-pro';
+
+    function installLocalFileLoaderFallback() {
+      if (!window.location.protocol.startsWith('file')) return;
+      if (!THREE.FileLoader || THREE.FileLoader.prototype.__qimingLocalFileFallback) return;
+
+      const originalLoad = THREE.FileLoader.prototype.load;
+      THREE.FileLoader.prototype.load = function loadWithLocalFileFallback(url, onLoad, onProgress, onError) {
+        let resolvedUrl = url ?? '';
+        if (this.path !== undefined) resolvedUrl = this.path + resolvedUrl;
+        resolvedUrl = this.manager.resolveURL(resolvedUrl);
+
+        if (!String(resolvedUrl).startsWith('file://')) {
+          return originalLoad.call(this, url, onLoad, onProgress, onError);
+        }
+
+        const request = new XMLHttpRequest();
+        const responseType = this.responseType || '';
+        request.open('GET', resolvedUrl, true);
+        if (responseType) request.responseType = responseType;
+        for (const headerName in this.requestHeader || {}) {
+          request.setRequestHeader(headerName, this.requestHeader[headerName]);
+        }
+        request.onprogress = onProgress;
+        request.onload = () => {
+          if (request.status === 200 || request.status === 0) {
+            let data = responseType ? request.response : request.responseText;
+            if (this.mimeType && !responseType && data instanceof ArrayBuffer) {
+              data = new TextDecoder().decode(data);
+            }
+            onLoad?.(data);
+            this.manager.itemEnd(resolvedUrl);
+          } else {
+            const error = new Error(`Local file request failed: ${request.status} ${resolvedUrl}`);
+            onError?.(error);
+            this.manager.itemError(resolvedUrl);
+            this.manager.itemEnd(resolvedUrl);
+          }
+        };
+        request.onerror = () => {
+          const error = new Error(`Local file request failed: ${resolvedUrl}`);
+          onError?.(error);
+          this.manager.itemError(resolvedUrl);
+          this.manager.itemEnd(resolvedUrl);
+        };
+        this.manager.itemStart(resolvedUrl);
+        request.send(null);
+        return request;
+      };
+      THREE.FileLoader.prototype.__qimingLocalFileFallback = true;
+    }
+
+    installLocalFileLoaderFallback();
 
     const MIXAMO_VRM_BONE_MAP = {
       Hips: 'hips',
@@ -1148,7 +1200,7 @@
 
 
     const dracoLoader = new DRACOLoader();
-    dracoLoader.setDecoderPath('/virtual-people/vendor/three/examples/jsm/libs/draco/gltf/');
+    dracoLoader.setDecoderPath('./vendor/three/examples/jsm/libs/draco/gltf/');
 
     const sceneGltfLoader = new GLTFLoader();
     sceneGltfLoader.setDRACOLoader(dracoLoader);
@@ -2854,6 +2906,15 @@
     }
 
     async function loadMotionManifest() {
+      const inlineManifest = document.getElementById('qiming-motion-manifest-json');
+      if (inlineManifest?.textContent?.trim()) {
+        try {
+          return JSON.parse(inlineManifest.textContent);
+        } catch (error) {
+          throw new Error(`内嵌动作配置 JSON 格式错误：${error?.message || String(error)}`);
+        }
+      }
+
       let response;
       try {
         response = await fetch('./motions.json', { cache: 'no-store' });

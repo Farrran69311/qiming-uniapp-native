@@ -36,14 +36,30 @@ function getViewportWidth(): number {
   return 0;
 }
 
+function isNativeWebViewRuntime(): boolean {
+  if (typeof document === "undefined" || typeof window === "undefined") {
+    return false;
+  }
+
+  return (
+    document.documentElement.classList.contains("qiming-native-webview") ||
+    window.location.hash.includes("qimingNative=1") ||
+    window.location.search.includes("qimingNative=1") ||
+    localStorage.getItem("qimingNativeWebView") === "1" ||
+    sessionStorage.getItem("qimingNativeWebView") === "1"
+  );
+}
+
 export const getUA = (): UAInfo => {
   const ua = getUserAgent();
+  const isApp = isNativeWebViewRuntime();
 
   const isIpad = /ipad/i.test(ua) || (/macintosh/i.test(ua) && isTouchDevice());
   const isIphone = /iphone|ipod/i.test(ua);
   const isAndroid = /android/i.test(ua);
-  const isMobile = /mobile|android|iphone|ipod|phone/i.test(ua) || isIpad;
-  const isTablet = isIpad || (isAndroid && !/mobile/i.test(ua));
+  const isMobile =
+    isApp || /mobile|android|iphone|ipod|phone/i.test(ua) || isIpad;
+  const isTablet = !isApp && (isIpad || (isAndroid && !/mobile/i.test(ua)));
   const isWechat = /micromessenger/i.test(ua);
 
   // 简单的设备类型分类
@@ -60,7 +76,7 @@ export const getUA = (): UAInfo => {
     isIOS: isIphone || isIpad,
     isAndroid,
     isWechat,
-    isApp: false, // 预留
+    isApp,
     deviceType
   };
 };
@@ -84,7 +100,11 @@ export const applyUAFlags = (uaInfo: UAInfo = getUA()): void => {
   if (typeof document === "undefined") return;
 
   const root = document.documentElement;
-  const mobileLike = uaInfo.isMobile || uaInfo.isTablet;
+  const mobileLike =
+    uaInfo.isMobile ||
+    uaInfo.isTablet ||
+    uaInfo.isApp ||
+    root.classList.contains("qiming-native-webview");
 
   root.classList.toggle("ua-mobile", mobileLike);
   root.classList.toggle("ua-desktop", !mobileLike);

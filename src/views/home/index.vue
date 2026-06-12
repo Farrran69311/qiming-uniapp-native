@@ -1,5 +1,10 @@
 <template>
-  <div class="nx">
+  <div
+    class="nx"
+    :class="{ 'is-dragging-scroll': isHomeDragging }"
+    @pointerdown="handleHomePointerDown"
+    @click.capture="handleHomeDragClickCapture"
+  >
     <!-- ============== NAV ============== -->
     <header class="nx-nav" :class="{ 'is-scrolled': isScrolled }">
       <div class="nx-nav__inner">
@@ -764,8 +769,18 @@ const userStore = useUserStoreHook();
 const isScrolled = ref(false);
 const showLoginDialog = ref(false);
 const activeShowcaseIndex = ref(0);
+const isHomeDragging = ref(false);
 let showcaseTimer: number | undefined;
 const rawIcon = (icon: any) => markRaw(icon);
+const homeDragState = {
+  active: false,
+  moved: false,
+  suppressClick: false,
+  startX: 0,
+  startY: 0,
+  lastX: 0,
+  lastY: 0
+};
 
 const nativeDemoRoles = ["student", "teacher", "admin"] as const;
 type NativeDemoRole = (typeof nativeDemoRoles)[number];
@@ -1538,6 +1553,92 @@ const scrollToSection = (id: string) => {
     behavior: "smooth"
   });
 };
+const isInteractiveDragTarget = (target: EventTarget | null) => {
+  if (!(target instanceof Element)) return false;
+  return Boolean(
+    target.closest(
+      [
+        "a",
+        "button",
+        "input",
+        "textarea",
+        "select",
+        "label",
+        "[role='button']",
+        "[contenteditable='true']",
+        ".el-overlay",
+        ".el-dialog",
+        ".el-popper",
+        ".el-dropdown-menu",
+        ".nx-side__item",
+        ".nx-tabbar__btn"
+      ].join(",")
+    )
+  );
+};
+const cleanupHomeDragListeners = () => {
+  window.removeEventListener("pointermove", handleHomePointerMove);
+  window.removeEventListener("pointerup", handleHomePointerUp);
+  window.removeEventListener("pointercancel", handleHomePointerUp);
+};
+const handleHomePointerDown = (event: PointerEvent) => {
+  if (event.pointerType !== "mouse" || event.button !== 0) return;
+  if (isInteractiveDragTarget(event.target)) return;
+
+  homeDragState.active = true;
+  homeDragState.moved = false;
+  homeDragState.startX = event.clientX;
+  homeDragState.startY = event.clientY;
+  homeDragState.lastX = event.clientX;
+  homeDragState.lastY = event.clientY;
+  cleanupHomeDragListeners();
+  window.addEventListener("pointermove", handleHomePointerMove, {
+    passive: false
+  });
+  window.addEventListener("pointerup", handleHomePointerUp);
+  window.addEventListener("pointercancel", handleHomePointerUp);
+};
+const handleHomePointerMove = (event: PointerEvent) => {
+  if (!homeDragState.active) return;
+
+  const totalX = event.clientX - homeDragState.startX;
+  const totalY = event.clientY - homeDragState.startY;
+  if (!homeDragState.moved && Math.hypot(totalX, totalY) > 5) {
+    homeDragState.moved = true;
+    isHomeDragging.value = true;
+  }
+
+  if (!homeDragState.moved) return;
+  event.preventDefault();
+
+  const deltaX = event.clientX - homeDragState.lastX;
+  const deltaY = event.clientY - homeDragState.lastY;
+  window.scrollBy({
+    left: -deltaX,
+    top: -deltaY,
+    behavior: "auto"
+  });
+  homeDragState.lastX = event.clientX;
+  homeDragState.lastY = event.clientY;
+};
+const handleHomePointerUp = () => {
+  if (homeDragState.active && homeDragState.moved) {
+    homeDragState.suppressClick = true;
+    window.setTimeout(() => {
+      homeDragState.suppressClick = false;
+    }, 0);
+  }
+  homeDragState.active = false;
+  homeDragState.moved = false;
+  isHomeDragging.value = false;
+  cleanupHomeDragListeners();
+};
+const handleHomeDragClickCapture = (event: MouseEvent) => {
+  if (!homeDragState.suppressClick) return;
+  event.preventDefault();
+  event.stopPropagation();
+  homeDragState.suppressClick = false;
+};
 const handleEntry = () => {
   const token = getToken();
   const info = storageLocal().getItem<DataInfo<number>>(userKey);
@@ -1636,6 +1737,7 @@ onMounted(() => {
 });
 onUnmounted(() => {
   window.removeEventListener("scroll", handleScroll);
+  cleanupHomeDragListeners();
   if (showcaseTimer) window.clearInterval(showcaseTimer);
 });
 </script>
@@ -1671,6 +1773,12 @@ onUnmounted(() => {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   overflow-x: hidden;
+}
+
+.nx.is-dragging-scroll,
+.nx.is-dragging-scroll * {
+  cursor: grabbing !important;
+  user-select: none !important;
 }
 
 .nx :deep(svg) {

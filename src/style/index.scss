@@ -672,6 +672,601 @@ html.qiming-native-webview.ua-mobile .layout-footer {
   display: none !important;
 }
 
+html.qiming-native-webview .account-container,
+html.qiming-native-webview.ua-mobile .account-container {
+  min-height: 100dvh !important;
+  overflow-x: hidden !important;
+}
+
+html.qiming-native-webview .account-container .header,
+html.qiming-native-webview.ua-mobile .account-container .header {
+  height: calc(64px + var(--pure-safe-area-top, 0)) !important;
+  padding-top: var(--pure-safe-area-top, 0) !important;
+  box-sizing: border-box !important;
+}
+
+html.qiming-native-webview .account-container .header .header-content,
+html.qiming-native-webview.ua-mobile
+  .account-container
+  .header
+  .header-content {
+  height: 64px !important;
+  padding: 0 14px !important;
+}
+
+html.qiming-native-webview .account-container .header .logo,
+html.qiming-native-webview.ua-mobile .account-container .header .logo {
+  display: flex !important;
+  flex: 0 0 auto !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 40px !important;
+  height: 40px !important;
+  padding: 4px !important;
+  overflow: hidden !important;
+  border-radius: 12px !important;
+}
+
+html.qiming-native-webview .account-container .app-logo-img,
+html.qiming-native-webview.ua-mobile .account-container .app-logo-img {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-fit: contain !important;
+}
+
+html.qiming-native-webview .account-container .header-right,
+html.qiming-native-webview.ua-mobile .account-container .header-right {
+  flex: 1 1 auto !important;
+  gap: 12px !important;
+  justify-content: flex-end !important;
+  min-width: 0 !important;
+}
+
+html.qiming-native-webview .account-container .account-content,
+html.qiming-native-webview.ua-mobile .account-container .account-content {
+  flex-direction: column !important;
+  gap: 14px !important;
+  height: auto !important;
+  min-height: 100dvh !important;
+  padding: calc(76px + var(--pure-safe-area-top, 0)) 12px
+    calc(var(--pure-mobile-tab-height, 58px) + 22px) !important;
+  box-sizing: border-box !important;
+}
+
+html.qiming-native-webview .account-container .account-sidebar,
+html.qiming-native-webview.ua-mobile .account-container .account-sidebar {
+  position: static !important;
+  width: 100% !important;
+  height: auto !important;
+  padding-bottom: 0 !important;
+  overflow: visible !important;
+}
+
+html.qiming-native-webview .account-container .user-info-card,
+html.qiming-native-webview.ua-mobile .account-container .user-info-card {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-height: 184px !important;
+  padding: 24px 16px 16px !important;
+  margin-bottom: 14px !important;
+  text-align: center !important;
+  border-radius: 18px !important;
+}
+
+html.qiming-native-webview .account-container .user-info-card .el-avatar,
+html.qiming-native-webview.ua-mobile
+  .account-container
+  .user-info-card
+  .el-avatar {
+  width: 64px !important;
+  height: 64px !important;
+}
+
+html.qiming-native-webview .account-container .account-menu,
+html.qiming-native-webview.ua-mobile .account-container .account-menu {
+  position: relative !important;
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  gap: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  padding: 8px 10px !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  scroll-padding-inline: 10px !important;
+  scroll-snap-type: x proximity !important;
+  scrollbar-width: none !important;
+  white-space: nowrap !important;
+  border-radius: 18px !important;
+}
+
+html.qiming-native-webview .account-container .account-menu::-webkit-scrollbar,
+html.qiming-native-webview.ua-mobile
+  .account-container
+  .account-menu::-webkit-scrollbar {
+  display: none !important;
+}
+
+html.qiming-native-webview .account-container .account-menu .el-menu-item,
+html.qiming-native-webview.ua-mobile
+  .account-container
+  .account-menu
+  .el-menu-item {
+  display: inline-flex !important;
+  flex: 0 0 auto !important;
+  gap: 0 !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: auto !important;
+  min-width: 94px !important;
+  height: 40px !important;
+  padding: 0 12px !important;
+  margin-bottom: 0 !important;
+  line-height: 1.1 !important;
+  white-space: nowrap !important;
+  border-radius: 16px !important;
+  scroll-snap-align: start !important;
+}
+
+html.qiming-native-webview
+  .account-container
+  .account-menu
+  .el-menu-item
+  + .el-menu-item,
+html.qiming-native-webview.ua-mobile
+  .account-container
+  .account-menu
+  .el-menu-item
+  + .el-menu-item {
+  margin-left: 10px !important;
+}
+
+html.qiming-native-webview
+  .account-container
+  .account-menu
+  .el-menu-item
+  .el-icon,
+html.qiming-native-webview.ua-mobile
+  .account-container
+  .account-menu
+  .el-menu-item
+  .el-icon {
+  flex: 0 0 auto !important;
+  margin-right: 7px !important;
+  font-size: 18px !important;
+}
+
+html.qiming-native-webview .account-container .account-menu .el-menu-item span,
+html.qiming-native-webview.ua-mobile
+  .account-container
+  .account-menu
+  .el-menu-item
+  span {
+  min-width: 0 !important;
+  max-width: 56px !important;
+  overflow: hidden !important;
+  font-size: 12px !important;
+  line-height: 1 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+html.qiming-native-webview .account-container .account-main,
+html.qiming-native-webview.ua-mobile .account-container .account-main {
+  width: 100% !important;
+  padding-bottom: 0 !important;
+  overflow: visible !important;
+}
+
+html.qiming-native-webview .account-container .quick-access-section,
+html.qiming-native-webview .account-container .course-grid,
+html.qiming-native-webview.ua-mobile .account-container .quick-access-section,
+html.qiming-native-webview.ua-mobile .account-container .course-grid {
+  grid-template-columns: 1fr !important;
+}
+
+html.qiming-native-webview .account-container .quick-access-section,
+html.qiming-native-webview.ua-mobile .account-container .quick-access-section {
+  gap: 12px !important;
+  margin-bottom: 16px !important;
+}
+
+html.qiming-native-webview .account-container .quick-access-card,
+html.qiming-native-webview.ua-mobile .account-container .quick-access-card {
+  display: flex !important;
+  gap: 0 !important;
+  align-items: center !important;
+  min-height: 74px !important;
+  padding: 13px 14px !important;
+  border-radius: 18px !important;
+}
+
+html.qiming-native-webview .account-container .quick-access-card .access-icon,
+html.qiming-native-webview.ua-mobile
+  .account-container
+  .quick-access-card
+  .access-icon {
+  flex: 0 0 44px !important;
+  width: 44px !important;
+  height: 44px !important;
+  margin-right: 12px !important;
+  border-radius: 13px !important;
+}
+
+html.qiming-native-webview .account-container .card,
+html.qiming-native-webview.ua-mobile .account-container .card {
+  padding: 16px 14px !important;
+  margin-bottom: 16px !important;
+  border-radius: 18px !important;
+}
+
+html.qiming-native-webview .account-container .course-list .course-header,
+html.qiming-native-webview.ua-mobile
+  .account-container
+  .course-list
+  .course-header {
+  flex-direction: column !important;
+  gap: 12px !important;
+  align-items: stretch !important;
+  padding: 16px !important;
+  border-radius: 18px !important;
+}
+
+html.qiming-native-webview .account-container .course-list .course-grid,
+html.qiming-native-webview.ua-mobile
+  .account-container
+  .course-list
+  .course-grid {
+  gap: 16px !important;
+}
+
+html.qiming-native-webview .account-container .course-list .course-item,
+html.qiming-native-webview.ua-mobile
+  .account-container
+  .course-list
+  .course-item {
+  border-radius: 18px !important;
+}
+
+html.qiming-native-webview .account-container .course-list .course-item:hover,
+html.qiming-native-webview.ua-mobile
+  .account-container
+  .course-list
+  .course-item:hover {
+  transform: none !important;
+}
+
+html.qiming-native-webview .account-container .course-list .course-cover,
+html.qiming-native-webview.ua-mobile
+  .account-container
+  .course-list
+  .course-cover {
+  height: clamp(150px, 34vw, 180px) !important;
+  padding-top: 0 !important;
+}
+
+html.qiming-native-webview .ai-app-root,
+html.qiming-native-webview.ua-mobile .ai-app-root {
+  width: 100% !important;
+  height: var(--qiming-native-vh, 100dvh) !important;
+  min-height: var(--qiming-native-vh, 100dvh) !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+
+html.qiming-native-webview .ai-app-root > .flex-1,
+html.qiming-native-webview .ai-app-root > .flex-1 > .flex-1,
+html.qiming-native-webview.ua-mobile .ai-app-root > .flex-1,
+html.qiming-native-webview.ua-mobile .ai-app-root > .flex-1 > .flex-1 {
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+html.qiming-native-webview .ai-app-left-rail,
+html.qiming-native-webview.ua-mobile .ai-app-left-rail {
+  position: fixed !important;
+  top: calc(24px + var(--pure-safe-area-top, 0)) !important;
+  bottom: calc(82px + var(--pure-safe-area-bottom, 0)) !important;
+  left: 18px !important;
+  z-index: 120 !important;
+  width: min(292px, calc(100vw - 36px)) !important;
+  max-width: calc(100vw - 36px) !important;
+  border-radius: 22px !important;
+}
+
+html.qiming-native-webview .ai-app-left-rail.is-collapsed,
+html.qiming-native-webview.ua-mobile .ai-app-left-rail.is-collapsed {
+  top: calc(24px + var(--pure-safe-area-top, 0)) !important;
+  bottom: auto !important;
+  width: 46px !important;
+  min-width: 46px !important;
+  max-width: 46px !important;
+  height: 46px !important;
+  min-height: 46px !important;
+  overflow: visible !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  pointer-events: none !important;
+}
+
+html.qiming-native-webview .ai-app-left-rail.is-collapsed > div:first-child,
+html.qiming-native-webview .ai-app-left-rail.is-collapsed > div:nth-child(2),
+html.qiming-native-webview
+  .ai-app-left-rail.is-collapsed
+  .collapsed-rail-label {
+  display: none !important;
+}
+
+html.qiming-native-webview .ai-app-left-rail.is-collapsed > button {
+  position: absolute !important;
+  top: 0 !important;
+  right: auto !important;
+  left: 0 !important;
+  width: 46px !important;
+  height: 46px !important;
+  color: #64748b !important;
+  pointer-events: auto !important;
+  background: rgb(255 255 255 / 92%) !important;
+  border-color: rgb(226 232 240 / 82%) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 12px 28px rgb(94 127 248 / 18%) !important;
+  transform: none !important;
+}
+
+html.qiming-native-webview .ai-app-left-rail:not(.is-collapsed) > button {
+  top: 14px !important;
+  right: 14px !important;
+  width: 34px !important;
+  height: 34px !important;
+  color: #6b7a96 !important;
+  background: rgb(255 255 255 / 86%) !important;
+  border-color: rgb(203 213 225 / 78%) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 8px 20px rgb(35 50 82 / 8%) !important;
+  transform: none !important;
+}
+
+html.qiming-native-webview .ai-chat-scene,
+html.qiming-native-webview .ai-chat-welcome,
+html.qiming-native-webview main > div[class*="p-4"],
+html.qiming-native-webview.ua-mobile .ai-chat-scene,
+html.qiming-native-webview.ua-mobile .ai-chat-welcome,
+html.qiming-native-webview.ua-mobile main > div[class*="p-4"] {
+  padding: calc(54px + var(--pure-safe-area-top, 0)) 12px
+    calc(74px + var(--pure-safe-area-bottom, 0)) !important;
+  gap: 10px !important;
+}
+
+html.qiming-native-webview .ai-chat-scene,
+html.qiming-native-webview.ua-mobile .ai-chat-scene {
+  flex-direction: column !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+html.qiming-native-webview .ai-chat-card,
+html.qiming-native-webview.ua-mobile .ai-chat-card {
+  flex: 0 0 auto !important;
+  height: clamp(340px, 50vh, 420px) !important;
+  min-height: 340px !important;
+  border-radius: 24px !important;
+}
+
+html.qiming-native-webview .ai-app-human-panel,
+html.qiming-native-webview.ua-mobile .ai-app-human-panel {
+  flex: 0 0 auto !important;
+  width: 100% !important;
+  height: auto !important;
+  min-height: 0 !important;
+  gap: 6px !important;
+}
+
+html.qiming-native-webview .ai-app-human-panel > div:first-of-type,
+html.qiming-native-webview.ua-mobile .ai-app-human-panel > div:first-of-type {
+  height: clamp(188px, 28vh, 246px) !important;
+  min-height: 188px !important;
+  border-radius: 24px !important;
+}
+
+html.qiming-native-webview .ai-app-human-panel > button {
+  display: none !important;
+}
+
+html.qiming-native-webview .ai-human-actions {
+  min-height: 0 !important;
+  max-height: 126px !important;
+  padding: 8px !important;
+  border-radius: 20px !important;
+}
+
+html.qiming-native-webview .ai-human-actions[style] {
+  min-height: 112px !important;
+}
+
+html.qiming-native-webview .ai-human-actions > div:last-child {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 6px !important;
+}
+
+html.qiming-native-webview .ai-human-actions .el-button {
+  min-height: 30px !important;
+  padding: 6px 8px !important;
+  margin: 0 !important;
+  font-size: 11px !important;
+}
+
+html.qiming-native-webview .ai-chat-welcome {
+  align-items: stretch !important;
+  justify-content: flex-start !important;
+  padding-bottom: calc(24px + var(--pure-safe-area-bottom, 0)) !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+html.qiming-native-webview .ai-chat-welcome-card {
+  display: flex !important;
+  flex: 1 1 auto !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+  width: 100% !important;
+  max-width: none !important;
+  min-height: 100% !important;
+  padding: 0 0 10px !important;
+  transform: none !important;
+}
+
+html.qiming-native-webview .ai-chat-welcome-card > .text-center {
+  order: 1 !important;
+  gap: 6px !important;
+  padding: 0 4px !important;
+  margin: 0 !important;
+  text-align: left !important;
+}
+
+html.qiming-native-webview .ai-chat-welcome-card > .text-center p {
+  max-width: 340px !important;
+  font-size: 13px !important;
+  line-height: 1.4 !important;
+}
+
+html.qiming-native-webview .quick-chat-box {
+  order: 2 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  border-radius: 20px !important;
+  box-shadow: 0 12px 34px rgb(94 127 248 / 10%) !important;
+}
+
+html.qiming-native-webview .quick-chat-box .el-textarea__inner {
+  height: 78px !important;
+  min-height: 78px !important;
+  padding: 14px !important;
+  font-size: 14px !important;
+  line-height: 1.42 !important;
+}
+
+html.qiming-native-webview .quick-chat-box > div:last-child {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 7px !important;
+  padding: 9px !important;
+}
+
+html.qiming-native-webview .quick-chat-box > div:last-child > div:first-child {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 6px !important;
+}
+
+html.qiming-native-webview .quick-chat-box > div:last-child > div:last-child {
+  justify-content: space-between !important;
+  width: 100% !important;
+}
+
+html.qiming-native-webview .quick-chat-box > div:last-child span {
+  justify-content: center !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  min-height: 32px !important;
+  padding-right: 8px !important;
+  padding-left: 8px !important;
+  overflow: hidden !important;
+  font-size: 12px !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+html.qiming-native-webview .quick-chat-box > div:last-child button {
+  position: relative !important;
+  z-index: 2 !important;
+  width: 44px !important;
+  min-width: 44px !important;
+  height: 44px !important;
+  min-height: 44px !important;
+  touch-action: manipulation;
+}
+
+html.qiming-native-webview
+  .quick-chat-box
+  > div:last-child
+  > div:last-child
+  > span {
+  justify-content: flex-start !important;
+  max-width: calc(100% - 46px) !important;
+}
+
+html.qiming-native-webview .ai-chat-welcome-human {
+  order: 3 !important;
+  display: flex !important;
+  flex: 1 1 auto !important;
+  flex-direction: column !important;
+  min-height: 292px !important;
+  margin-top: 8px !important;
+  overflow: hidden !important;
+  background: rgb(255 255 255 / 76%) !important;
+  border: 1px solid rgb(255 255 255 / 72%) !important;
+  border-radius: 24px !important;
+  box-shadow: 0 16px 42px rgb(94 127 248 / 12%) !important;
+}
+
+html.qiming-native-webview.dark .ai-chat-welcome-human {
+  background: rgb(15 23 42 / 82%) !important;
+  border-color: rgb(148 163 184 / 22%) !important;
+  box-shadow: 0 18px 44px rgb(0 0 0 / 30%) !important;
+}
+
+html.qiming-native-webview .ai-chat-welcome-human .virtual-human-panel {
+  flex: 1 1 auto !important;
+  height: auto !important;
+  min-height: 224px !important;
+  background: transparent !important;
+}
+
+html.qiming-native-webview .ai-chat-welcome-actions {
+  display: grid !important;
+  flex: 0 0 auto !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 6px !important;
+  padding: 8px !important;
+  background: rgb(255 255 255 / 82%) !important;
+  border-top: 1px solid rgb(226 232 240 / 70%) !important;
+}
+
+html.qiming-native-webview.dark .ai-chat-welcome-actions {
+  background: rgb(2 6 23 / 74%) !important;
+  border-top-color: rgb(148 163 184 / 20%) !important;
+}
+
+html.qiming-native-webview .ai-chat-welcome-actions button {
+  min-width: 0 !important;
+  min-height: 32px !important;
+  padding: 0 8px !important;
+  overflow: hidden !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  color: #5e7ff8 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  background: rgb(239 246 255 / 80%) !important;
+  border: 1px solid rgb(191 219 254 / 80%) !important;
+  border-radius: 12px !important;
+}
+
+html.qiming-native-webview.dark .ai-chat-welcome-actions button {
+  color: #c7d2fe !important;
+  background: rgb(30 41 59 / 80%) !important;
+  border-color: rgb(129 140 248 / 24%) !important;
+}
+
 @media (max-width: 768px) {
   html.qiming-native-webview,
   html.qiming-native-webview body {
