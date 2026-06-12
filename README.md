@@ -1,7 +1,7 @@
 # Hi👋 hello the next generation juiced native Android app in the edu area presented by ycxj Jilin
-# ccut 108 全新 启明智教 (Qimingedu) - Android 客户端
+## ccut 108 全新 启明智教 (Qimingedu) - Android 客户端
 
-# Checkout from the pics first Stu Teacher and Admin
+### Checkout from the pics first Stu Teacher and Admin
 
 <img width="400" height="833" alt="image" src="https://github.com/user-attachments/assets/1e7b4d23-2014-42de-b5da-1b194b4cf4c8" />
 <img width="397" height="829" alt="image" src="https://github.com/user-attachments/assets/c85d7aab-e49d-494c-8164-2b88d071fe74" />
