@@ -2204,12 +2204,12 @@ $shadow-xl:
   }
 }
 
-:global(html.qiming-native-keyboard-open) .ai-dialog-overlay {
+:global(html.qiming-native-keyboard-open .ai-dialog-overlay) {
   align-items: flex-start;
   padding-top: calc(12px + var(--pure-safe-area-top, 0px));
 }
 
-:global(html.qiming-native-keyboard-open) .ai-dialog {
+:global(html.qiming-native-keyboard-open .ai-dialog) {
   height: min(86vh, var(--qiming-native-vh, 100%));
 }
 

@@ -2271,28 +2271,28 @@ onUnmounted(() => {
   }
 }
 
-:global(html.qiming-native-keyboard-open) .ai-chat-welcome {
+:global(html.qiming-native-keyboard-open .ai-chat-welcome) {
   height: var(--qiming-native-vh, 100dvh) !important;
   min-height: var(--qiming-native-vh, 100dvh) !important;
   padding-top: calc(40px + var(--pure-safe-area-top, 0)) !important;
 }
 
-:global(html.qiming-native-keyboard-open) .quick-chat-box {
+:global(html.qiming-native-keyboard-open .quick-chat-box) {
   flex: 0 0 auto !important;
 }
 
-:global(html.qiming-native-keyboard-open) .quick-chat-box :deep(.el-textarea__inner) {
+:global(html.qiming-native-keyboard-open .quick-chat-box .el-textarea__inner) {
   height: 84px !important;
   min-height: 84px !important;
 }
 
-:global(html.qiming-native-keyboard-open) .ai-chat-welcome-human {
+:global(html.qiming-native-keyboard-open .ai-chat-welcome-human) {
   flex: 0 0 auto !important;
   max-height: 228px !important;
   min-height: 196px !important;
 }
 
-:global(html.qiming-native-keyboard-open) .ai-chat-welcome-human :deep(.virtual-human-panel) {
+:global(html.qiming-native-keyboard-open .ai-chat-welcome-human .virtual-human-panel) {
   min-height: 142px !important;
 }
 </style>
