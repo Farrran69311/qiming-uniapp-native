@@ -2,7 +2,7 @@
   "name": "qiming-native-app",
   "version": "0.1.0",
   "private": true,
-  "description": "Qiming Intelledu uni-app native shell for Android and iOS.",
+  "description": "IntellEdu uni-app native shell for Android and iOS.",
   "scripts": {
     "dev:custom": "uni -p",
     "dev:h5": "uni",

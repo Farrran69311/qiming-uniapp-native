@@ -4,7 +4,7 @@
       <view class="brand-mark">
         <text class="brand-mark__text">启</text>
       </view>
-      <text class="shell-title">启明智教</text>
+      <text class="shell-title">IntellEdu</text>
       <text class="shell-subtitle">{{ stateText }}</text>
       <button v-if="loadError" class="retry-button" @click="reloadWebview">
         重新加载
@@ -19,7 +19,7 @@
           id="qiming-preview-frame"
           class="qiming-preview-frame"
           :src="webviewSrc"
-          title="启明智教客户端预览"
+          title="IntellEdu 客户端预览"
           @load="handleLoad"
         />
       </view>
@@ -527,7 +527,7 @@ onLoad(options => {
   );
   appDevServer.value = normalizeDevServer(pageOptions?.devServer);
   scheduleLoadFallback();
-  uni.setNavigationBarTitle({ title: "启明智教" });
+  uni.setNavigationBarTitle({ title: "IntellEdu" });
 });
 
 onShow(() => {

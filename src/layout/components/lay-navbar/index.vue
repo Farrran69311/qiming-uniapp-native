@@ -129,7 +129,7 @@ const {
       <div v-if="device !== 'mobile'" class="flex items-center ml-4">
         <span
           class="text-xl font-black italic tracking-tighter text-blue-600/80 uppercase"
-          >Intelledu</span
+          >IntellEdu</span
         >
         <div class="h-4 w-[1px] bg-gray-300 mx-4" />
         <span

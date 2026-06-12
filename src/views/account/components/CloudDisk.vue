@@ -291,14 +291,35 @@ const handleUpload = () => {
   ElMessage.info("管理员已停用上传");
 };
 
+const openNativeExternalUrl = (url?: string) => {
+  if (!url || url === "#") return false;
+  const plusApi = (window as any).plus;
+  const isNativeWebView = document.documentElement.classList.contains(
+    "qiming-native-webview"
+  );
+  if (!isNativeWebView || !plusApi?.runtime?.openURL) return false;
+  try {
+    plusApi.runtime.openURL(url);
+    return true;
+  } catch (error) {
+    console.warn("Native openURL failed:", error);
+    return false;
+  }
+};
+
 // 模拟下载
 const handleDownload = (file: CloudFile) => {
   if (file.type === "folder") {
     ElMessage.warning("文件夹不能直接下载");
     return;
   }
+  if (!file.url || file.url === "#") {
+    ElMessage.warning("该文件没有可用的下载链接");
+    return;
+  }
   ElMessage.success(`开始下载文件: ${file.name}`);
-  window.open(file.url, "_blank");
+  if (openNativeExternalUrl(file.url)) return;
+  window.open(file.url, "_blank", "noopener,noreferrer");
 };
 
 // 文件分享

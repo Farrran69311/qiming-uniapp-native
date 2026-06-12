@@ -574,7 +574,7 @@ onUnmounted(() => {
           <div class="id-card-container">
             <div class="id-card-main">
               <div class="card-brand">
-                <span class="brand-en">Intelledu</span>
+                <span class="brand-en">IntellEdu</span>
                 <span class="brand-cn">启明智教</span>
               </div>
 
@@ -1986,5 +1986,177 @@ html.dark {
   overflow: hidden;
   background: #000;
   border-radius: 12px;
+}
+
+@media (max-width: 767px) {
+  .id-card-dialog.premium-dialog {
+    width: min(560px, calc(100vw - 24px)) !important;
+    max-height: calc(var(--qiming-native-vh, 100dvh) - 24px);
+    margin: 12px auto !important;
+    overflow: hidden;
+    border-radius: 24px !important;
+
+    .el-dialog__header {
+      padding: 18px 18px 8px;
+    }
+
+    .el-dialog__title {
+      font-size: 22px;
+      line-height: 1.2;
+    }
+
+    .el-dialog__body {
+      max-height: calc(var(--qiming-native-vh, 100dvh) - 138px);
+      padding: 8px 12px 12px !important;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .el-dialog__footer {
+      padding: 10px 16px 16px;
+    }
+  }
+
+  .profile-layout-container.is-student-layout {
+    flex-direction: column;
+    gap: 14px;
+    height: auto;
+    min-height: 0;
+
+    .id-card-side,
+    .extra-stats-side {
+      flex: none;
+      width: 100%;
+      height: auto;
+      padding-left: 0;
+      overflow: visible;
+    }
+  }
+
+  .id-card-container {
+    height: auto;
+  }
+
+  .id-card-main {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-height: 0;
+    padding: 16px;
+    border-radius: 20px;
+
+    .card-brand {
+      order: 1;
+      align-items: flex-start;
+      text-align: left;
+    }
+
+    .card-avatar-section {
+      order: 2;
+      flex-direction: row;
+      gap: 14px;
+      align-items: center;
+
+      .id-avatar-wrapper {
+        flex: 0 0 auto;
+      }
+
+      :deep(.el-avatar),
+      .id-placeholder-avatar {
+        width: 88px !important;
+        height: 88px !important;
+      }
+
+      .card-security-btn {
+        min-height: 36px;
+        padding: 8px 12px;
+        white-space: nowrap;
+      }
+    }
+
+    .card-info-form {
+      order: 3;
+      justify-content: stretch;
+      padding-left: 0;
+
+      .id-card-form-body {
+        max-width: none;
+      }
+
+      .id-form-item {
+        display: block;
+        margin-bottom: 14px;
+
+        :deep(.el-form-item__label) {
+          justify-content: flex-start;
+          width: auto !important;
+          height: auto;
+          padding-right: 0;
+          margin-bottom: 7px;
+          font-family: inherit;
+          font-size: 14px;
+          line-height: 1.3;
+        }
+
+        :deep(.el-form-item__content) {
+          width: 100%;
+          margin-left: 0 !important;
+        }
+      }
+    }
+
+    .card-id-number {
+      order: 4;
+
+      .number {
+        overflow-wrap: anywhere;
+        font-size: clamp(20px, 8vw, 30px);
+        letter-spacing: 0.12em;
+      }
+    }
+  }
+
+  .extra-stats-container {
+    height: auto;
+    max-height: none;
+    padding: 16px;
+    overflow: visible;
+    border-radius: 20px;
+
+    .stats-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .courses-section .course-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .premium-footer {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+
+    .el-button {
+      min-height: 40px;
+      padding: 0 18px;
+    }
+  }
+}
+
+@media (max-width: 379px) {
+  .id-card-main {
+    padding: 14px;
+
+    .card-avatar-section {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+  }
+
+  .extra-stats-container .stats-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

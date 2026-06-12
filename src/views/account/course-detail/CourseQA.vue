@@ -1518,7 +1518,7 @@ const filterByTag = (tagName: string) => {
   .message-board-container {
     height: auto;
     min-height: 100vh;
-    padding: var(--course-mobile-top-offset, 156px) 14px
+    padding: var(--course-mobile-top-offset, 176px) 14px
       calc(24px + env(safe-area-inset-bottom));
     overflow: visible;
   }
@@ -1812,7 +1812,7 @@ const filterByTag = (tagName: string) => {
 
 @media (max-width: 479px) {
   .message-board-container {
-    padding: var(--course-mobile-top-offset, 156px) 10px
+    padding: var(--course-mobile-top-offset, 176px) 10px
       calc(20px + env(safe-area-inset-bottom));
   }
 

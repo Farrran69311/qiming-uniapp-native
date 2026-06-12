@@ -92,6 +92,7 @@ function applyNativeWebViewRuntime() {
   const { isNative, nativeStatusTop } = readNativeQueryParams();
   if (!isNative) return;
 
+  document.title = "IntellEdu";
   const root = document.documentElement;
   root.classList.add("qiming-native-webview");
   root.dataset.qimingNative = "true";
@@ -375,6 +376,22 @@ function applyNativeWebViewRuntime() {
   };
 
   router.afterEach(() => {
+    try {
+      const currentRoute = router.currentRoute.value;
+      if (currentRoute.path !== "/login") {
+        sessionStorage.setItem(
+          "qimingNativeLastRoute",
+          JSON.stringify({
+            path: currentRoute.path,
+            query: currentRoute.query,
+            hash: window.location.hash,
+            time: Date.now()
+          })
+        );
+      }
+    } catch {
+      // Best-effort route restore cache for Android task switching.
+    }
     window.setTimeout(normalizeNativeRoleRoute, 40);
   });
   window.setTimeout(normalizeNativeRoleRoute, 300);

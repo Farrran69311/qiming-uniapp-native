@@ -91,6 +91,7 @@
       :title="isEditMode ? '编辑待办' : '添加待办'"
       width="500px"
       class="student-todo-dialog"
+      align-center
       @close="resetForm"
     >
       <el-form ref="formRef" :model="form" label-width="80px">

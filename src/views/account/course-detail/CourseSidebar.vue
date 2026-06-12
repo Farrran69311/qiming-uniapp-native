@@ -467,7 +467,7 @@ onBeforeUnmount(() => {
 @media (max-width: 767px) {
   .layout-sidebar {
     --mobile-sidebar-easing: cubic-bezier(0.65, 0, 0.35, 1);
-    top: 88px;
+    top: calc(84px + var(--pure-safe-area-top, 0px));
     right: 12px;
     left: 12px;
     z-index: 120;
@@ -653,7 +653,7 @@ onBeforeUnmount(() => {
 /* stylelint-disable-next-line order/order */
 @media (max-width: 479px) {
   .layout-sidebar {
-    top: 86px;
+    top: calc(82px + var(--pure-safe-area-top, 0px));
     right: 10px;
     left: 10px;
     height: 60px;

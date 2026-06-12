@@ -808,13 +808,13 @@ html.qiming-native-webview.ua-mobile
   .el-menu-item {
   display: inline-flex !important;
   flex: 0 0 auto !important;
-  gap: 0 !important;
+  gap: 7px !important;
   align-items: center !important;
   justify-content: center !important;
   width: auto !important;
-  min-width: 94px !important;
+  min-width: max-content !important;
   height: 40px !important;
-  padding: 0 12px !important;
+  padding: 0 14px !important;
   margin-bottom: 0 !important;
   line-height: 1.1 !important;
   white-space: nowrap !important;
@@ -846,7 +846,7 @@ html.qiming-native-webview.ua-mobile
   .el-menu-item
   .el-icon {
   flex: 0 0 auto !important;
-  margin-right: 7px !important;
+  margin-right: 0 !important;
   font-size: 18px !important;
 }
 
@@ -856,12 +856,12 @@ html.qiming-native-webview.ua-mobile
   .account-menu
   .el-menu-item
   span {
-  min-width: 0 !important;
-  max-width: 56px !important;
-  overflow: hidden !important;
+  min-width: max-content !important;
+  max-width: none !important;
+  overflow: visible !important;
   font-size: 12px !important;
   line-height: 1 !important;
-  text-overflow: ellipsis !important;
+  text-overflow: clip !important;
   white-space: nowrap !important;
 }
 
@@ -1362,7 +1362,8 @@ html.qiming-native-webview.ua-mobile.qiming-native-keyboard-open
 html.qiming-native-webview.qiming-native-keyboard-open .ai-chat-welcome-human,
 html.qiming-native-webview.ua-mobile.qiming-native-keyboard-open
   .ai-chat-welcome-human {
-  min-height: 214px !important;
+  min-height: 196px !important;
+  max-height: 228px !important;
 }
 
 html.qiming-native-webview.qiming-native-keyboard-open
@@ -1371,7 +1372,7 @@ html.qiming-native-webview.qiming-native-keyboard-open
 html.qiming-native-webview.ua-mobile.qiming-native-keyboard-open
   .ai-chat-welcome-human
   .virtual-human-panel {
-  min-height: 146px !important;
+  min-height: 142px !important;
 }
 
 html.qiming-native-webview.qiming-native-keyboard-open .ai-chat-welcome-actions,
@@ -1379,6 +1380,54 @@ html.qiming-native-webview.ua-mobile.qiming-native-keyboard-open
   .ai-chat-welcome-actions {
   max-height: 78px !important;
   overflow: hidden !important;
+}
+
+html.qiming-native-webview .clear-chat-confirm-dialog,
+html.qiming-native-webview.ua-mobile .clear-chat-confirm-dialog,
+html.qiming-native-webview .el-message-box,
+html.qiming-native-webview.ua-mobile .el-message-box {
+  width: min(360px, calc(100vw - 48px)) !important;
+  max-width: calc(100vw - 48px) !important;
+  min-width: 0 !important;
+  border-radius: 18px !important;
+}
+
+html.qiming-native-webview .clear-chat-confirm-dialog .el-message-box__content,
+html.qiming-native-webview.ua-mobile
+  .clear-chat-confirm-dialog
+  .el-message-box__content {
+  padding: 10px 20px 14px !important;
+}
+
+html.qiming-native-webview .clear-chat-confirm-dialog .el-message-box__message,
+html.qiming-native-webview.ua-mobile
+  .clear-chat-confirm-dialog
+  .el-message-box__message {
+  display: block !important;
+  line-height: 1.55 !important;
+  text-align: left !important;
+  white-space: normal !important;
+  word-break: normal !important;
+  writing-mode: horizontal-tb !important;
+}
+
+html.qiming-native-webview .clear-chat-confirm-dialog .el-message-box__btns,
+html.qiming-native-webview.ua-mobile
+  .clear-chat-confirm-dialog
+  .el-message-box__btns {
+  display: flex !important;
+  flex-direction: row !important;
+  gap: 10px !important;
+  justify-content: flex-end !important;
+  padding: 8px 20px 18px !important;
+}
+
+html.qiming-native-webview .student-todo-dialog,
+html.qiming-native-webview.ua-mobile .student-todo-dialog {
+  top: auto !important;
+  width: min(500px, calc(100vw - 28px)) !important;
+  max-height: calc(var(--qiming-native-vh, 100dvh) - 28px) !important;
+  margin: 14px auto !important;
 }
 
 @media (max-width: 768px) {

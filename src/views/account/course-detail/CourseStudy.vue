@@ -1974,7 +1974,7 @@ $shadow-xl:
   .study-container {
     height: auto;
     min-height: 100vh;
-    padding: var(--course-mobile-top-offset, 156px) 16px
+    padding: var(--course-mobile-top-offset, 176px) 16px
       calc(20px + var(--course-mobile-fab-clearance, 92px));
   }
 
@@ -2147,7 +2147,7 @@ $shadow-xl:
   .ai-dialog {
     width: 100vw;
     max-width: none;
-    height: min(92vh, 100%);
+    height: min(92vh, var(--qiming-native-vh, 100%));
     max-height: none;
     border-radius: 24px 24px 0 0;
   }
@@ -2204,10 +2204,19 @@ $shadow-xl:
   }
 }
 
+:global(html.qiming-native-keyboard-open) .ai-dialog-overlay {
+  align-items: flex-start;
+  padding-top: calc(12px + var(--pure-safe-area-top, 0px));
+}
+
+:global(html.qiming-native-keyboard-open) .ai-dialog {
+  height: min(86vh, var(--qiming-native-vh, 100%));
+}
+
 /* stylelint-disable-next-line order/order */
 @media (max-width: 479px) {
   .study-container {
-    padding: var(--course-mobile-top-offset, 156px) 12px
+    padding: var(--course-mobile-top-offset, 176px) 12px
       calc(16px + var(--course-mobile-fab-clearance, 92px));
   }
 

@@ -18,6 +18,7 @@ $zipalign = "G:\qiming-uniapp-native-tools\android-sdk\build-tools\35.0.0\zipali
 $apksigner = "G:\qiming-uniapp-native-tools\android-sdk\build-tools\35.0.0\apksigner.bat"
 $adb = "G:\qiming-uniapp-native-tools\android-sdk\platform-tools\adb.exe"
 $keytool = "C:\Program Files\Microsoft\jdk-21.0.11.10-hotspot\bin\keytool.exe"
+$desktopLogo = "C:\Users\farde\Desktop\logo.png"
 
 function Require-File([string]$Path, [string]$Message) {
   if (-not (Test-Path -LiteralPath $Path)) {
@@ -53,6 +54,198 @@ function Add-FileToZip(
   }
 }
 
+function Write-IntellEduLauncherIcon([string]$SourceLogo, [string]$OutputPath, [int]$Size) {
+  Add-Type -AssemblyName System.Drawing
+  $source = [System.Drawing.Image]::FromFile($SourceLogo)
+  try {
+    $bitmap = [System.Drawing.Bitmap]::new($Size, $Size, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    try {
+      $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+      try {
+        $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+        $graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+        $graphics.Clear([System.Drawing.Color]::Transparent)
+        $brush = [System.Drawing.SolidBrush]::new([System.Drawing.Color]::White)
+        try {
+          $graphics.FillRectangle($brush, 0, 0, $Size, $Size)
+        } finally {
+          $brush.Dispose()
+        }
+
+        $padding = [Math]::Max(3, [int]($Size * 0.08))
+        $scale = [Math]::Min(
+          ($Size - 2 * $padding) / $source.Width,
+          ($Size - 2 * $padding) / $source.Height
+        )
+        $drawWidth = [int]($source.Width * $scale)
+        $drawHeight = [int]($source.Height * $scale)
+        $x = [int](($Size - $drawWidth) / 2)
+        $y = [int](($Size - $drawHeight) / 2)
+        $graphics.DrawImage($source, $x, $y, $drawWidth, $drawHeight)
+      } finally {
+        $graphics.Dispose()
+      }
+      $bitmap.Save($OutputPath, [System.Drawing.Imaging.ImageFormat]::Png)
+    } finally {
+      $bitmap.Dispose()
+    }
+  } finally {
+    $source.Dispose()
+  }
+}
+
+function Patch-AndroidLabelResource([byte[]]$Bytes) {
+  $labelFrom = "HBuilder"
+  $labelTo = "IntellEdu"
+  $oldBytes = [System.Text.Encoding]::UTF8.GetBytes($labelFrom)
+  $newBytes = [System.Text.Encoding]::UTF8.GetBytes($labelTo)
+  $delta = $newBytes.Length - $oldBytes.Length
+  if ($delta -lt 0) {
+    throw "Android label patch only supports equal-or-longer labels."
+  }
+
+  $rootSize = [BitConverter]::ToUInt32($Bytes, 4)
+  $globalStringPoolOffset = 12
+  $stringPoolType = [BitConverter]::ToUInt16($Bytes, $globalStringPoolOffset)
+  $stringPoolHeaderSize = [BitConverter]::ToUInt16(
+    $Bytes,
+    $globalStringPoolOffset + 2
+  )
+  $stringPoolSize = [BitConverter]::ToUInt32(
+    $Bytes,
+    $globalStringPoolOffset + 4
+  )
+  $stringCount = [BitConverter]::ToUInt32($Bytes, $globalStringPoolOffset + 8)
+  $flags = [BitConverter]::ToUInt32($Bytes, $globalStringPoolOffset + 16)
+  $stringsStart = [BitConverter]::ToUInt32($Bytes, $globalStringPoolOffset + 20)
+  $stylesStart = [BitConverter]::ToUInt32($Bytes, $globalStringPoolOffset + 24)
+
+  if ($stringPoolType -ne 0x0001 -or (($flags -band 0x100) -eq 0)) {
+    throw "Android label patch expected UTF-8 global string pool."
+  }
+
+  function Read-Utf8Length([byte[]]$Data, [int]$Offset) {
+    $first = $Data[$Offset]
+    if (($first -band 0x80) -ne 0) {
+      return @{
+        Length = ((($first -band 0x7f) -shl 8) -bor $Data[$Offset + 1])
+        Bytes = 2
+      }
+    }
+    return @{ Length = $first; Bytes = 1 }
+  }
+
+  $targetIndex = -1
+  $targetOffset = 0
+  $targetPos = 0
+  $targetContentStart = 0
+  $targetByteLength = 0
+
+  for ($index = 0; $index -lt $stringCount; $index++) {
+    $offsetTablePos = $globalStringPoolOffset + $stringPoolHeaderSize + $index * 4
+    $entryOffset = [BitConverter]::ToUInt32($Bytes, $offsetTablePos)
+    $pos = $globalStringPoolOffset + $stringsStart + $entryOffset
+    $charLen = Read-Utf8Length $Bytes $pos
+    $byteLen = Read-Utf8Length $Bytes ($pos + $charLen.Bytes)
+    $contentStart = $pos + $charLen.Bytes + $byteLen.Bytes
+    $value = [System.Text.Encoding]::UTF8.GetString(
+      $Bytes,
+      $contentStart,
+      $byteLen.Length
+    )
+    if ($value -eq $labelFrom) {
+      $targetIndex = $index
+      $targetOffset = $entryOffset
+      $targetPos = $pos
+      $targetContentStart = $contentStart
+      $targetByteLength = $byteLen.Length
+      break
+    }
+  }
+
+  if ($targetIndex -lt 0) {
+    throw "Android label patch could not find '$labelFrom' in resources.arsc."
+  }
+
+  $lengthByteCount =
+    ($targetContentStart - $targetPos) / 2
+  if ($lengthByteCount -ne 1) {
+    throw "Android label patch expected one-byte UTF-8 string lengths."
+  }
+
+  $replacementEnd = $targetContentStart + $targetByteLength
+  $globalStringPoolEnd = $globalStringPoolOffset + $stringPoolSize
+  $stylesAbsoluteStart = if ($stylesStart -gt 0) {
+    $globalStringPoolOffset + $stylesStart
+  } else {
+    $globalStringPoolEnd
+  }
+  $padding = (4 - ($delta % 4)) % 4
+  $sizeIncrease = $delta + $padding
+  $patched = [byte[]]::new($Bytes.Length + $sizeIncrease)
+
+  [Buffer]::BlockCopy($Bytes, 0, $patched, 0, $targetContentStart)
+  [Buffer]::BlockCopy($newBytes, 0, $patched, $targetContentStart, $newBytes.Length)
+  [Buffer]::BlockCopy(
+    $Bytes,
+    $replacementEnd,
+    $patched,
+    $targetContentStart + $newBytes.Length,
+    $stylesAbsoluteStart - $replacementEnd
+  )
+  if ($padding -gt 0) {
+    [Array]::Clear(
+      $patched,
+      $stylesAbsoluteStart + $delta,
+      $padding
+    )
+  }
+  [Buffer]::BlockCopy(
+    $Bytes,
+    $stylesAbsoluteStart,
+    $patched,
+    $stylesAbsoluteStart + $sizeIncrease,
+    $globalStringPoolEnd - $stylesAbsoluteStart
+  )
+  [Buffer]::BlockCopy(
+    $Bytes,
+    $globalStringPoolEnd,
+    $patched,
+    $globalStringPoolEnd + $sizeIncrease,
+    $Bytes.Length - $globalStringPoolEnd
+  )
+
+  $patched[$targetPos] = [byte]$labelTo.Length
+  $patched[$targetPos + 1] = [byte]$newBytes.Length
+
+  for ($index = $targetIndex + 1; $index -lt $stringCount; $index++) {
+    $offsetTablePos = $globalStringPoolOffset + $stringPoolHeaderSize + $index * 4
+    $entryOffset = [BitConverter]::ToUInt32($patched, $offsetTablePos)
+    [BitConverter]::GetBytes([uint32]($entryOffset + $delta)).CopyTo(
+      $patched,
+      $offsetTablePos
+    )
+  }
+
+  [BitConverter]::GetBytes([uint32]($rootSize + $sizeIncrease)).CopyTo(
+    $patched,
+    4
+  )
+  [BitConverter]::GetBytes([uint32]($stringPoolSize + $sizeIncrease)).CopyTo(
+    $patched,
+    $globalStringPoolOffset + 4
+  )
+  if ($stylesStart -gt 0) {
+    [BitConverter]::GetBytes([uint32]($stylesStart + $sizeIncrease)).CopyTo(
+      $patched,
+      $globalStringPoolOffset + 24
+    )
+  }
+
+  return $patched
+}
+
 function Get-DefaultVersionCode() {
   return Get-Date -Format "yyyyMMddHHmm"
 }
@@ -65,10 +258,15 @@ function Get-FirstAndroidDevice() {
   return $devices | Select-Object -First 1
 }
 
+function ConvertFrom-Utf8Base64([string]$Value) {
+  return [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($Value))
+}
+
 Require-File $hbuilderBaseApk "HBuilderX Android base APK not found: $hbuilderBaseApk"
 Require-File $zipalign "zipalign not found: $zipalign"
 Require-File $apksigner "apksigner not found: $apksigner"
 Require-File $keytool "keytool not found: $keytool"
+Require-File $desktopLogo "Desktop app logo not found: $desktopLogo"
 
 if (-not $VersionCode) {
   $VersionCode = Get-DefaultVersionCode
@@ -107,6 +305,26 @@ if (Test-Path -LiteralPath $stagingWww) {
   Remove-Item -LiteralPath $stagingWww -Recurse -Force
 }
 New-Item -ItemType Directory -Path $stagingWww -Force | Out-Null
+$stagingNative = Join-Path $artifactsDir "apk-staging-current\native"
+if (Test-Path -LiteralPath $stagingNative) {
+  Remove-Item -LiteralPath $stagingNative -Recurse -Force
+}
+New-Item -ItemType Directory -Path $stagingNative -Force | Out-Null
+
+$launcherIconMap = @{
+  "res/2H.png" = 48
+  "res/yj.png" = 48
+  "res/8p.png" = 72
+  "res/9X.png" = 96
+  "res/-t.png" = 144
+  "res/2c.png" = 192
+}
+$launcherIconFiles = @{}
+foreach ($entryName in $launcherIconMap.Keys) {
+  $iconPath = Join-Path $stagingNative (($entryName -replace "[/\\]", "_"))
+  Write-IntellEduLauncherIcon $desktopLogo $iconPath $launcherIconMap[$entryName]
+  $launcherIconFiles[$entryName] = $iconPath
+}
 
 foreach ($item in Get-ChildItem -LiteralPath $appBuildDir -Force) {
   Copy-Item -LiteralPath $item.FullName -Destination $stagingWww -Recurse -Force
@@ -125,18 +343,18 @@ if (Test-Path -LiteralPath $icon) {
 $launchPath = "hybrid/html/index.html?v=$VersionCode#/home?qimingNative=1"
 $runtimeManifest = [ordered]@{
   id = "HBuilder"
-  name = "启明智教"
+  name = "IntellEdu"
   version = [ordered]@{
     name = $VersionName
     code = $VersionCode
   }
-  description = "启明智教 Android 11 v1.0 beta"
+  description = "IntellEdu Android 11 v1.0 beta"
   icons = [ordered]@{
     "72" = "icon.png"
   }
   launch_path = $launchPath
   developer = [ordered]@{
-    name = "Intelledu"
+    name = "IntellEdu"
     email = ""
     url = ""
   }
@@ -149,10 +367,6 @@ $runtimeManifest = [ordered]@{
     NativeUI = @{}
     Navigator = @{}
     Runtime = @{}
-    Share = @{}
-    UniNView = @{
-      description = "UniNView native render"
-    }
     Uploader = @{}
     Webview = @{}
     XMLHttpRequest = @{}
@@ -211,6 +425,38 @@ try {
           continue
         }
 
+        if ($launcherIconFiles.ContainsKey($name)) {
+          Add-FileToZip $destZip $launcherIconFiles[$name] $name
+          continue
+        }
+
+        if ($name -eq "resources.arsc") {
+          $newEntry = $destZip.CreateEntry(
+            $name,
+            [System.IO.Compression.CompressionLevel]::Optimal
+          )
+          $newEntry.LastWriteTime = $entry.LastWriteTime
+          $inputStream = $entry.Open()
+          try {
+            $memoryStream = [System.IO.MemoryStream]::new()
+            try {
+              $inputStream.CopyTo($memoryStream)
+              $patchedBytes = Patch-AndroidLabelResource $memoryStream.ToArray()
+            } finally {
+              $memoryStream.Dispose()
+            }
+            $outputStream = $newEntry.Open()
+            try {
+              $outputStream.Write($patchedBytes, 0, $patchedBytes.Length)
+            } finally {
+              $outputStream.Dispose()
+            }
+          } finally {
+            $inputStream.Dispose()
+          }
+          continue
+        }
+
         $newEntry = $destZip.CreateEntry(
           $name,
           [System.IO.Compression.CompressionLevel]::Optimal
@@ -264,7 +510,7 @@ if (-not (Test-Path -LiteralPath $keystore)) {
     -keyalg RSA `
     -keysize 2048 `
     -validity 3650 `
-    -dname "CN=Qiming Android 11 Beta Local, O=Intelledu, L=Changchun, ST=Jilin, C=CN" |
+    -dname "CN=IntellEdu Android 11 Beta Local, O=IntellEdu, L=Changchun, ST=Jilin, C=CN" |
     Out-Null
   if ($LASTEXITCODE -ne 0) {
     throw "keytool failed with exit code $LASTEXITCODE"

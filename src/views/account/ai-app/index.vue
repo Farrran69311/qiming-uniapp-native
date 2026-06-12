@@ -847,6 +847,23 @@ const handleQuickInteraction = (text: string) => {
   speakDigitalHumans(text);
 };
 
+const resolveQuickCourseName = () =>
+  quickCourse.value ||
+  selectedCourseName.value ||
+  myCourses.value[0]?.name ||
+  "";
+
+const submitQuickMessage = () => {
+  const courseName = resolveQuickCourseName();
+  if (!quickMessage.value.trim()) return;
+  if (!courseName) {
+    ElMessage.warning("请先选择课程");
+    return;
+  }
+  quickCourse.value = courseName;
+  handleNewChat({ course: courseName });
+};
+
 const handleNewChat = async (payload: { course: string }) => {
   const course = myCourses.value.find(item => item.name === payload.course);
   if (course) activeCourse.value = course;
@@ -1221,9 +1238,7 @@ onUnmounted(() => {
                   placeholder="可以输入想要了解的知识点。输入 @ 提及课程或文件..."
                   class="quick-chat-input"
                   resize="none"
-                  @keyup.enter.prevent="
-                    quickCourse ? handleNewChat({ course: quickCourse }) : null
-                  "
+                  @keyup.enter.prevent="submitQuickMessage"
                 />
 
                 <div
@@ -1245,7 +1260,7 @@ onUnmounted(() => {
                         <el-icon class="mr-1.5 text-[14px]"
                           ><FolderOpened
                         /></el-icon>
-                        {{ quickCourse || "选择课程" }}
+                        {{ quickCourse || selectedCourseName || "选择课程" }}
                         <el-icon class="ml-1 text-[12px]"
                           ><ArrowDown
                         /></el-icon>
@@ -1305,26 +1320,23 @@ onUnmounted(() => {
                       <el-icon class="ml-1"><ArrowDown /></el-icon>
                     </span>
                     <button
-                      class="w-10 h-10 flex items-center justify-center rounded-xl transition-all transform border"
+                      class="quick-chat-send-btn h-10 flex items-center justify-center rounded-xl transition-all transform border"
                       :class="
-                        quickCourse && quickMessage.trim()
+                        resolveQuickCourseName() && quickMessage.trim()
                           ? 'bg-[#c199f9] border-[#c199f9] text-white hover:bg-[#b085f7] hover:scale-105 shadow-lg shadow-purple-100 cursor-pointer'
                           : 'bg-white border-gray-200 text-gray-300 cursor-not-allowed'
                       "
-                      :disabled="!quickCourse || !quickMessage.trim()"
-                      @click="
-                        quickCourse
-                          ? handleNewChat({ course: quickCourse })
-                          : null
-                      "
+                      :disabled="!resolveQuickCourseName() || !quickMessage.trim()"
+                      @click="submitQuickMessage"
                     >
                       <el-icon
-                        class="text-lg"
+                        class="text-[16px]"
                         :class="
-                          quickCourse && quickMessage.trim() ? '' : 'font-bold'
+                          resolveQuickCourseName() && quickMessage.trim() ? '' : 'font-bold'
                         "
                         ><Top
                       /></el-icon>
+                      <span>发送</span>
                     </button>
                   </div>
                 </div>
@@ -1897,7 +1909,7 @@ onUnmounted(() => {
   .el-textarea__inner {
     border: none !important;
     box-shadow: none !important;
-    padding: 16px 20px;
+    padding: 16px 16px;
     background-color: transparent !important;
     color: #374151;
     &::placeholder {
@@ -2129,7 +2141,7 @@ onUnmounted(() => {
   .quick-chat-box :deep(.el-textarea__inner) {
     height: 78px !important;
     min-height: 78px !important;
-    padding: 14px 14px !important;
+    padding: 14px 12px !important;
     font-size: 14px !important;
     line-height: 1.42;
   }
@@ -2174,6 +2186,15 @@ onUnmounted(() => {
     min-width: 44px !important;
     min-height: 44px !important;
     touch-action: manipulation;
+  }
+
+  .quick-chat-box > div:last-child button.quick-chat-send-btn {
+    width: auto !important;
+    min-width: 74px !important;
+    padding: 0 12px !important;
+    gap: 4px;
+    font-size: 13px;
+    font-weight: 700;
   }
 
   .quick-chat-box > div:last-child > div:last-child > span {
@@ -2248,5 +2269,30 @@ onUnmounted(() => {
     width: calc(100vw - 24px) !important;
     max-width: calc(100vw - 24px) !important;
   }
+}
+
+:global(html.qiming-native-keyboard-open) .ai-chat-welcome {
+  height: var(--qiming-native-vh, 100dvh) !important;
+  min-height: var(--qiming-native-vh, 100dvh) !important;
+  padding-top: calc(40px + var(--pure-safe-area-top, 0)) !important;
+}
+
+:global(html.qiming-native-keyboard-open) .quick-chat-box {
+  flex: 0 0 auto !important;
+}
+
+:global(html.qiming-native-keyboard-open) .quick-chat-box :deep(.el-textarea__inner) {
+  height: 84px !important;
+  min-height: 84px !important;
+}
+
+:global(html.qiming-native-keyboard-open) .ai-chat-welcome-human {
+  flex: 0 0 auto !important;
+  max-height: 228px !important;
+  min-height: 196px !important;
+}
+
+:global(html.qiming-native-keyboard-open) .ai-chat-welcome-human :deep(.virtual-human-panel) {
+  min-height: 142px !important;
 }
 </style>

@@ -399,7 +399,7 @@ const updateMobileTopOffset = () => {
 
   root.style.setProperty(
     "--course-mobile-top-offset",
-    `${Math.max(measuredOffset, 156)}px`
+    `${Math.max(measuredOffset, 176)}px`
   );
 };
 
@@ -1197,7 +1197,7 @@ onBeforeUnmount(() => {
 @import url("@/../coursecss/css/chunk-b4b575b6.fcb08796.css");
 
 .course-detail-root {
-  --course-mobile-top-offset: 156px;
+  --course-mobile-top-offset: 176px;
   --course-mobile-fab-clearance: 92px;
   width: 100%;
   min-height: 100vh;

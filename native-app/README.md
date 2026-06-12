@@ -1,6 +1,6 @@
-# Qiming Native App
+# IntellEdu Native App
 
-Uni-app shell for the existing Qiming Intelledu H5 app.
+Uni-app shell for the existing IntellEdu H5 app.
 
 Run from the repo root:
 

@@ -1,7 +1,7 @@
 {
-  "name": "启明智教",
-  "short_name": "启明智教",
-  "description": "启明智教管理平台",
+  "name": "IntellEdu",
+  "short_name": "IntellEdu",
+  "description": "IntellEdu education platform",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

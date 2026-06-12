@@ -2798,7 +2798,7 @@ onUnmounted(() => {
             max-width: calc(100vw - 136px);
 
             .nickname {
-              max-width: 56px;
+              max-width: 88px;
             }
           }
         }
@@ -3024,12 +3024,12 @@ onUnmounted(() => {
             }
 
             span {
-              min-width: 0;
-              max-width: 56px;
-              overflow: hidden;
+              min-width: max-content;
+              max-width: none;
+              overflow: visible;
               font-size: 12px;
               line-height: 1;
-              text-overflow: ellipsis;
+              text-overflow: clip;
               white-space: nowrap;
             }
           }

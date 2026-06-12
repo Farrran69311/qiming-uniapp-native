@@ -94,6 +94,22 @@ export function useScreenCapture() {
       } catch {}
     };
 
+    const getViewportMetrics = () => {
+      const visualViewport = window.visualViewport;
+      return {
+        width:
+          visualViewport?.width ||
+          document.documentElement.clientWidth ||
+          window.innerWidth,
+        height:
+          visualViewport?.height ||
+          document.documentElement.clientHeight ||
+          window.innerHeight,
+        offsetLeft: visualViewport?.offsetLeft || 0,
+        offsetTop: visualViewport?.offsetTop || 0
+      };
+    };
+
     const cropDataUrl = async (dataUrl: string) => {
       const image = new Image();
       image.decoding = "async";
@@ -105,10 +121,17 @@ export function useScreenCapture() {
 
       const fullWidth = image.naturalWidth || image.width;
       const fullHeight = image.naturalHeight || image.height;
-      const scaleX = fullWidth / Math.max(1, window.innerWidth);
-      const scaleY = fullHeight / Math.max(1, window.innerHeight);
-      const cropX = Math.max(0, Math.round(area.x * scaleX));
-      const cropY = Math.max(0, Math.round(area.y * scaleY));
+      const viewport = getViewportMetrics();
+      const scaleX = fullWidth / Math.max(1, viewport.width);
+      const scaleY = fullHeight / Math.max(1, viewport.height);
+      const cropX = Math.max(
+        0,
+        Math.round((area.x + viewport.offsetLeft) * scaleX)
+      );
+      const cropY = Math.max(
+        0,
+        Math.round((area.y + viewport.offsetTop) * scaleY)
+      );
       const cropWidth = Math.max(1, Math.round(area.width * scaleX));
       const cropHeight = Math.max(1, Math.round(area.height * scaleY));
       const safeWidth = Math.max(1, Math.min(cropWidth, fullWidth - cropX));
@@ -132,26 +155,6 @@ export function useScreenCapture() {
       );
       return canvas.toDataURL("image/png");
     };
-
-    const clip = {
-      top: `${Math.max(0, Math.round(area.y))}px`,
-      left: `${Math.max(0, Math.round(area.x))}px`,
-      width: `${Math.max(1, Math.round(area.width))}px`,
-      height: `${Math.max(1, Math.round(area.height))}px`
-    };
-
-    const clippedBitmap = new BitmapCtor(`qiming-ai-screen-clip-${Date.now()}`);
-    try {
-      return await drawBitmap(clippedBitmap, {
-        check: false,
-        checkKeyboard: false,
-        clip
-      });
-    } catch (error) {
-      console.warn("原生框选截图失败，尝试整屏截图裁剪:", error);
-    } finally {
-      disposeBitmap(clippedBitmap);
-    }
 
     const fullBitmap = new BitmapCtor(`qiming-ai-screen-full-${Date.now()}`);
     try {

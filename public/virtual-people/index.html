@@ -1289,7 +1289,7 @@
 
       function updateControlFeelByDistance() {
         const distance = Math.max(0.001, controls.getDistance ? controls.getDistance() : camera.position.distanceTo(controls.target));
-        const distanceFactor = Math.max(0.36, Math.min(1, CONTROL_REFERENCE_DISTANCE / distance));
+        const distanceFactor = Math.max(0.24, Math.min(0.9, Math.sqrt(CONTROL_REFERENCE_DISTANCE / distance)));
         controls.rotateSpeed = CONTROL_BASE_ROTATE_SPEED * distanceFactor;
         controls.panSpeed = CONTROL_BASE_PAN_SPEED * distanceFactor;
       }
