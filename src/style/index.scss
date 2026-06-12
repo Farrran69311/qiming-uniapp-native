@@ -1175,7 +1175,7 @@ html.qiming-native-webview .quick-chat-box {
 html.qiming-native-webview .quick-chat-box .el-textarea__inner {
   height: 86px !important;
   min-height: 86px !important;
-  padding: 14px 14px 14px 74px !important;
+  padding: 14px 14px 14px 12px !important;
   font-size: 14px !important;
   line-height: 1.42 !important;
 }
@@ -1346,8 +1346,10 @@ html.qiming-native-webview.qiming-native-keyboard-open
 html.qiming-native-webview.ua-mobile.qiming-native-keyboard-open
   .quick-chat-box
   .el-textarea__inner {
-  height: 62px !important;
-  min-height: 62px !important;
+  height: 132px !important;
+  min-height: 132px !important;
+  padding-left: 10px !important;
+  font-size: 16px !important;
 }
 
 html.qiming-native-webview.qiming-native-keyboard-open
@@ -1362,8 +1364,7 @@ html.qiming-native-webview.ua-mobile.qiming-native-keyboard-open
 html.qiming-native-webview.qiming-native-keyboard-open .ai-chat-welcome-human,
 html.qiming-native-webview.ua-mobile.qiming-native-keyboard-open
   .ai-chat-welcome-human {
-  min-height: 196px !important;
-  max-height: 228px !important;
+  display: none !important;
 }
 
 html.qiming-native-webview.qiming-native-keyboard-open
@@ -1372,7 +1373,7 @@ html.qiming-native-webview.qiming-native-keyboard-open
 html.qiming-native-webview.ua-mobile.qiming-native-keyboard-open
   .ai-chat-welcome-human
   .virtual-human-panel {
-  min-height: 142px !important;
+  display: none !important;
 }
 
 html.qiming-native-webview.qiming-native-keyboard-open .ai-chat-welcome-actions,
@@ -1390,6 +1391,31 @@ html.qiming-native-webview.ua-mobile .el-message-box {
   max-width: calc(100vw - 48px) !important;
   min-width: 0 !important;
   border-radius: 18px !important;
+  writing-mode: horizontal-tb !important;
+}
+
+html.qiming-native-webview .el-message-box__content,
+html.qiming-native-webview.ua-mobile .el-message-box__content {
+  padding: 10px 20px 14px !important;
+}
+
+html.qiming-native-webview .el-message-box__message,
+html.qiming-native-webview.ua-mobile .el-message-box__message {
+  display: block !important;
+  line-height: 1.55 !important;
+  text-align: left !important;
+  white-space: normal !important;
+  word-break: normal !important;
+  writing-mode: horizontal-tb !important;
+}
+
+html.qiming-native-webview .el-message-box__btns,
+html.qiming-native-webview.ua-mobile .el-message-box__btns {
+  display: flex !important;
+  flex-direction: row !important;
+  gap: 10px !important;
+  justify-content: flex-end !important;
+  padding: 8px 20px 18px !important;
 }
 
 html.qiming-native-webview .clear-chat-confirm-dialog .el-message-box__content,
@@ -1426,8 +1452,102 @@ html.qiming-native-webview .student-todo-dialog,
 html.qiming-native-webview.ua-mobile .student-todo-dialog {
   top: auto !important;
   width: min(500px, calc(100vw - 28px)) !important;
-  max-height: calc(var(--qiming-native-vh, 100dvh) - 28px) !important;
-  margin: 14px auto !important;
+  max-height: calc(var(--qiming-native-vh, 100dvh) - 48px) !important;
+  margin: calc(24px + var(--pure-safe-area-top, 0)) auto 14px !important;
+  overflow: hidden !important;
+  border-radius: 22px !important;
+}
+
+html.qiming-native-webview .student-todo-dialog .el-dialog__body,
+html.qiming-native-webview.ua-mobile .student-todo-dialog .el-dialog__body {
+  max-height: calc(var(--qiming-native-vh, 100dvh) - 170px) !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+html.qiming-native-webview .student-profile-dialog,
+html.qiming-native-webview.ua-mobile .student-profile-dialog,
+html.qiming-native-webview .id-card-dialog.premium-dialog,
+html.qiming-native-webview.ua-mobile .id-card-dialog.premium-dialog {
+  width: calc(100vw - 24px) !important;
+  max-width: calc(100vw - 24px) !important;
+  max-height: calc(var(--qiming-native-vh, 100dvh) - 36px) !important;
+  margin: calc(18px + var(--pure-safe-area-top, 0)) auto 12px !important;
+  overflow: hidden !important;
+  border-radius: 24px !important;
+}
+
+html.qiming-native-webview .student-profile-dialog .el-dialog__body,
+html.qiming-native-webview.ua-mobile .student-profile-dialog .el-dialog__body,
+html.qiming-native-webview .id-card-dialog.premium-dialog .el-dialog__body,
+html.qiming-native-webview.ua-mobile
+  .id-card-dialog.premium-dialog
+  .el-dialog__body {
+  max-width: 100% !important;
+  max-height: calc(var(--qiming-native-vh, 100dvh) - 132px) !important;
+  padding: 16px !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+html.qiming-native-webview .id-card-dialog .profile-layout-container,
+html.qiming-native-webview.ua-mobile .id-card-dialog .profile-layout-container,
+html.qiming-native-webview .id-card-dialog .id-card-main,
+html.qiming-native-webview.ua-mobile .id-card-dialog .id-card-main {
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  height: auto !important;
+  max-width: 100% !important;
+  overflow: visible !important;
+}
+
+html.qiming-native-webview .id-card-dialog .id-card-form,
+html.qiming-native-webview.ua-mobile .id-card-dialog .id-card-form,
+html.qiming-native-webview .id-card-dialog .student-form-area,
+html.qiming-native-webview.ua-mobile .id-card-dialog .student-form-area {
+  display: block !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow: visible !important;
+  transform: none !important;
+}
+
+html.qiming-native-webview .id-card-dialog .el-form-item,
+html.qiming-native-webview.ua-mobile .id-card-dialog .el-form-item {
+  display: block !important;
+  margin-bottom: 16px !important;
+}
+
+html.qiming-native-webview .id-card-dialog .el-form-item__label,
+html.qiming-native-webview.ua-mobile .id-card-dialog .el-form-item__label {
+  justify-content: flex-start !important;
+  width: auto !important;
+  max-width: 100% !important;
+  height: auto !important;
+  margin-bottom: 8px !important;
+  line-height: 1.35 !important;
+  text-align: left !important;
+}
+
+html.qiming-native-webview .id-card-dialog .el-form-item__content,
+html.qiming-native-webview.ua-mobile .id-card-dialog .el-form-item__content {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin-left: 0 !important;
+}
+
+html.qiming-native-webview .id-card-dialog .el-input,
+html.qiming-native-webview .id-card-dialog .el-textarea,
+html.qiming-native-webview .id-card-dialog .el-select,
+html.qiming-native-webview.ua-mobile .id-card-dialog .el-input,
+html.qiming-native-webview.ua-mobile .id-card-dialog .el-textarea,
+html.qiming-native-webview.ua-mobile .id-card-dialog .el-select {
+  width: 100% !important;
+  max-width: 100% !important;
 }
 
 @media (max-width: 768px) {

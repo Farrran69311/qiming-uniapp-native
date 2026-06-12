@@ -310,9 +310,13 @@ const handleDialogClose = () => {
     .header-left {
       h2 {
         margin: 0 0 8px;
+        overflow: visible;
         font-size: 24px;
         font-weight: 700;
+        line-height: 1.25;
         color: #1a2a4a;
+        white-space: normal;
+        word-break: keep-all;
       }
 
       p {
@@ -556,8 +560,8 @@ const handleDialogClose = () => {
       .header-left {
         h2 {
           margin-bottom: 8px;
-          font-size: 21px;
-          line-height: 1.2;
+          font-size: clamp(20px, 5.6vw, 24px);
+          line-height: 1.28;
         }
 
         p {

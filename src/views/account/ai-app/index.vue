@@ -1,5 +1,5 @@
 ﻿<script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted, watch } from "vue";
+import { computed, ref, onMounted, onUnmounted, watch, nextTick } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { storageLocal } from "@pureadmin/utils";
 import { ElMessage } from "element-plus";
@@ -612,6 +612,16 @@ const handleSendMessage = (text: string) => {
   );
 };
 
+const sendQuickMessageWithResolvedContext = (text: string, course?: CourseView | null) => {
+  const trimmed = text.trim();
+  if (!trimmed) return;
+  if (course) activeCourse.value = course;
+  activeRail.value = "chat";
+  nextTick(() => {
+    handleSendMessage(trimmed);
+  });
+};
+
 // === 栈操作预览弹窗 ===
 const stackPreviewVisible = ref(false);
 const stackItems = ref<{ key: number; value: string }[]>([
@@ -854,8 +864,9 @@ const resolveQuickCourseName = () =>
   "";
 
 const submitQuickMessage = () => {
+  const pendingMessage = quickMessage.value.trim();
   const courseName = resolveQuickCourseName();
-  if (!quickMessage.value.trim()) return;
+  if (!pendingMessage) return;
   if (!courseName) {
     ElMessage.warning("请先选择课程");
     return;
@@ -910,13 +921,8 @@ const handleNewChat = async (payload: { course: string }) => {
 
   const pendingMessage = quickMessage.value.trim();
   if (pendingMessage) {
-    // 切换到聊天栏目，确保数字人状态与课程上下文同步。
-    activeRail.value = "chat";
-    // 微延时等待课程上下文切换完成。
-    setTimeout(() => {
-      handleSendMessage(pendingMessage);
-      quickMessage.value = "";
-    }, 100);
+    quickMessage.value = "";
+    sendQuickMessageWithResolvedContext(pendingMessage, course || activeCourse.value);
   }
 };
 
@@ -2282,17 +2288,17 @@ onUnmounted(() => {
 }
 
 :global(html.qiming-native-keyboard-open .quick-chat-box .el-textarea__inner) {
-  height: 84px !important;
-  min-height: 84px !important;
+  height: 128px !important;
+  min-height: 128px !important;
+  padding: 12px 12px 12px 10px !important;
+  font-size: 16px !important;
 }
 
 :global(html.qiming-native-keyboard-open .ai-chat-welcome-human) {
-  flex: 0 0 auto !important;
-  max-height: 228px !important;
-  min-height: 196px !important;
+  display: none !important;
 }
 
 :global(html.qiming-native-keyboard-open .ai-chat-welcome-human .virtual-human-panel) {
-  min-height: 142px !important;
+  display: none !important;
 }
 </style>

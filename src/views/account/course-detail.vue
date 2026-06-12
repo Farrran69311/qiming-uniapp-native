@@ -375,11 +375,16 @@ const MOBILE_BREAKPOINT = 767;
 const courseRootEl = ref<HTMLElement | null>(null);
 let mobileOffsetRafId: number | null = null;
 
+const isNativeCourseWebView = () =>
+  typeof document !== "undefined" &&
+  document.documentElement.classList.contains("qiming-native-webview");
+
 const updateMobileTopOffset = () => {
   const root = courseRootEl.value;
   if (!root) return;
 
-  if (window.innerWidth > MOBILE_BREAKPOINT) {
+  const isNative = isNativeCourseWebView();
+  if (!isNative && window.innerWidth > MOBILE_BREAKPOINT) {
     root.style.removeProperty("--course-mobile-top-offset");
     return;
   }
@@ -392,14 +397,14 @@ const updateMobileTopOffset = () => {
   ) as HTMLElement | null;
   const headerBottom = headerEl?.getBoundingClientRect().bottom ?? 0;
   const sidebarBottom = sidebarEl?.getBoundingClientRect().bottom ?? 0;
-  const safeGap = 16;
+  const safeGap = isNative ? 30 : 16;
   const measuredOffset = Math.ceil(
     Math.max(headerBottom, sidebarBottom) + safeGap
   );
 
   root.style.setProperty(
     "--course-mobile-top-offset",
-    `${Math.max(measuredOffset, 176)}px`
+    `${Math.max(measuredOffset, isNative ? 224 : 176)}px`
   );
 };
 

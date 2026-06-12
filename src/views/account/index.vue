@@ -455,7 +455,11 @@
                 我的课程
               </h3>
               <div class="course-filter">
-                <el-select v-model="courseFilter" placeholder="课程状态">
+                <el-select
+                  v-model="courseFilter"
+                  placeholder="课程状态"
+                  :teleported="false"
+                >
                   <el-option label="全部" value="all" />
                   <el-option label="进行中" value="ongoing" />
                   <el-option label="已完成" value="completed" />

@@ -307,6 +307,25 @@ const openNativeExternalUrl = (url?: string) => {
   }
 };
 
+const isNativeWebView = () =>
+  document.documentElement.classList.contains("qiming-native-webview");
+
+const copyDownloadUrl = (url: string) => {
+  const writePromise = navigator.clipboard?.writeText?.(url);
+  if (!writePromise) {
+    ElMessage.info("当前 App 暂不支持直接下载，请稍后在浏览器打开");
+    return;
+  }
+
+  writePromise
+    .then(() => {
+      ElMessage.success("下载链接已复制，请在浏览器中打开");
+    })
+    .catch(() => {
+      ElMessage.info("当前 App 暂不支持直接下载，请稍后在浏览器打开");
+    });
+};
+
 // 模拟下载
 const handleDownload = (file: CloudFile) => {
   if (file.type === "folder") {
@@ -319,6 +338,10 @@ const handleDownload = (file: CloudFile) => {
   }
   ElMessage.success(`开始下载文件: ${file.name}`);
   if (openNativeExternalUrl(file.url)) return;
+  if (isNativeWebView()) {
+    copyDownloadUrl(file.url);
+    return;
+  }
   window.open(file.url, "_blank", "noopener,noreferrer");
 };
 

@@ -95,18 +95,13 @@ export function useScreenCapture() {
     };
 
     const getViewportMetrics = () => {
-      const visualViewport = window.visualViewport;
       return {
         width:
-          visualViewport?.width ||
           document.documentElement.clientWidth ||
           window.innerWidth,
         height:
-          visualViewport?.height ||
           document.documentElement.clientHeight ||
-          window.innerHeight,
-        offsetLeft: visualViewport?.offsetLeft || 0,
-        offsetTop: visualViewport?.offsetTop || 0
+          window.innerHeight
       };
     };
 
@@ -124,14 +119,8 @@ export function useScreenCapture() {
       const viewport = getViewportMetrics();
       const scaleX = fullWidth / Math.max(1, viewport.width);
       const scaleY = fullHeight / Math.max(1, viewport.height);
-      const cropX = Math.max(
-        0,
-        Math.round((area.x + viewport.offsetLeft) * scaleX)
-      );
-      const cropY = Math.max(
-        0,
-        Math.round((area.y + viewport.offsetTop) * scaleY)
-      );
+      const cropX = Math.max(0, Math.round(area.x * scaleX));
+      const cropY = Math.max(0, Math.round(area.y * scaleY));
       const cropWidth = Math.max(1, Math.round(area.width * scaleX));
       const cropHeight = Math.max(1, Math.round(area.height * scaleY));
       const safeWidth = Math.max(1, Math.min(cropWidth, fullWidth - cropX));
