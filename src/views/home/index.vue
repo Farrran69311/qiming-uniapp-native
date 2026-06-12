@@ -2,8 +2,6 @@
   <div
     class="nx"
     :class="{ 'is-dragging-scroll': isHomeDragging }"
-    @pointerdown="handleHomePointerDown"
-    @click.capture="handleHomeDragClickCapture"
   >
     <!-- ============== NAV ============== -->
     <header class="nx-nav" :class="{ 'is-scrolled': isScrolled }">
@@ -772,14 +770,25 @@ const activeShowcaseIndex = ref(0);
 const isHomeDragging = ref(false);
 let showcaseTimer: number | undefined;
 const rawIcon = (icon: any) => markRaw(icon);
-const homeDragState = {
+type HomeDragScrollTarget = HTMLElement | Window;
+const homeDragState: {
+  active: boolean;
+  moved: boolean;
+  suppressClick: boolean;
+  startX: number;
+  startY: number;
+  lastX: number;
+  lastY: number;
+  scrollTarget: HomeDragScrollTarget | null;
+} = {
   active: false,
   moved: false,
   suppressClick: false,
   startX: 0,
   startY: 0,
   lastX: 0,
-  lastY: 0
+  lastY: 0,
+  scrollTarget: null
 };
 
 const nativeDemoRoles = ["student", "teacher", "admin"] as const;
@@ -1527,8 +1536,13 @@ const testimonials = [
 ];
 
 /* ---------- Handlers ---------- */
+const getHomeAppScrollRoot = () =>
+  typeof document === "undefined"
+    ? null
+    : (document.getElementById("app") as HTMLElement | null);
 const handleScroll = () => {
-  isScrolled.value = window.scrollY > 20;
+  isScrolled.value =
+    window.scrollY > 20 || (getHomeAppScrollRoot()?.scrollTop ?? 0) > 20;
 };
 const setShowcase = (index: number) => {
   activeShowcaseIndex.value = index;
@@ -1576,10 +1590,55 @@ const isInteractiveDragTarget = (target: EventTarget | null) => {
     )
   );
 };
+const canElementDragScroll = (element: HTMLElement, axis: "x" | "y") => {
+  const style = window.getComputedStyle(element);
+  const overflow = axis === "x" ? style.overflowX : style.overflowY;
+  const hasRoom =
+    axis === "x"
+      ? element.scrollWidth > element.clientWidth + 1
+      : element.scrollHeight > element.clientHeight + 1;
+  return hasRoom && /(auto|scroll|overlay)/.test(overflow);
+};
+const resolveHomeDragScrollTarget = (
+  target: EventTarget | null
+): HomeDragScrollTarget => {
+  let element = target instanceof Element ? target : null;
+  while (element && element !== document.body) {
+    if (
+      element instanceof HTMLElement &&
+      (canElementDragScroll(element, "x") || canElementDragScroll(element, "y"))
+    ) {
+      return element;
+    }
+    element = element.parentElement;
+  }
+
+  const appRoot = getHomeAppScrollRoot();
+  if (
+    appRoot &&
+    (canElementDragScroll(appRoot, "x") || canElementDragScroll(appRoot, "y"))
+  ) {
+    return appRoot;
+  }
+
+  return window;
+};
+const scrollHomeDragTarget = (
+  target: HomeDragScrollTarget | null,
+  left: number,
+  top: number
+) => {
+  if (target instanceof HTMLElement) {
+    target.scrollLeft += left;
+    target.scrollTop += top;
+  } else {
+    window.scrollBy({ left, top, behavior: "auto" });
+  }
+};
 const cleanupHomeDragListeners = () => {
-  window.removeEventListener("pointermove", handleHomePointerMove);
-  window.removeEventListener("pointerup", handleHomePointerUp);
-  window.removeEventListener("pointercancel", handleHomePointerUp);
+  window.removeEventListener("pointermove", handleHomePointerMove, true);
+  window.removeEventListener("pointerup", handleHomePointerUp, true);
+  window.removeEventListener("pointercancel", handleHomePointerUp, true);
 };
 const handleHomePointerDown = (event: PointerEvent) => {
   if (event.pointerType !== "mouse" || event.button !== 0) return;
@@ -1591,12 +1650,14 @@ const handleHomePointerDown = (event: PointerEvent) => {
   homeDragState.startY = event.clientY;
   homeDragState.lastX = event.clientX;
   homeDragState.lastY = event.clientY;
+  homeDragState.scrollTarget = resolveHomeDragScrollTarget(event.target);
   cleanupHomeDragListeners();
   window.addEventListener("pointermove", handleHomePointerMove, {
+    capture: true,
     passive: false
   });
-  window.addEventListener("pointerup", handleHomePointerUp);
-  window.addEventListener("pointercancel", handleHomePointerUp);
+  window.addEventListener("pointerup", handleHomePointerUp, true);
+  window.addEventListener("pointercancel", handleHomePointerUp, true);
 };
 const handleHomePointerMove = (event: PointerEvent) => {
   if (!homeDragState.active) return;
@@ -1613,11 +1674,7 @@ const handleHomePointerMove = (event: PointerEvent) => {
 
   const deltaX = event.clientX - homeDragState.lastX;
   const deltaY = event.clientY - homeDragState.lastY;
-  window.scrollBy({
-    left: -deltaX,
-    top: -deltaY,
-    behavior: "auto"
-  });
+  scrollHomeDragTarget(homeDragState.scrollTarget, -deltaX, -deltaY);
   homeDragState.lastX = event.clientX;
   homeDragState.lastY = event.clientY;
 };
@@ -1630,6 +1687,7 @@ const handleHomePointerUp = () => {
   }
   homeDragState.active = false;
   homeDragState.moved = false;
+  homeDragState.scrollTarget = null;
   isHomeDragging.value = false;
   cleanupHomeDragListeners();
 };
@@ -1706,6 +1764,8 @@ onMounted(() => {
   if (redirectNativeDemoHomeEntry()) return;
 
   window.addEventListener("scroll", handleScroll);
+  document.addEventListener("pointerdown", handleHomePointerDown, true);
+  document.addEventListener("click", handleHomeDragClickCapture, true);
   startShowcaseTimer();
 
   // GSAP: Bento Cards Reveal
@@ -1747,6 +1807,8 @@ onMounted(() => {
 });
 onUnmounted(() => {
   window.removeEventListener("scroll", handleScroll);
+  document.removeEventListener("pointerdown", handleHomePointerDown, true);
+  document.removeEventListener("click", handleHomeDragClickCapture, true);
   cleanupHomeDragListeners();
   if (showcaseTimer) window.clearInterval(showcaseTimer);
 });
