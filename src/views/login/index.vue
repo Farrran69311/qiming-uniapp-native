@@ -129,6 +129,72 @@ const statistics = [
 ];
 
 // 获取用户详细信息（包括头像）
+const roleTypeToRoles = (roleType: number): string[] => {
+  if (roleType === 3) return ["admin"];
+  if (roleType === 2) return ["teacher"];
+  if (roleType === 1) return ["student"];
+  return ["common"];
+};
+
+const readNativeQuery = () => {
+  const output: Record<string, string> = {};
+  if (typeof window === "undefined") return output;
+
+  const searchParams = new URLSearchParams(window.location.search);
+  const hashQuery = window.location.hash.includes("?")
+    ? window.location.hash.slice(window.location.hash.indexOf("?") + 1)
+    : "";
+  const hashParams = new URLSearchParams(hashQuery);
+  const qimingNative =
+    searchParams.get("qimingNative") ||
+    hashParams.get("qimingNative") ||
+    localStorage.getItem("qimingNativeWebView");
+  const nativeStatusTop =
+    searchParams.get("nativeStatusTop") ||
+    hashParams.get("nativeStatusTop") ||
+    localStorage.getItem("qimingNativeStatusTop") ||
+    "";
+
+  if (qimingNative === "1") output.qimingNative = "1";
+  if (nativeStatusTop) output.nativeStatusTop = nativeStatusTop;
+  return output;
+};
+
+const isNativeLoginRuntime = () => {
+  if (typeof window === "undefined") return false;
+  return (
+    readNativeQuery().qimingNative === "1" ||
+    document.documentElement.classList.contains("qiming-native-webview")
+  );
+};
+
+const resolvePostLoginTarget = (roleType: number) => {
+  if (!isNativeLoginRuntime()) return getTopMenu(true).path;
+
+  const query = readNativeQuery();
+  if (roleType === 2 || roleType === 3) {
+    return {
+      path: "/welcome/index",
+      query
+    };
+  }
+
+  return {
+    path: "/account",
+    query: {
+      ...query,
+      menu: "home"
+    }
+  };
+};
+
+const getResolvedRoleType = () => {
+  const token = getToken();
+  const storedRoleType = Number(localStorage.getItem("userRoleType") || 0);
+  const roleType = Number((token as any)?.roleType || storedRoleType || 0);
+  return [1, 2, 3].includes(roleType) ? roleType : 0;
+};
+
 const fetchUserDetail = async () => {
   try {
     const res = await getUserDetail();
@@ -141,14 +207,7 @@ const fetchUserDetail = async () => {
 
       // 根据 roleType 设置正确的角色
       // roleType: 1=学生, 2=教师, 3=管理员
-      let roles: string[] = [];
-      if (userInfo.roleType === 3) {
-        roles = ["admin"];
-      } else if (userInfo.roleType === 2) {
-        roles = ["teacher"];
-      } else {
-        roles = ["common"];
-      }
+      const roles = roleTypeToRoles(Number(userInfo.roleType));
 
       setToken({
         accessToken: getToken()?.accessToken || "",
@@ -170,9 +229,24 @@ const fetchUserDetail = async () => {
       localStorage.setItem("userInfo", userInfo.info || "");
       localStorage.setItem("userRoleType", userInfo.roleType.toString());
     }
+    return res;
   } catch (error) {
     console.error("获取用户详细信息出错:", error);
+    return null;
   }
+};
+
+const ensureLoginRoleType = async () => {
+  let roleType = getResolvedRoleType();
+  if ([1, 2, 3].includes(roleType)) return roleType;
+
+  const detail = await fetchUserDetail();
+  roleType = Number(detail?.data?.userInfo?.roleType || getResolvedRoleType());
+  if ([1, 2, 3].includes(roleType)) return roleType;
+
+  console.warn("[Login] missing roleType after login", { detail });
+  message("未获取到账号角色，请重新登录", { type: "error" });
+  return 0;
 };
 
 const onLogin = async (formEl: FormInstance | undefined) => {
@@ -187,17 +261,26 @@ const onLogin = async (formEl: FormInstance | undefined) => {
         })
         .then(async res => {
           if (res.success) {
+            localStorage.removeItem("qiming-demo-role");
+            sessionStorage.removeItem("qiming-demo-role");
             // 获取用户详细信息（包括头像）
             await fetchUserDetail();
             // 获取后端路由
             return initRouter().then(() => {
               disabled.value = true;
-              router
-                .push(getTopMenu(true).path)
-                .then(() => {
-                  message(t("login.pureLoginSuccess"), { type: "success" });
-                })
-                .finally(() => (disabled.value = false));
+              return ensureLoginRoleType().then(roleType => {
+                if (!roleType) {
+                  disabled.value = false;
+                  return;
+                }
+
+                return router
+                  .push(resolvePostLoginTarget(roleType))
+                  .then(() => {
+                    message(t("login.pureLoginSuccess"), { type: "success" });
+                  })
+                  .finally(() => (disabled.value = false));
+              });
             });
           } else {
             message(t("login.pureLoginFail"), { type: "error" });

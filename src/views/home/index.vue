@@ -1646,8 +1646,18 @@ const handleEntry = () => {
   if (isLogged) {
     const roleType =
       info?.roleType ?? (token as any)?.roleType ?? userInfo.value?.roleType;
-    if (roleType === 2 || roleType === 3) router.push("/welcome/index");
-    else router.push("/account");
+    const nativeQuery = buildNativeRuntimeQuery();
+    if (roleType === 2 || roleType === 3) {
+      router.push({
+        path: "/welcome/index",
+        query: nativeQuery
+      });
+    } else {
+      router.push({
+        path: "/account",
+        query: { ...nativeQuery, menu: "home" }
+      });
+    }
   } else {
     showLoginDialog.value = true;
   }
