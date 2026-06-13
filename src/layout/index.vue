@@ -254,7 +254,10 @@ const LayHeader = defineComponent({
     }
 
     .mobile-main-container {
-      padding-bottom: var(--pure-mobile-tab-height); // 预留底部导航高度
+      padding-bottom: var(
+        --pure-mobile-content-bottom-gap,
+        var(--pure-mobile-tab-height)
+      ); // 预留底部导航高度
     }
   }
 

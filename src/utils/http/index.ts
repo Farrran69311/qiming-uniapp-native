@@ -14,12 +14,57 @@ import NProgress from "../progress";
 import { getToken, formatToken } from "@/utils/auth";
 import { useUserStoreHook } from "@/store/modules/user";
 
+export const nativeApiBaseURL = "https://aiedu-api.intelledu.cn";
+
+export function isNativeWebViewRuntime() {
+  if (typeof window === "undefined") return false;
+
+  const queryText = `${window.location.search}&${window.location.hash}`;
+  return (
+    queryText.includes("qimingNative=1") ||
+    localStorage.getItem("qimingNativeWebView") === "1" ||
+    sessionStorage.getItem("qimingNativeWebView") === "1" ||
+    document.documentElement.classList.contains("qiming-native-webview")
+  );
+}
+
+export function resolveApiBaseURL(
+  baseURL = import.meta.env.VITE_API_URL || "/api"
+) {
+  if (isNativeWebViewRuntime() && (!baseURL || baseURL.startsWith("/"))) {
+    return nativeApiBaseURL;
+  }
+  return baseURL;
+}
+
+export function resolveApiURL(
+  path: string,
+  params?: Record<string, unknown>,
+  baseURL = import.meta.env.VITE_API_URL || "/api"
+) {
+  if (/^https?:\/\//i.test(path) || path.startsWith("//")) {
+    return path;
+  }
+
+  const base = resolveApiBaseURL(baseURL).replace(/\/$/, "");
+  const query = new URLSearchParams();
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === "") return;
+    query.append(key, String(value));
+  });
+  const queryString = query.toString();
+
+  return `${base}${path.startsWith("/") ? path : `/${path}`}${
+    queryString ? `?${queryString}` : ""
+  }`;
+}
+
 // 相关配置请参考：www.axios-js.com/zh-cn/docs/#axios-request-config-1
 const defaultConfig: AxiosRequestConfig = {
   // 请求超时时间，上传大文件时设置为0表示不超时
   timeout: 0,
   // 设置基础URL（从环境变量读取，开发环境使用代理前缀，生产环境使用完整后端地址）
-  baseURL: import.meta.env.VITE_API_URL || "/api",
+  baseURL: resolveApiBaseURL(),
   headers: {
     Accept: "application/json, text/plain, */*",
     "Content-Type": "application/json",
@@ -32,7 +77,7 @@ const defaultConfig: AxiosRequestConfig = {
 };
 
 const isNativeDemoPreview = () => {
-  if (!import.meta.env.DEV || typeof window === "undefined") return false;
+  if (typeof window === "undefined") return false;
 
   const queryText = `${window.location.search}&${window.location.hash}`;
   const hasNativeFlag =
@@ -79,13 +124,12 @@ class PureHttp {
         // 开启进度条动画
         NProgress.start();
         // 优先判断post/get等方法是否传入回调，否则执行初始化设置等回调
+        config.baseURL = resolveApiBaseURL(config.baseURL as string);
         if (typeof config.beforeRequestCallback === "function") {
           config.beforeRequestCallback(config);
-          return config;
         }
         if (PureHttp.initConfig.beforeRequestCallback) {
           PureHttp.initConfig.beforeRequestCallback(config);
-          return config;
         }
         /** 请求白名单，放置一些不需要`token`的接口（通过设置请求白名单，防止`token`过期后再请求造成的死循环问题） */
         const whiteList = ["/refresh-token", "/login"];

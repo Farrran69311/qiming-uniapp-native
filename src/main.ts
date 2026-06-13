@@ -127,6 +127,21 @@ function applyNativeWebViewRuntime() {
       root.style.setProperty("--qiming-native-vw", `${viewportWidth}px`);
     }
 
+    const cssSafeBottom = getComputedStyle(root)
+      .getPropertyValue("--qiming-native-safe-bottom")
+      .trim();
+    if (cssSafeBottom) {
+      root.style.setProperty("--pure-safe-area-bottom", cssSafeBottom);
+      root.style.setProperty(
+        "--pure-mobile-tab-height",
+        `calc(62px + ${cssSafeBottom})`
+      );
+      root.style.setProperty(
+        "--pure-mobile-content-bottom-gap",
+        `calc(62px + ${cssSafeBottom} + 72px)`
+      );
+    }
+
     const activeEditable = isEditableElement(document.activeElement);
     const screenHeight =
       window.screen?.height > 240 && window.screen.height < 1200

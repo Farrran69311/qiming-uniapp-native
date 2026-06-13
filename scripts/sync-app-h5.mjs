@@ -338,9 +338,11 @@ const bridgeScript = `
     });
   }
   document.documentElement.style.setProperty('--qiming-native-safe-bottom', nativeBottom);
+  document.documentElement.style.setProperty('--pure-safe-area-bottom', nativeBottom);
   document.documentElement.style.setProperty('--qiming-native-safe-top', nativeTop);
+  document.documentElement.style.setProperty('--pure-safe-area-top', nativeTop);
   document.documentElement.style.setProperty('--qiming-native-status-top', nativeTop);
-  document.documentElement.style.setProperty('--qiming-native-bottom-clearance', 'calc(88px + env(safe-area-inset-bottom, 0px))');
+  document.documentElement.style.setProperty('--qiming-native-bottom-clearance', 'calc(96px + env(safe-area-inset-bottom, 0px))');
   var script = document.createElement('script');
   script.src = bridgeUrl;
   script.onload = function () {
@@ -359,8 +361,16 @@ const bridgeScript = `
   if (isIosApp) {
     document.documentElement.classList.add('qiming-native-ios');
     document.documentElement.style.setProperty('--qiming-native-keyboard-offset', '0px');
-    document.body.style.webkitOverflowScrolling = 'touch';
-    document.body.style.overscrollBehaviorY = 'none';
+    var applyIosBodyScrollTuning = function () {
+      if (!document.body) return;
+      document.body.style.webkitOverflowScrolling = 'touch';
+      document.body.style.overscrollBehaviorY = 'none';
+    };
+    if (document.body) {
+      applyIosBodyScrollTuning();
+    } else {
+      document.addEventListener('DOMContentLoaded', applyIosBodyScrollTuning, { once: true });
+    }
   } else if (isAndroidApp) {
     document.documentElement.classList.add('qiming-native-android');
   }

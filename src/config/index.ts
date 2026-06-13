@@ -4,6 +4,20 @@ import type { App } from "vue";
 let config: object = {};
 const { VITE_PUBLIC_PATH } = import.meta.env;
 
+const publicPath = (() => {
+  if (typeof VITE_PUBLIC_PATH === "string" && VITE_PUBLIC_PATH) {
+    return VITE_PUBLIC_PATH;
+  }
+  if (typeof window !== "undefined") {
+    const isNativeWebView =
+      window.location.protocol === "qiming-app:" ||
+      window.location.hash.includes("qimingNative=1") ||
+      document.documentElement.classList.contains("qiming-native-webview");
+    return isNativeWebView ? "./" : "/";
+  }
+  return "/";
+})();
+
 const setConfig = (cfg?: unknown) => {
   config = Object.assign(config, cfg);
 };
@@ -31,7 +45,7 @@ export const getPlatformConfig = async (app: App): Promise<undefined> => {
   app.config.globalProperties.$config = getConfig();
   return axios({
     method: "get",
-    url: `${VITE_PUBLIC_PATH}platform-config.json`
+    url: `${publicPath}platform-config.json`
   })
     .then(({ data: config }) => {
       let $config = app.config.globalProperties.$config;

@@ -52,8 +52,8 @@ const wrapperEnv = (envConf: Recordable): ViteEnv => {
   // 默认值
   const ret: ViteEnv = {
     VITE_PORT: 8848,
-    VITE_PUBLIC_PATH: "",
-    VITE_ROUTER_HISTORY: "",
+    VITE_PUBLIC_PATH: "/",
+    VITE_ROUTER_HISTORY: "hash",
     VITE_CDN: false,
     VITE_HIDE_HOME: "false",
     VITE_ENABLE_TENANT: "true",
@@ -76,6 +76,11 @@ const wrapperEnv = (envConf: Recordable): ViteEnv => {
     } else if (typeof realName === "object") {
       process.env[envName] = JSON.stringify(realName);
     }
+  }
+  for (const [envName, value] of Object.entries(ret)) {
+    if (process.env[envName] !== undefined) continue;
+    process.env[envName] =
+      typeof value === "string" ? value : JSON.stringify(value);
   }
   return ret;
 };

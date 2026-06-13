@@ -1,4 +1,4 @@
-import { http } from "@/utils/http";
+import { http, resolveApiURL } from "@/utils/http";
 import type { ApiResponse } from "./types";
 
 export interface CourseListResult {
@@ -108,21 +108,6 @@ export interface CourseGradesClassComparisonResult {
   classAverages: number[];
 }
 
-const apiUrl = (path: string, params?: Record<string, unknown>) => {
-  const base = (import.meta.env.VITE_API_URL || "/api").replace(/\/$/, "");
-  const query = new URLSearchParams();
-
-  Object.entries(params || {}).forEach(([key, value]) => {
-    if (value === undefined || value === null || value === "") return;
-    query.append(key, String(value));
-  });
-
-  const queryString = query.toString();
-  return `${base}${path.startsWith("/") ? path : `/${path}`}${
-    queryString ? `?${queryString}` : ""
-  }`;
-};
-
 async function requestWithNativeFetchFallback<T>(
   path: string,
   params: Record<string, unknown> | undefined,
@@ -146,7 +131,7 @@ async function requestWithNativeFetchFallback<T>(
     const token = tokenInfo.accessToken || tokenInfo.refreshToken;
     if (!token) throw error;
 
-    const url = apiUrl(path, params);
+    const url = resolveApiURL(path, params);
     let lastFetchError: unknown = error;
 
     for (let attempt = 0; attempt < 3; attempt += 1) {

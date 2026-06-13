@@ -1,4 +1,4 @@
-import { http } from "@/utils/http";
+import { http, isNativeWebViewRuntime } from "@/utils/http";
 
 type Result = {
   success: boolean;
@@ -6,7 +6,7 @@ type Result = {
 };
 
 export const getAsyncRoutes = () => {
-  if (import.meta.env.VITE_MOCK_SCOPE !== "all") {
+  if (isNativeWebViewRuntime() || import.meta.env.VITE_MOCK_SCOPE !== "all") {
     return Promise.resolve({
       success: true,
       data: []

@@ -1,4 +1,4 @@
-import { http } from "@/utils/http";
+import { http, resolveApiURL } from "@/utils/http";
 
 // 接口返回数据类型定义
 interface TeacherUsageResult {
@@ -116,11 +116,6 @@ interface ApiResponse<T = any> {
   list?: any[];
 }
 
-const apiUrl = (path: string) => {
-  const base = (import.meta.env.VITE_API_URL || "/api").replace(/\/$/, "");
-  return `${base}${path.startsWith("/") ? path : `/${path}`}`;
-};
-
 async function requestWithNativeFetchFallback<T>(
   path: string,
   request: () => Promise<ApiResponse<T>>
@@ -142,7 +137,7 @@ async function requestWithNativeFetchFallback<T>(
 
     if (!isNativePreview || !token) throw error;
 
-    const response = await fetch(apiUrl(path), {
+    const response = await fetch(resolveApiURL(path), {
       headers: {
         Accept: "application/json",
         Authorization: `Bearer ${token}`

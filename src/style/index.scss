@@ -70,9 +70,12 @@ html.qiming-native-webview {
   --pure-safe-area-top: env(safe-area-inset-top, 0px);
   --qiming-native-vh: 100dvh;
   --qiming-native-vw: 100vw;
-  --pure-mobile-tab-height: calc(58px + var(--pure-safe-area-bottom));
-  --pure-mobile-content-bottom-gap: calc(var(--pure-mobile-tab-height) + 96px);
+  --pure-mobile-tab-height: calc(62px + var(--pure-safe-area-bottom));
+  --pure-mobile-content-bottom-gap: calc(var(--pure-mobile-tab-height) + 72px);
   --pure-main-content-margin: 10px 10px 0;
+  --qiming-native-dock-bg: #fff;
+  --qiming-native-dock-border: rgb(226 232 240 / 96%);
+  --qiming-native-dock-shadow: 0 -12px 28px rgb(15 23 42 / 10%);
 }
 
 html.qiming-native-webview,
@@ -102,7 +105,7 @@ html.qiming-native-webview.dark {
   --qiming-native-navbar-text: #eaf2ff;
   --qiming-native-control-bg: rgb(15 23 42 / 86%);
   --qiming-native-control-border: rgb(148 163 184 / 22%);
-  --qiming-native-dock-bg: rgb(7 12 24 / 94%);
+  --qiming-native-dock-bg: #07101f;
   --qiming-native-dock-border: rgb(148 163 184 / 20%);
   --qiming-native-dock-shadow: 0 -12px 30px rgb(0 0 0 / 36%);
 }
@@ -523,8 +526,9 @@ html.qiming-native-webview .main-content {
 }
 
 html.qiming-native-webview .nav-mobile-container {
-  height: calc(58px + var(--pure-safe-area-bottom));
+  height: var(--pure-mobile-tab-height);
   padding-bottom: var(--pure-safe-area-bottom);
+  opacity: 1;
 }
 
 html.qiming-native-webview.ua-mobile
@@ -535,7 +539,7 @@ html.qiming-native-webview.ua-mobile
   .app-main
   > .el-scrollbar
   > .el-scrollbar__wrap {
-  padding-bottom: var(--pure-mobile-content-bottom-gap);
+  padding-bottom: var(--pure-mobile-content-bottom-gap) !important;
   scroll-padding-top: calc(86px + var(--pure-safe-area-top, 0));
   box-sizing: border-box;
   scrollbar-width: none;
@@ -559,7 +563,7 @@ html.qiming-native-webview.ua-mobile .app-main-nofixed-header {
 html.qiming-native-webview.ua-mobile .main-content {
   max-width: calc(100vw - 20px);
   box-sizing: border-box;
-  padding-bottom: calc(var(--pure-mobile-tab-height) + 42px);
+  padding-bottom: var(--pure-mobile-content-bottom-gap);
   padding-top: 8px;
   text-rendering: geometricprecision;
   -webkit-font-smoothing: antialiased;

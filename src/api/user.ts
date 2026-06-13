@@ -1,4 +1,4 @@
-import { http } from "@/utils/http";
+import { http, resolveApiURL } from "@/utils/http";
 import { storageLocal } from "@pureadmin/utils";
 import { getToken, userKey, type DataInfo } from "@/utils/auth";
 
@@ -203,11 +203,6 @@ type ResultTable = {
   };
 };
 
-const apiUrl = (path: string) => {
-  const base = (import.meta.env.VITE_API_URL || "/api").replace(/\/$/, "");
-  return `${base}${path.startsWith("/") ? path : `/${path}`}`;
-};
-
 const isNativeWebViewPreview = () => {
   return (
     typeof document !== "undefined" &&
@@ -275,7 +270,7 @@ async function requestUserDetailWithNativeFallback(
 }
 
 async function fetchNativeUserDetail(token: string) {
-  const url = apiUrl("/edu/v1/user/detail");
+  const url = resolveApiURL("/edu/v1/user/detail");
   const response = await fetch(url, {
     method: "POST",
     headers: {

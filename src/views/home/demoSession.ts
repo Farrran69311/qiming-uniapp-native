@@ -20,6 +20,7 @@ const ROLE_META: Record<
 };
 
 const PASSWORD = "123456";
+const nativeApiBaseURL = "https://aiedu-api.intelledu.cn";
 
 let currentRole: Role | null = null;
 let inflight: Promise<void> | null = null;
@@ -137,7 +138,12 @@ function writeDemoSession(
 }
 
 function apiUrl(path: string) {
-  const base = (import.meta.env.VITE_API_URL || "/api").replace(/\/$/, "");
+  const configuredBase = import.meta.env.VITE_API_URL || "/api";
+  const base = (
+    isNativePreviewRuntime() && configuredBase.startsWith("/")
+      ? nativeApiBaseURL
+      : configuredBase
+  ).replace(/\/$/, "");
   return `${base}${path.startsWith("/") ? path : `/${path}`}`;
 }
 

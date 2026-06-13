@@ -195,10 +195,12 @@ const handleJump = (item: MobileNavItem) => {
   width: 100%;
   height: var(--pure-mobile-tab-height);
   padding-bottom: var(--pure-safe-area-bottom);
-  background: var(--qiming-native-dock-bg, rgb(255 255 255 / 96%));
+  background: var(--qiming-native-dock-bg, rgb(255 255 255 / 98%));
   border-top: 1px solid var(--qiming-native-dock-border, rgb(226 232 240 / 90%));
   box-shadow: var(--qiming-native-dock-shadow, 0 -8px 24px rgb(15 23 42 / 6%));
   backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  opacity: 1;
 }
 
 .nav-mobile-item {
@@ -245,7 +247,7 @@ const handleJump = (item: MobileNavItem) => {
 
 @media screen and (max-width: 768px) {
   .nav-mobile-container {
-    height: calc(var(--pure-mobile-tab-height) + 4px);
+    height: var(--pure-mobile-tab-height);
   }
 
   .nav-mobile-item {
@@ -263,10 +265,15 @@ const handleJump = (item: MobileNavItem) => {
 </style>
 <style lang="scss">
 html.qiming-native-webview.ua-mobile .nav-mobile-container {
+  height: var(--pure-mobile-tab-height);
+  padding-bottom: var(--pure-safe-area-bottom);
   background: var(--qiming-native-dock-bg);
   border-top-color: var(--qiming-native-dock-border);
   box-shadow: var(--qiming-native-dock-shadow);
   backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  opacity: 1;
+  isolation: isolate;
 }
 
 html.qiming-native-webview.ua-mobile.dark .nav-mobile-item {
