@@ -22,6 +22,7 @@
     "native:run:android": "node scripts/native-tooling.mjs run --platform android",
     "native:run:ios": "node scripts/native-tooling.mjs run --platform ios",
     "native:smoke": "node scripts/native-smoke-routes.mjs",
+    "native:smoke:interactions": "node scripts/native-smoke-routes.mjs --mode interactions --report native-smoke-interactions-report.json",
     "native:doctor": "node scripts/native-tooling.mjs doctor",
     "build:staging": "rimraf dist && vite build --mode staging",
     "report": "rimraf dist && vite build",

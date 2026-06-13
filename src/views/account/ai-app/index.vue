@@ -40,6 +40,7 @@ import AiLearningProfile from "./components/AiLearningProfile.vue";
 import AiAssessment from "./components/AiAssessment.vue";
 import VirtualHumanPanel from "./components/VirtualHumanPanel.vue";
 import FloatingDigitalHuman2D from "./components/FloatingDigitalHuman2D.vue";
+import NavMobile from "@/layout/components/NavMobile.vue";
 
 import emptyStateDevelopmentAnimation from "@/assets/aiapplottie/empty-state-development-animation.json";
 import onlineChartAnimation from "@/assets/aiapplottie/online-chart-animation.json";
@@ -1669,6 +1670,8 @@ onUnmounted(() => {
           : 'ai-app-floating-digital-human-2d-left-bottom'
       "
     />
+
+    <NavMobile v-if="isMobileViewport" />
 
     <!-- 栈操作可视化预览弹窗 -->
     <el-dialog

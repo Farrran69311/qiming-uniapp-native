@@ -109,6 +109,7 @@ pnpm native:devices
 pnpm native:run:android
 pnpm native:run:ios
 pnpm native:smoke
+pnpm native:smoke:interactions
 pnpm native:doctor
 ```
 
@@ -152,11 +153,19 @@ bottom navigation, or page-specific mobile list selector, overflows
 horizontally, or emits a new console/page error. Results are written to ignored
 `native-smoke-report.json`.
 
+Run `pnpm native:smoke:interactions` after the route smoke suite when you need
+interaction-level mobile WebView coverage. It uses the same iPhone viewport and
+CDP browser session, then performs real clicks for the student bottom tab bar,
+student account horizontal menu, teacher bottom tab bar, and admin bottom tab
+bar. Each click must update the route/query, active tab text, expected page
+content, native class, and overflow checks.
+
 Useful variants:
 
 ```powershell
 pnpm native:smoke -- --roles teacher
 pnpm native:smoke -- --roles student,teacher,admin --no-start
+pnpm native:smoke:interactions -- --roles student,teacher
 pnpm native:smoke -- --chrome "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 ```
 

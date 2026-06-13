@@ -570,6 +570,8 @@
       @login-success="handleLoginSuccess"
     />
 
+    <NavMobile v-if="isNativeAccountView" />
+
     <!-- 页尾版权信息 -->
     <LayFooter />
   </div>
@@ -624,6 +626,7 @@ import {
 import CloudDisk from "./components/CloudDisk.vue";
 import Classroom3D from "@/views/course/classroom/index.vue";
 import StudentExamCenter from "@/views/exam-paper/student-center/index.vue";
+import NavMobile from "@/layout/components/NavMobile.vue";
 import { getFrontendCourseList } from "@/api/frontend/course";
 
 // 导入新图标

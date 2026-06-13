@@ -195,6 +195,158 @@ const routeSuites = {
   ]
 };
 
+const interactionSuites = [
+  {
+    role: "student",
+    label: "学生底部导航",
+    startPath: "/account?menu=home",
+    steps: [
+      {
+        label: "切到课程",
+        clickText: "课程",
+        scope: ".nav-mobile-container",
+        expectedPath: "/account",
+        expectedQuery: { menu: "course" },
+        expect: ["我的课程"],
+        activeNav: "课程"
+      },
+      {
+        label: "切到 AI App",
+        clickText: "AI App",
+        scope: ".nav-mobile-container",
+        expectedPath: "/account/ai-app",
+        expectedQuery: { mode: "student" },
+        expect: ["AI"],
+        selector: ".ai-app-root",
+        layout: "account-ai"
+      },
+      {
+        label: "切到我的",
+        clickText: "我的",
+        scope: ".nav-mobile-container",
+        expectedPath: "/account",
+        expectedQuery: { menu: "profile" },
+        expect: ["个人中心"],
+        selector: ".account-container.is-native-mobile",
+        activeNav: "我的"
+      }
+    ]
+  },
+  {
+    role: "student",
+    label: "学生账号页横向菜单",
+    startPath: "/account?menu=home",
+    steps: [
+      {
+        label: "打开学习云盘",
+        clickText: "学习云盘",
+        scope: ".account-menu",
+        expectedPath: "/account",
+        expectedQuery: { menu: "cloud-disk" },
+        expect: ["学习云盘"],
+        activeAccountMenu: "学习云盘"
+      },
+      {
+        label: "打开系统通知",
+        clickText: "系统通知",
+        scope: ".account-menu",
+        expectedPath: "/account",
+        expectedQuery: { menu: "notification" },
+        expect: ["系统通知"],
+        activeAccountMenu: "系统通知"
+      },
+      {
+        label: "打开试卷中心",
+        clickText: "试卷中心",
+        scope: ".account-menu",
+        expectedPath: "/account",
+        expectedQuery: { menu: "exam-center" },
+        expect: ["试题试卷中心"],
+        activeAccountMenu: "试卷中心"
+      }
+    ]
+  },
+  {
+    role: "teacher",
+    label: "教师底部导航",
+    startPath: "/welcome/index",
+    steps: [
+      {
+        label: "切到课程",
+        clickText: "课程",
+        scope: ".nav-mobile-container",
+        expectedPath: "/course/list",
+        expect: ["课程"],
+        activeNav: "课程"
+      },
+      {
+        label: "切到教案",
+        clickText: "教案",
+        scope: ".nav-mobile-container",
+        expectedPath: "/course/teacherplan",
+        expect: ["教案"],
+        activeNav: "教案"
+      },
+      {
+        label: "切到考核",
+        clickText: "考核",
+        scope: ".nav-mobile-container",
+        expectedPath: "/course/assessment",
+        expect: ["作业"],
+        activeNav: "考核"
+      },
+      {
+        label: "切回首页",
+        clickText: "首页",
+        scope: ".nav-mobile-container",
+        expectedPath: "/welcome/index",
+        expect: ["教师"],
+        activeNav: "首页"
+      }
+    ]
+  },
+  {
+    role: "admin",
+    label: "管理员底部导航",
+    startPath: "/welcome/index",
+    steps: [
+      {
+        label: "切到用户",
+        clickText: "用户",
+        scope: ".nav-mobile-container",
+        expectedPath: "/user/list",
+        expect: ["用户"],
+        activeNav: "用户"
+      },
+      {
+        label: "切到课程",
+        clickText: "课程",
+        scope: ".nav-mobile-container",
+        expectedPath: "/course/list",
+        expect: ["课程"],
+        activeNav: "课程"
+      },
+      {
+        label: "切到 AI App",
+        clickText: "AI App",
+        scope: ".nav-mobile-container",
+        expectedPath: "/ai-app/workspace",
+        expect: ["AI"],
+        selector: ".ai-app-root.is-native-mobile-workspace",
+        activeNav: "AI App"
+      },
+      {
+        label: "切到考核",
+        clickText: "考核",
+        scope: ".nav-mobile-container",
+        expectedPath: "/course/assessment",
+        expect: ["考核"],
+        activeNav: "考核"
+      }
+    ]
+  }
+];
+
 function parseArgs(argv) {
   const flags = {};
   for (let index = 0; index < argv.length; index += 1) {
@@ -461,6 +613,14 @@ function collectRoutes(flags) {
   );
 }
 
+function collectInteractionSuites(flags) {
+  const roles = option(flags, "roles", "student,teacher,admin")
+    .split(",")
+    .map(role => role.trim())
+    .filter(Boolean);
+  return interactionSuites.filter(suite => roles.includes(suite.role));
+}
+
 function visibleErrorMessages(events) {
   return events
     .filter(event => {
@@ -606,6 +766,226 @@ async function validateRoute(port, sessionId, route, baseUrl, timeoutMs) {
   };
 }
 
+async function clickElementByText(sessionId, scope, text, timeoutMs) {
+  const expression = `(() => {
+    const normalize = value => String(value || "").replace(/\\s+/g, " ").trim();
+    const root = ${JSON.stringify(scope)}
+      ? document.querySelector(${JSON.stringify(scope)})
+      : document;
+    if (!root) return { ok: false, reason: "scope not found" };
+    const candidates = Array.from(root.querySelectorAll(
+      "button,a,[role='button'],.nav-mobile-item,.el-menu-item,.quick-access-card"
+    ));
+    const element = candidates.find(item => normalize(item.innerText).includes(${JSON.stringify(text)}));
+    if (!element) {
+      return {
+        ok: false,
+        reason: "element not found",
+        available: candidates.map(item => normalize(item.innerText)).filter(Boolean).slice(0, 20)
+      };
+    }
+    element.scrollIntoView({ block: "center", inline: "center" });
+    const rect = element.getBoundingClientRect();
+    const x = Math.round(rect.left + rect.width / 2);
+    const y = Math.round(rect.top + rect.height / 2);
+    element.dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true,
+      cancelable: true,
+      pointerId: 1,
+      pointerType: "touch",
+      clientX: x,
+      clientY: y
+    }));
+    element.dispatchEvent(new PointerEvent("pointerup", {
+      bubbles: true,
+      cancelable: true,
+      pointerId: 1,
+      pointerType: "touch",
+      clientX: x,
+      clientY: y
+    }));
+    element.click();
+    return {
+      ok: true,
+      text: normalize(element.innerText),
+      rect: {
+        x,
+        y,
+        width: Math.round(rect.width),
+        height: Math.round(rect.height)
+      }
+    };
+  })()`;
+  const clicked = await evaluate(sessionId, expression, timeoutMs);
+  if (!clicked?.ok) {
+    throw new Error(
+      `Unable to click ${text}: ${clicked?.reason || "unknown"} ${JSON.stringify(clicked?.available || [])}`
+    );
+  }
+  return clicked;
+}
+
+function queryMatches(actualQuery, expectedQuery = {}) {
+  return Object.entries(expectedQuery).every(
+    ([key, value]) => String(actualQuery?.[key] || "") === String(value)
+  );
+}
+
+async function waitForInteractionState(sessionId, step, timeoutMs) {
+  const startedAt = Date.now();
+  let lastState = null;
+  const expectedQuery = JSON.stringify(step.expectedQuery || {});
+  while (Date.now() - startedAt < timeoutMs) {
+    lastState = await evaluate(
+      sessionId,
+      `(() => {
+        const bodyText = document.body?.innerText || "";
+        const query = Object.fromEntries(new URLSearchParams(location.hash.split("?")[1] || location.search.slice(1)));
+        const activeNav = document.querySelector(".nav-mobile-item.active .nav-title")?.textContent?.trim() || "";
+        const activeAccountMenu = document.querySelector(".account-menu .el-menu-item.is-active span")?.textContent?.trim() || "";
+        const bodyWidth = Math.max(
+          document.documentElement.scrollWidth,
+          document.body?.scrollWidth || 0
+        );
+        const selector = ${JSON.stringify(step.selector || "")};
+        return {
+          hash: location.hash,
+          path: location.hash.replace(/^#/, "").split("?")[0],
+          query,
+          title: document.title,
+          bodyText,
+          appHtmlLength: document.querySelector("#app")?.innerHTML.length || 0,
+          activeNav,
+          activeAccountMenu,
+          selectorFound: selector ? Boolean(document.querySelector(selector)) : true,
+          nativeClass: document.documentElement.classList.contains("qiming-native-webview"),
+          overflowX: bodyWidth > window.innerWidth + 1,
+          loadingDots: bodyText.includes("···") || bodyText.includes("加载中")
+        };
+      })()`,
+      5000
+    );
+    const pathOk =
+      !step.expectedPath ||
+      lastState.path === step.expectedPath ||
+      lastState.path.startsWith(`${step.expectedPath}/`);
+    const queryOk = queryMatches(lastState.query, JSON.parse(expectedQuery));
+    const textOk = (step.expect || []).every(
+      expected => lastState.bodyText.includes(expected) || lastState.title.includes(expected)
+    );
+    const navOk = !step.activeNav || lastState.activeNav === step.activeNav;
+    const accountMenuOk =
+      !step.activeAccountMenu ||
+      lastState.activeAccountMenu === step.activeAccountMenu;
+    if (
+      pathOk &&
+      queryOk &&
+      textOk &&
+      navOk &&
+      accountMenuOk &&
+      lastState.selectorFound &&
+      lastState.nativeClass &&
+      !lastState.overflowX &&
+      !lastState.loadingDots &&
+      lastState.appHtmlLength > 1000
+    ) {
+      return lastState;
+    }
+    await sleep(250);
+  }
+  return lastState;
+}
+
+async function validateInteractionSuite(port, sessionId, suite, baseUrl, timeoutMs) {
+  const eventStart = cdp.events.length;
+  const results = [];
+  const startRoute = {
+    role: suite.role,
+    label: suite.label,
+    path: suite.startPath,
+    expect: [],
+    layout: suite.role === "student" ? "account" : "standard"
+  };
+  const startUrl = buildRouteUrl(baseUrl, startRoute, `interaction-${Date.now()}`);
+  console.log(`Interaction [${suite.role}] ${suite.label}: ${suite.startPath}`);
+  await cdp(port, "Page.navigate", { url: startUrl }, sessionId);
+  await waitForLoad(sessionId, eventStart, 1500);
+  await waitForRenderedRoute(sessionId, suite.startPath.split("?")[0], timeoutMs);
+  await sleep(500);
+
+  for (const step of suite.steps) {
+    const stepStart = cdp.events.length;
+    const failures = [];
+    let clicked = null;
+    let state = null;
+    console.log(`  Clicking ${step.label}: ${step.clickText}`);
+    try {
+      clicked = await clickElementByText(
+        sessionId,
+        step.scope || "",
+        step.clickText,
+        timeoutMs
+      );
+      state = await waitForInteractionState(sessionId, step, timeoutMs);
+      if (!state?.nativeClass) failures.push("missing qiming-native-webview class");
+      if (state?.overflowX) failures.push("horizontal overflow detected");
+      if (state?.loadingDots) failures.push("still showing loading state");
+      if ((state?.appHtmlLength || 0) < 1000) failures.push("app content is too small");
+      if (
+        step.expectedPath &&
+        state?.path !== step.expectedPath &&
+        !state?.path?.startsWith(`${step.expectedPath}/`)
+      ) {
+        failures.push(`expected path ${step.expectedPath}, got ${state?.path || ""}`);
+      }
+      if (!queryMatches(state?.query, step.expectedQuery || {})) {
+        failures.push(
+          `expected query ${JSON.stringify(step.expectedQuery || {})}, got ${JSON.stringify(state?.query || {})}`
+        );
+      }
+      for (const expected of step.expect || []) {
+        if (!state?.bodyText?.includes(expected) && !state?.title?.includes(expected)) {
+          failures.push(`expected text missing: ${expected}`);
+        }
+      }
+      if (step.selector && !state?.selectorFound) {
+        failures.push(`expected selector missing: ${step.selector}`);
+      }
+      if (step.activeNav && state?.activeNav !== step.activeNav) {
+        failures.push(`expected active nav ${step.activeNav}, got ${state?.activeNav || ""}`);
+      }
+      if (
+        step.activeAccountMenu &&
+        state?.activeAccountMenu !== step.activeAccountMenu
+      ) {
+        failures.push(
+          `expected active account menu ${step.activeAccountMenu}, got ${state?.activeAccountMenu || ""}`
+        );
+      }
+    } catch (error) {
+      failures.push(error instanceof Error ? error.message : String(error));
+    }
+
+    const allErrors = visibleErrorMessages(getSessionEvents(sessionId, stepStart));
+    const errors = allErrors.filter(message => !isIgnorableSmokeError(message));
+    const warnings = allErrors.filter(message => isIgnorableSmokeError(message));
+    if (errors.length > 0) failures.push(`${errors.length} console/page error(s)`);
+
+    results.push({
+      label: `${suite.label} / ${step.label}`,
+      role: suite.role,
+      path: step.expectedPath || suite.startPath,
+      status: failures.length ? "FAIL" : "OK",
+      failures,
+      errors,
+      warnings,
+      clicked,
+      state
+    });
+  }
+  return results;
+}
+
 function printSummary(results) {
   const rows = results.map(result => [
     result.status,
@@ -649,12 +1029,22 @@ async function main() {
     "report",
     join(repoRoot, "native-smoke-report.json")
   );
+  const mode = option(flags, "mode", "routes");
   const routes = collectRoutes(flags);
+  const interactions = collectInteractionSuites(flags);
   let appProcess = null;
   let chromeProcess = null;
 
-  if (routes.length === 0) {
+  if (mode !== "routes" && mode !== "interactions") {
+    throw new Error("Unknown smoke mode. Use --mode routes or --mode interactions.");
+  }
+
+  if (mode === "routes" && routes.length === 0) {
     throw new Error("No smoke routes selected. Use --roles student,teacher,admin.");
+  }
+
+  if (mode === "interactions" && interactions.length === 0) {
+    throw new Error("No interaction suites selected. Use --roles student,teacher,admin.");
   }
 
   try {
@@ -709,8 +1099,22 @@ async function main() {
     await connectCdp(cdpPort);
     const sessionId = await createPageSession(cdpPort);
     const results = [];
-    for (const route of routes) {
-      results.push(await validateRoute(cdpPort, sessionId, route, baseUrl, timeoutMs));
+    if (mode === "routes") {
+      for (const route of routes) {
+        results.push(await validateRoute(cdpPort, sessionId, route, baseUrl, timeoutMs));
+      }
+    } else {
+      for (const suite of interactions) {
+        results.push(
+          ...(await validateInteractionSuite(
+            cdpPort,
+            sessionId,
+            suite,
+            baseUrl,
+            timeoutMs
+          ))
+        );
+      }
     }
     writeFileSync(reportPath, `${JSON.stringify(results, null, 2)}\n`, "utf8");
     printSummary(results);
