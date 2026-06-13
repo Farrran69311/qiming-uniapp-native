@@ -2142,9 +2142,16 @@ onUnmounted(() => {
   .quick-chat-box {
     order: 2;
     display: flex !important;
+    flex: 0 0 auto;
     flex-direction: column;
+    min-height: 174px;
+    overflow: hidden;
     border-radius: 20px !important;
     box-shadow: 0 12px 34px rgba(94, 127, 248, 0.1) !important;
+  }
+
+  .quick-chat-box :deep(.quick-chat-input) {
+    flex: 0 0 auto;
   }
 
   .quick-chat-box :deep(.el-textarea__inner) {
@@ -2157,6 +2164,7 @@ onUnmounted(() => {
 
   .quick-chat-box > div:last-child {
     display: flex !important;
+    flex: 0 0 auto;
     flex-direction: column;
     align-items: stretch;
     gap: 7px;
@@ -2214,7 +2222,7 @@ onUnmounted(() => {
   .ai-chat-welcome-human {
     order: 3;
     display: flex;
-    flex: 1 1 auto;
+    flex: 1 1 292px;
     flex-direction: column;
     margin-top: 8px;
     min-height: 292px;
