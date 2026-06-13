@@ -1,4 +1,4 @@
-# Hi👋 hello the next generation juiced native Android app in the edu area presented by ycxj Jilin
+# Hi👋 hello the next generation juiced up native Android app in the edu area presented by ycxj Jilin
 
 ## ccut 108 全新 启明智教 (Qimingedu) - Android 客户端
 
