@@ -2,14 +2,14 @@
   <div class="ai-chat-module h-full flex flex-col bg-transparent">
     <!-- 顶部精简导航 -->
     <div
-      class="flex items-center justify-between p-4 bg-white/50 backdrop-blur-md rounded-t-2xl border-b border-gray-100 z-10"
+      class="ai-chat-module-topbar flex items-center justify-between p-4 bg-white/50 backdrop-blur-md rounded-t-2xl border-b border-gray-100 z-10"
     >
-      <div class="flex items-center gap-2">
+      <div class="ai-chat-module-course flex items-center gap-2">
         <el-tag size="small" effect="plain" round class="animate-pulse">{{
           activeCourse
         }}</el-tag>
       </div>
-      <div class="flex items-center gap-3">
+      <div class="ai-chat-module-actions flex items-center gap-3">
         <el-button-group>
           <el-button
             :icon="RefreshRight"
@@ -627,5 +627,42 @@ watch(
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #d1d5db;
+}
+</style>
+
+<style scoped lang="scss">
+:global(.ai-app-root.is-native-mobile-workspace) {
+  .ai-chat-module-topbar {
+    min-height: 64px;
+    padding-left: 70px;
+    gap: 10px;
+  }
+
+  .ai-chat-module-course {
+    min-width: 0;
+
+    :deep(.el-tag) {
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  .ai-chat-module-actions {
+    flex-shrink: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  :global(.ai-app-root.is-native-mobile-workspace) {
+    .ai-chat-module-topbar {
+      padding-top: 12px;
+      padding-right: 12px;
+      padding-bottom: 12px;
+      border-top-left-radius: 24px;
+      border-top-right-radius: 24px;
+    }
+  }
 }
 </style>
