@@ -7,9 +7,11 @@ import { ElMessage } from "element-plus";
 import {
   getGradingStatistics,
   getGradingPaperList,
-  autoGradeObjective
+  autoGradeObjective,
+  type GradingPaperItem,
+  type GradingStatistics
 } from "@/api/examPaper";
-import { logNativeFallback } from "@/utils/nativeRuntime";
+import { isNativeWebViewRuntime, logNativeFallback } from "@/utils/nativeRuntime";
 
 // 导入 SVG 图标组件
 import IconEdit from "@/assets/home-icons/edit.svg?component";
@@ -48,7 +50,7 @@ const statusOptions = [
 ];
 
 // 统计数据
-const statistics = ref({
+const statistics = ref<GradingStatistics>({
   pending: 0,
   grading: 0,
   completed: 0,
@@ -56,7 +58,7 @@ const statistics = ref({
 });
 
 // 待阅卷列表
-const gradingList = ref<any[]>([]);
+const gradingList = ref<GradingPaperItem[]>([]);
 
 // 分页
 const pagination = reactive({
@@ -72,15 +74,96 @@ const paginationLayout = computed(() =>
   isMobile.value ? "prev, pager, next" : "total, prev, pager, next"
 );
 
+const nativeDemoGradingList: GradingPaperItem[] = [
+  {
+    id: 1,
+    paperTitle: "2024年春季概率论期末考试",
+    courseName: "概率论",
+    studentCount: 45,
+    gradedCount: 30,
+    pendingCount: 15,
+    status: "grading",
+    deadline: "2099-04-15",
+    publishTime: "2024-04-01 09:30"
+  },
+  {
+    id: 2,
+    paperTitle: "高等数学单元测验",
+    courseName: "高等数学",
+    studentCount: 36,
+    gradedCount: 36,
+    pendingCount: 0,
+    status: "completed",
+    deadline: "2024-04-08",
+    publishTime: "2024-03-30 14:00"
+  },
+  {
+    id: 3,
+    paperTitle: "线性代数综合练习",
+    courseName: "线性代数",
+    studentCount: 28,
+    gradedCount: 0,
+    pendingCount: 28,
+    status: "pending",
+    deadline: "2099-05-01",
+    publishTime: "2024-04-12 10:15"
+  }
+];
+
+const nativeDemoStatistics: GradingStatistics = {
+  pending: nativeDemoGradingList.filter(item => item.status === "pending")
+    .length,
+  grading: nativeDemoGradingList.filter(item => item.status === "grading")
+    .length,
+  completed: nativeDemoGradingList.filter(item => item.status === "completed")
+    .length,
+  total: nativeDemoGradingList.reduce((sum, item) => sum + item.studentCount, 0)
+};
+
+const isSuccessResponse = (res: { code?: unknown; success?: unknown }) =>
+  res?.code === 0 ||
+  res?.code === 200 ||
+  res?.code === "0" ||
+  res?.code === "200" ||
+  res?.success === true;
+
+const applyNativeDemoStatistics = () => {
+  statistics.value = { ...nativeDemoStatistics };
+};
+
+const applyNativeDemoGradingList = () => {
+  const keyword = searchForm.keyword.trim();
+  const visibleList = nativeDemoGradingList.filter(item => {
+    const matchesKeyword =
+      !keyword ||
+      item.paperTitle.includes(keyword) ||
+      item.courseName.includes(keyword);
+    const matchesStatus = !searchForm.status || item.status === searchForm.status;
+    const matchesCourse =
+      !searchForm.courseId ||
+      courseList.value.find(course => course.id === searchForm.courseId)
+        ?.name === item.courseName;
+
+    return matchesKeyword && matchesStatus && matchesCourse;
+  });
+
+  gradingList.value = visibleList;
+  pagination.total = visibleList.length;
+};
+
 // 加载统计数据
 const loadStatistics = async () => {
   try {
     const res = await getGradingStatistics();
-    if (res.code === 0 && res.data) {
+    if (isSuccessResponse(res) && res.data) {
       statistics.value = res.data;
+    } else if (isNativeWebViewRuntime()) {
+      logNativeFallback("使用原生演示阅卷统计", res);
+      applyNativeDemoStatistics();
     }
   } catch (e) {
     logNativeFallback("获取阅卷统计失败", e);
+    if (isNativeWebViewRuntime()) applyNativeDemoStatistics();
   }
 };
 
@@ -95,12 +178,16 @@ const handleSearch = async () => {
       status: (searchForm.status as any) || undefined,
       courseId: searchForm.courseId || undefined
     });
-    if (res.code === 0 && res.data) {
+    if (isSuccessResponse(res) && res.data) {
       gradingList.value = res.data.list || [];
       pagination.total = res.data.total || 0;
+    } else if (isNativeWebViewRuntime()) {
+      logNativeFallback("使用原生演示阅卷列表", res);
+      applyNativeDemoGradingList();
     }
   } catch (e) {
     logNativeFallback("获取阅卷列表失败", e);
+    if (isNativeWebViewRuntime()) applyNativeDemoGradingList();
   } finally {
     loading.value = false;
   }
