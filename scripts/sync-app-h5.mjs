@@ -8,7 +8,7 @@ import {
   statSync,
   writeFileSync
 } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const distDir = join(root, "dist");
@@ -20,7 +20,7 @@ if (!existsSync(distDir) || !statSync(distDir).isDirectory()) {
 }
 
 const resolvedTarget = resolve(targetDir);
-const allowedPrefix = resolve(root, "native-app", "src", "hybrid") + "\\";
+const allowedPrefix = resolve(root, "native-app", "src", "hybrid") + sep;
 if (!resolvedTarget.startsWith(allowedPrefix)) {
   throw new Error(
     `Refusing to sync outside native-app/src/hybrid: ${resolvedTarget}`
@@ -353,6 +353,25 @@ const bridgeScript = `
   window.addEventListener('load', function () { report('loaded'); });
   window.addEventListener('online', function () { report('online'); });
   window.addEventListener('offline', function () { report('offline'); });
+  var userAgent = navigator.userAgent || '';
+  var isIosApp = /Html5Plus/i.test(userAgent) && /\\b(iPhone|iPad|iPod)\\b/i.test(userAgent);
+  var isAndroidApp = /Html5Plus/i.test(userAgent) && /Android/i.test(userAgent);
+  if (isIosApp) {
+    document.documentElement.classList.add('qiming-native-ios');
+    document.documentElement.style.setProperty('--qiming-native-keyboard-offset', '0px');
+    document.body.style.webkitOverflowScrolling = 'touch';
+    document.body.style.overscrollBehaviorY = 'none';
+  } else if (isAndroidApp) {
+    document.documentElement.classList.add('qiming-native-android');
+  }
+  window.addEventListener('focusout', function () {
+    if (!isIosApp) return;
+    window.setTimeout(function () {
+      try {
+        window.scrollTo(0, window.scrollY);
+      } catch (_) {}
+    }, 80);
+  });
   document.addEventListener('visibilitychange', function () {
     report('visibility', { visibilityState: document.visibilityState });
   });

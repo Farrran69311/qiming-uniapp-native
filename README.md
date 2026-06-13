@@ -86,7 +86,7 @@ project owner's prior written consent.
 
 ### 1. 环境准备
 
-* 安装 [Node.js](https://nodejs.org/)（推荐 v16.x 或以上版本）
+* 安装 [Node.js](https://nodejs.org/)（推荐使用仓库 `.nvmrc` 中的版本）
 * 安装 [HBuilderX](https://www.dcloud.io/hbuilderx.html) 开发者工具
 * 准备 Android Studio 模拟器或真实 Android 物理测试设备（需开启“开发者模式”和“USB 调试”）
 

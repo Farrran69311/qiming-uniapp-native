@@ -61,6 +61,22 @@ Local tools prepared on this machine:
 - Android release keystore:
   `G:\qiming-uniapp-native-tools\certs\qiming-android-release.keystore`
 
+macOS/external-SSD workspace notes:
+
+- Keep repo clones, dependency installs, generated H5 payloads, and App build
+  resources on the external SSD, for example
+  `/Volumes/KINGSTON/codex-work/qiming-uniapp-native`.
+- The cross-platform native helper is `scripts/native-tooling.mjs`; the npm
+  commands below call it directly on macOS/Linux and still preserve the older
+  PowerShell scripts for Windows-specific Android automation.
+- Optional local tool overrides:
+  - `QIMING_NATIVE_TOOLS_ROOT=/Volumes/KINGSTON/qiming-uniapp-native-tools`
+  - `QIMING_HBUILDERX_CLI=/Applications/HBuilderX.app/Contents/MacOS/cli`
+  - `QIMING_ADB=/path/to/android-sdk/platform-tools/adb`
+- iOS simulator or real-device launch on macOS requires full Xcode, not only
+  Command Line Tools. `pnpm native:devices` and `pnpm native:doctor` report this
+  explicitly.
+
 Build and sync local H5 into the App shell:
 
 ```powershell
@@ -96,9 +112,11 @@ pnpm native:doctor
 ```
 
 The Android/iOS convenience commands currently generate uni-app App resources.
-The `native:pack:*` commands call HBuilderX cloud packaging through
-`scripts/pack-native.ps1`. Final APK/IPA packaging still requires HBuilderX
-DCloud login and local certificate configuration.
+The `native:pack:*` commands call the cross-platform native helper, which checks
+local packaging config, injects environment-provided secrets into an ignored
+temporary config, and then calls HBuilderX cloud packaging when HBuilderX CLI is
+available. Final APK/IPA packaging still requires HBuilderX DCloud login and
+local certificate configuration.
 
 Run `pnpm native:doctor` before packaging. It checks the public repo state, the
 local `origin/agent` source commit, preview ports, HBuilderX CLI, Java, ADB,
@@ -112,15 +130,13 @@ Run `pnpm native:pack:init` once to create the ignored local
 registered DCloud AppID, Android package/certificate fields, iOS bundle/profile/
 p12 fields, and manifest/config package consistency.
 
-Run `pnpm native:devices` before real-device verification. It checks ADB and
-HBuilderX Android devices and reports iOS device/simulator availability without
-hanging on Windows. `pnpm native:run:android` runs the native shell to a
-connected Android device or emulator and defaults to the full platform workbench
-entry `/welcome/index`; it performs device preflight before `native:prepare` and stops early
-with a clear message when no Android device is attached.
-`pnpm native:run:ios` documents the same flow for iOS, but this Windows host
-stops early because iOS device/simulator launch requires macOS or HBuilderX iOS
-tooling.
+Run `pnpm native:devices` before real-device verification. It checks ADB,
+HBuilderX Android devices, Xcode, iOS simulators, and HBuilderX iOS devices
+where those tools are available. `pnpm native:run:android` keeps using the
+Windows PowerShell automation when running on Windows; on macOS it reports a
+manual HBuilderX fallback until Android automation is ported. `pnpm
+native:run:ios` stops with a clear Xcode/HBuilderX preflight message if the host
+cannot launch an iOS simulator or device.
 
 Cloud packaging config:
 
@@ -141,6 +157,8 @@ Cloud packaging config:
   ignored by Git.
 - Without `pack-config.local.json`, `scripts/pack-native.ps1` exits early with a
   clear setup error instead of attempting packaging.
+- On macOS/Linux the same checks are available through
+  `node scripts/native-tooling.mjs pack-config --mode check --platform ios`.
 
 Live browser prototype while developing:
 
@@ -208,12 +226,16 @@ is needed.
 3. Prepare iOS distribution certificate `.p12`.
 4. Prepare matching provisioning profile `.mobileprovision`.
 5. Configure iOS privacy strings in `native-app/src/manifest.json`.
-6. Use HBuilderX cloud packaging to create IPA.
-7. Upload through Transporter/App Store Connect/TestFlight.
-8. Verify with CLI on a macOS-capable host:
+6. Install full Xcode and select it with `sudo xcode-select -s
+   /Applications/Xcode.app/Contents/Developer`.
+7. Install HBuilderX for macOS and set `QIMING_HBUILDERX_CLI` if it is not in
+   `/Applications/HBuilderX.app/Contents/MacOS/cli`.
+8. Use HBuilderX cloud packaging to create IPA.
+9. Upload through Transporter/App Store Connect/TestFlight.
+10. Verify with CLI on a macOS-capable host:
    - `pnpm native:devices`
    - `pnpm native:run:ios`
-9. Verify on a real iPhone and iPad:
+11. Verify on a real iPhone and iPad:
    - safe area
    - keyboard input and streaming chat
    - media permissions
@@ -251,6 +273,36 @@ The uni-app shell receives messages through the `web-view` `message` event.
 - iOS IPA packaging cannot be fully finished without Apple certificates.
 
 ## Verification Log
+
+2026-06-13:
+
+- Work moved to the external SSD clone at
+  `/Volumes/KINGSTON/codex-work/qiming-uniapp-native` to avoid using the
+  internal Mac disk for repo, dependency, and build artifacts.
+- Added `scripts/native-tooling.mjs` as the cross-platform native helper for
+  `native:doctor`, `native:devices`, `native:preview`, `native:pack:*`, and
+  `native:run:*`.
+- `scripts/sync-app-h5.mjs` now validates the generated hybrid target path with
+  the host path separator, so `pnpm native:prepare` can run on macOS as well as
+  Windows.
+- The native shell default entry was aligned with the documented workbench
+  route `/welcome/index`.
+- The injected native bridge now adds iOS/Android platform classes inside
+  Html5Plus WebViews and applies a small iOS scroll/keyboard compatibility
+  guard without changing the product UI.
+- `node --check scripts/native-tooling.mjs` and
+  `node --check scripts/sync-app-h5.mjs` passed.
+- `pnpm native:doctor` passed as a diagnostic command and reported `2 OK`, `13
+  WARN`, `0 FAIL` on the current Mac. Real iOS blockers are missing HBuilderX
+  CLI, missing `.p12`/`.mobileprovision`, placeholder DCloud AppID, no local
+  pack config, missing App build resources, and full Xcode not installed.
+- `pnpm native:devices` passed as a diagnostic command and reported `0 OK`, `4
+  WARN`, `0 FAIL`; this Mac currently has only Command Line Tools, so `simctl`
+  is unavailable.
+- `pnpm native:pack:check` correctly failed in strict mode because
+  `native-app/pack-config.local.json` has not been created.
+- `pnpm native:run:ios -- --skip-prepare` correctly failed before launch with a
+  full-Xcode requirement message.
 
 2026-06-09:
 

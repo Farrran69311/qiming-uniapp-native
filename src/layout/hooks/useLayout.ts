@@ -41,7 +41,7 @@ export function useLayout() {
         grey: $config?.Grey ?? false,
         weak: $config?.Weak ?? false,
         hideTabs: $config?.HideTabs ?? false,
-        hideFooter: $config.HideFooter ?? true,
+        hideFooter: $config?.HideFooter ?? false,
         showLogo: $config?.ShowLogo ?? true,
         showModel: $config?.ShowModel ?? "smart",
         multiTagsCache: $config?.MultiTagsCache ?? false,
@@ -52,11 +52,21 @@ export function useLayout() {
 
   /** 清空缓存后从platform-config.json读取默认配置并赋值到storage中 */
   const layout = computed(() => {
-    return $storage?.layout.layout;
+    return $storage?.layout?.layout ?? $config?.Layout ?? "vertical";
   });
 
   const layoutTheme = computed(() => {
-    return $storage.layout;
+    return (
+      $storage.layout ?? {
+        layout: $config?.Layout ?? "vertical",
+        theme: $config?.Theme ?? "light",
+        darkMode: $config?.DarkMode ?? false,
+        sidebarStatus: $config?.SidebarStatus ?? true,
+        epThemeColor: $config?.EpThemeColor ?? "#97b4f7",
+        themeColor: $config?.Theme ?? "light",
+        overallStyle: $config?.OverallStyle ?? "light"
+      }
+    );
   });
 
   return {

@@ -31,6 +31,22 @@ const { device } = useNav();
 const { isDark } = useDark();
 const { $storage } = useGlobal<GlobalPropertiesApi>();
 
+const defaultConfigure: ResponsiveStorage["configure"] = {
+  grey: false,
+  weak: false,
+  hideTabs: false,
+  hideFooter: false,
+  showLogo: true,
+  showModel: "smart",
+  multiTagsCache: false,
+  stretch: false
+};
+const getConfigure = (): ResponsiveStorage["configure"] => ({
+  ...defaultConfigure,
+  ...($storage.configure ?? {})
+});
+const initialConfigure = getConfigure();
+
 const mixRef = ref();
 const verticalRef = ref();
 const horizontalRef = ref();
@@ -55,19 +71,19 @@ if (unref(layoutTheme)) {
 }
 
 /** 默认灵动模式 */
-const markValue = ref($storage.configure?.showModel ?? "smart");
+const markValue = ref(initialConfigure.showModel ?? "smart");
 
-const logoVal = ref($storage.configure?.showLogo ?? true);
+const logoVal = ref(initialConfigure.showLogo ?? true);
 
 const settings = reactive({
-  greyVal: $storage.configure.grey,
-  weakVal: $storage.configure.weak,
-  tabsVal: $storage.configure.hideTabs,
-  showLogo: $storage.configure.showLogo,
-  showModel: $storage.configure.showModel,
-  hideFooter: $storage.configure.hideFooter,
-  multiTagsCache: $storage.configure.multiTagsCache,
-  stretch: $storage.configure.stretch
+  greyVal: initialConfigure.grey,
+  weakVal: initialConfigure.weak,
+  tabsVal: initialConfigure.hideTabs,
+  showLogo: initialConfigure.showLogo,
+  showModel: initialConfigure.showModel,
+  hideFooter: initialConfigure.hideFooter,
+  multiTagsCache: initialConfigure.multiTagsCache,
+  stretch: initialConfigure.stretch
 });
 
 const getThemeColorStyle = computed(() => {
@@ -84,9 +100,9 @@ const showThemeColors = computed(() => {
 });
 
 function storageConfigureChange<T>(key: string, val: T): void {
-  const storageConfigure = $storage.configure;
+  const storageConfigure = getConfigure() as Record<string, unknown>;
   storageConfigure[key] = val;
-  $storage.configure = storageConfigure;
+  $storage.configure = storageConfigure as ResponsiveStorage["configure"];
 }
 
 /** 灰色模式设置 */

@@ -83,7 +83,7 @@ type WebMessage = {
   timestamp?: number;
 };
 
-const defaultEntryRoute = "/home";
+const defaultEntryRoute = "/welcome/index";
 const loaded = ref(false);
 const loadError = ref(false);
 const webviewVersion = ref(0);
@@ -91,7 +91,7 @@ const lastMessage = ref<WebMessage | null>(null);
 const previewMode = ref<"phone" | "full">("phone");
 const appEntryRoute = ref(defaultEntryRoute);
 const appDevServer = ref("");
-const appDemoRole = ref("");
+const appDemoRole = ref<PreviewRole | "">("");
 const appNativeStatusTop = ref(0);
 let loadFallbackTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -229,8 +229,9 @@ function normalizeDevServer(url: string | null | undefined) {
   }
 }
 
-function normalizeDemoRole(role: string | null | undefined) {
-  return isPreviewRole(role || "") ? role || "" : "";
+function normalizeDemoRole(role: string | null | undefined): PreviewRole | "" {
+  const value = role || "";
+  return isPreviewRole(value) ? value : "";
 }
 
 const previewRole = computed(() => {

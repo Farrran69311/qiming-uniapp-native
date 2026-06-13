@@ -6,16 +6,20 @@ import {
   responsiveStorageNameSpace
 } from "../utils";
 
+const defaultEpThemeColor = "#97b4f7";
+const getEpThemeColor = () => getConfig().EpThemeColor || defaultEpThemeColor;
+const getLayoutTheme = () => getConfig().Theme || "light";
+
 export const useEpThemeStore = defineStore("pure-epTheme", {
   state: () => ({
     epThemeColor:
       storageLocal().getItem<StorageConfigs>(
         `${responsiveStorageNameSpace()}layout`
-      )?.epThemeColor ?? getConfig().EpThemeColor,
+      )?.epThemeColor ?? getEpThemeColor(),
     epTheme:
       storageLocal().getItem<StorageConfigs>(
         `${responsiveStorageNameSpace()}layout`
-      )?.theme ?? getConfig().Theme
+      )?.theme ?? getLayoutTheme()
   }),
   getters: {
     getEpThemeColor(state) {

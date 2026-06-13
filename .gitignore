@@ -1,5 +1,6 @@
 node_modules
 .DS_Store
+._*
 .env
 .env.*
 !.env.example
@@ -27,6 +28,7 @@ native-*.xml
 native-app/.hbuilderx/
 pack-config.json
 pack-config.local.json
+native-app/pack-config.effective.tmp.json
 !pack-config.example.json
 *.keystore
 *.jks
