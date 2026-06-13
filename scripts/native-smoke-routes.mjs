@@ -14,6 +14,8 @@ const defaultMacChrome =
 const defaultWindowsChrome =
   "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 
+const screenshotTimestamp = new Date().toISOString().replace(/[:.]/g, "-");
+
 const routeSuites = {
   teacher: [
     { label: "教师工作台", path: "/welcome/index", expect: ["教师"] },
@@ -192,6 +194,58 @@ const routeSuites = {
       layout: "ai"
     },
     { label: "管理考核", path: "/course/assessment", expect: ["考核"] }
+  ],
+  deep: [
+    {
+      label: "学生试卷列表",
+      path: "/student-exam-center/list",
+      demoRole: "student",
+      expect: ["试题试卷中心", "可答题"],
+      selectors: [".mobile-tab-strip"],
+      layout: "standard"
+    },
+    {
+      label: "学生试卷详情",
+      path: "/student-exam-center/detail/1",
+      demoRole: "student",
+      expect: ["试卷详情", "开始答题"],
+      layout: "standard"
+    },
+    {
+      label: "学生答题页",
+      path: "/student-exam-center/do/1",
+      demoRole: "student",
+      expect: ["答题卡", "交卷"],
+      layout: "standalone"
+    },
+    {
+      label: "学生考试结果",
+      path: "/exam-paper/result/1",
+      demoRole: "student",
+      expect: ["考试结果", "答题明细"],
+      layout: "standalone"
+    },
+    {
+      label: "教师阅卷详情",
+      path: "/exam-paper/grading/1",
+      demoRole: "teacher",
+      expect: ["学生列表", "提交评分"],
+      layout: "standard"
+    },
+    {
+      label: "教师新建试卷",
+      path: "/exam-paper/editor",
+      demoRole: "teacher",
+      expect: ["启明在线组卷", "题目"],
+      layout: "standalone"
+    },
+    {
+      label: "教师编辑试卷",
+      path: "/exam-paper/editor/1",
+      demoRole: "teacher",
+      expect: ["启明在线组卷", "题目"],
+      layout: "standalone"
+    }
   ]
 };
 
@@ -381,6 +435,32 @@ function boolOption(flags, name) {
 
 function sleep(ms) {
   return new Promise(resolveSleep => setTimeout(resolveSleep, ms));
+}
+
+function slug(value) {
+  return String(value || "")
+    .trim()
+    .replace(/[^\p{Letter}\p{Number}._-]+/gu, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "screen";
+}
+
+async function captureScreenshot(port, sessionId, screenshotDir, name) {
+  if (!screenshotDir) return "";
+  mkdirSync(screenshotDir, { recursive: true });
+  const result = await cdp(
+    port,
+    "Page.captureScreenshot",
+    {
+      format: "png",
+      fromSurface: true,
+      captureBeyondViewport: false
+    },
+    sessionId
+  );
+  const path = join(screenshotDir, `${name}.png`);
+  writeFileSync(path, result.data, "base64");
+  return path;
 }
 
 async function removeDirQuietly(pathValue) {
@@ -597,7 +677,9 @@ function buildRouteUrl(baseUrl, route, cacheKey) {
   query.set("demoRole", route.role);
   query.set("qimingNative", "1");
   query.set("v", cacheKey);
-  return `${baseUrl}/#${pathname}?${query.toString()}`;
+  const url = new URL(baseUrl);
+  url.searchParams.set("nativeSmoke", cacheKey);
+  return `${url.toString()}#${pathname}?${query.toString()}`;
 }
 
 function collectRoutes(flags) {
@@ -608,7 +690,8 @@ function collectRoutes(flags) {
   return roles.flatMap(role =>
     (routeSuites[role] || []).map(route => ({
       ...route,
-      role
+      suite: role,
+      role: route.demoRole || role
     }))
   );
 }
@@ -657,11 +740,22 @@ function isIgnorableSmokeError(message) {
     ) ||
     /WebGL 初始化失败|webgl2: unavailable|experimental-webgl: unavailable/i.test(
       message
+    ) ||
+    /Blocked attempt to show a 'beforeunload' confirmation panel/i.test(
+      message
     )
   );
 }
 
-async function validateRoute(port, sessionId, route, baseUrl, timeoutMs) {
+async function validateRoute(
+  port,
+  sessionId,
+  route,
+  baseUrl,
+  timeoutMs,
+  screenshotDir,
+  routeIndex
+) {
   const eventStart = cdp.events.length;
   const url = buildRouteUrl(baseUrl, route, `smoke-${Date.now()}`);
   const expectedSelectors = JSON.stringify(route.selectors || []);
@@ -754,14 +848,32 @@ async function validateRoute(port, sessionId, route, baseUrl, timeoutMs) {
   }
   if (errors.length > 0) failures.push(`${errors.length} console/page error(s)`);
 
+  let screenshot = "";
+  try {
+    screenshot = await captureScreenshot(
+      port,
+      sessionId,
+      screenshotDir,
+      `${String(routeIndex).padStart(2, "0")}-${slug(route.suite || route.role)}-${slug(route.label)}`
+    );
+  } catch (error) {
+    failures.push(
+      `screenshot capture failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
+
   return {
     label: route.label,
     role: route.role,
+    suite: route.suite || route.role,
     path: route.path,
     status: failures.length ? "FAIL" : "OK",
     failures,
     errors,
     warnings,
+    screenshot,
     state
   };
 }
@@ -896,7 +1008,15 @@ async function waitForInteractionState(sessionId, step, timeoutMs) {
   return lastState;
 }
 
-async function validateInteractionSuite(port, sessionId, suite, baseUrl, timeoutMs) {
+async function validateInteractionSuite(
+  port,
+  sessionId,
+  suite,
+  baseUrl,
+  timeoutMs,
+  screenshotDir,
+  suiteIndex
+) {
   const eventStart = cdp.events.length;
   const results = [];
   const startRoute = {
@@ -913,11 +1033,12 @@ async function validateInteractionSuite(port, sessionId, suite, baseUrl, timeout
   await waitForRenderedRoute(sessionId, suite.startPath.split("?")[0], timeoutMs);
   await sleep(500);
 
-  for (const step of suite.steps) {
+  for (const [stepIndex, step] of suite.steps.entries()) {
     const stepStart = cdp.events.length;
     const failures = [];
     let clicked = null;
     let state = null;
+    let screenshot = "";
     console.log(`  Clicking ${step.label}: ${step.clickText}`);
     try {
       clicked = await clickElementByText(
@@ -971,14 +1092,31 @@ async function validateInteractionSuite(port, sessionId, suite, baseUrl, timeout
     const warnings = allErrors.filter(message => isIgnorableSmokeError(message));
     if (errors.length > 0) failures.push(`${errors.length} console/page error(s)`);
 
+    try {
+      screenshot = await captureScreenshot(
+        port,
+        sessionId,
+        screenshotDir,
+        `${String(suiteIndex).padStart(2, "0")}-${String(stepIndex + 1).padStart(2, "0")}-${slug(suite.role)}-${slug(suite.label)}-${slug(step.label)}`
+      );
+    } catch (error) {
+      failures.push(
+        `screenshot capture failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+
     results.push({
       label: `${suite.label} / ${step.label}`,
       role: suite.role,
+      suite: "interactions",
       path: step.expectedPath || suite.startPath,
       status: failures.length ? "FAIL" : "OK",
       failures,
       errors,
       warnings,
+      screenshot,
       clicked,
       state
     });
@@ -1029,6 +1167,13 @@ async function main() {
     "report",
     join(repoRoot, "native-smoke-report.json")
   );
+  const screenshotDir = boolOption(flags, "no-screenshots")
+    ? ""
+    : option(
+        flags,
+        "screenshot-dir",
+        join(repoRoot, ".native-smoke", "screenshots", screenshotTimestamp)
+      );
   const mode = option(flags, "mode", "routes");
   const routes = collectRoutes(flags);
   const interactions = collectInteractionSuites(flags);
@@ -1100,18 +1245,30 @@ async function main() {
     const sessionId = await createPageSession(cdpPort);
     const results = [];
     if (mode === "routes") {
-      for (const route of routes) {
-        results.push(await validateRoute(cdpPort, sessionId, route, baseUrl, timeoutMs));
+      for (const [index, route] of routes.entries()) {
+        results.push(
+          await validateRoute(
+            cdpPort,
+            sessionId,
+            route,
+            baseUrl,
+            timeoutMs,
+            screenshotDir,
+            index + 1
+          )
+        );
       }
     } else {
-      for (const suite of interactions) {
+      for (const [index, suite] of interactions.entries()) {
         results.push(
           ...(await validateInteractionSuite(
             cdpPort,
             sessionId,
             suite,
             baseUrl,
-            timeoutMs
+            timeoutMs,
+            screenshotDir,
+            index + 1
           ))
         );
       }
