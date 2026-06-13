@@ -969,4 +969,256 @@ $radius-lg: 16px;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+
+@media (max-width: 768px) {
+  .grading-detail-container {
+    height: auto;
+    min-height: 100vh;
+    padding-bottom: var(--pure-mobile-content-bottom-gap, 140px);
+    overflow: visible;
+  }
+
+  .top-nav {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    margin: 8px 10px 12px;
+    padding: 12px;
+    border: 1px solid $light-border;
+    border-radius: $radius-lg;
+
+    .nav-left,
+    .nav-right {
+      width: 100%;
+      min-width: 0;
+      align-items: flex-start;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    :deep(.el-divider--vertical) {
+      display: none;
+    }
+
+    .paper-title {
+      width: 100%;
+      min-width: 0;
+      align-items: flex-start;
+      font-size: 17px;
+      line-height: 1.35;
+    }
+
+    .paper-title span {
+      min-width: 0;
+      flex: 1 1 auto;
+      white-space: normal;
+      word-break: keep-all;
+      overflow-wrap: break-word;
+    }
+
+    .progress-info {
+      width: 100%;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+      font-size: 13px;
+    }
+
+    .progress-info :deep(.el-progress) {
+      flex: 1 1 130px;
+      min-width: 130px;
+      max-width: 180px;
+    }
+  }
+
+  .grading-main-content {
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+    padding: 0 10px 12px;
+    overflow: visible;
+  }
+
+  .student-list-panel,
+  .answer-panel,
+  .summary-panel {
+    width: 100%;
+    flex: 0 0 auto;
+    border-radius: 14px;
+  }
+
+  .student-list-panel {
+    .panel-header {
+      align-items: flex-start;
+      gap: 8px;
+      padding: 12px;
+      flex-wrap: wrap;
+    }
+
+    .filter-tags {
+      flex-wrap: wrap;
+    }
+
+    .student-list {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+      max-height: none;
+      padding: 10px;
+      overflow: visible;
+    }
+
+    .student-item {
+      gap: 10px;
+      padding: 10px;
+    }
+
+    .student-avatar {
+      width: 36px;
+      height: 36px;
+    }
+  }
+
+  .summary-panel {
+    order: 2;
+
+    .panel-header {
+      padding: 12px;
+    }
+
+    .summary-content {
+      padding: 12px;
+    }
+
+    .total-score {
+      padding: 8px 0 12px;
+    }
+
+    .score-value {
+      font-size: 36px;
+    }
+
+    .submit-section .el-button {
+      min-height: 40px;
+    }
+  }
+
+  .answer-panel {
+    order: 3;
+
+    .panel-header {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 10px;
+      padding: 12px;
+    }
+
+    .student-header {
+      min-width: 0;
+      gap: 10px;
+    }
+
+    .student-detail {
+      min-width: 0;
+    }
+
+    .student-detail h3 {
+      font-size: 16px;
+    }
+
+    .student-detail p {
+      line-height: 1.4;
+      white-space: normal;
+    }
+
+    .nav-buttons {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      width: 100%;
+    }
+
+    .nav-buttons .el-button {
+      width: 100%;
+      margin-left: 0;
+    }
+
+    .answer-list {
+      padding: 12px;
+      overflow: visible;
+    }
+
+    .answer-item {
+      padding: 12px;
+      margin-bottom: 12px;
+      border-radius: 12px;
+      scroll-margin-top: calc(var(--pure-safe-area-top, 0px) + 104px);
+    }
+
+    .question-header {
+      align-items: flex-start;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .question-number {
+      min-width: 0;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .question-title {
+      font-size: 14px;
+    }
+
+    .answer-section,
+    .grading-section {
+      padding: 12px;
+    }
+
+    .answer-row {
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .answer-label {
+      width: auto;
+    }
+
+    .score-input {
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .score-input .label {
+      flex: 0 0 44px;
+    }
+
+    .score-input .unit {
+      flex: 1 1 auto;
+    }
+
+    .score-input :deep(.el-input-number) {
+      width: 132px;
+    }
+
+    .score-input .el-button {
+      margin-left: 0;
+    }
+
+    .comment-input {
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .comment-input .label {
+      padding-top: 0;
+    }
+
+    .comment-input .el-textarea {
+      width: 100%;
+    }
+  }
+}
 </style>
