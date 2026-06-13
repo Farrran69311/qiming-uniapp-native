@@ -604,10 +604,69 @@ html.qiming-native-webview.ua-mobile .vxe-table {
   max-width: 100%;
 }
 
+html.qiming-native-webview.ua-mobile .el-table,
+html.qiming-native-webview.ua-mobile .pure-table,
+html.qiming-native-webview.ua-mobile .vxe-table,
+html.qiming-native-webview.ua-mobile .el-table__body-wrapper,
+html.qiming-native-webview.ua-mobile .el-table__header-wrapper,
+html.qiming-native-webview.ua-mobile .el-table__inner-wrapper,
+html.qiming-native-webview.ua-mobile .el-table .el-scrollbar,
+html.qiming-native-webview.ua-mobile .el-table .el-scrollbar__wrap,
+html.qiming-native-webview.ua-mobile .el-table .el-scrollbar__view {
+  touch-action: pan-x pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+html.qiming-native-webview.ua-mobile .el-table__body-wrapper,
+html.qiming-native-webview.ua-mobile .el-table__header-wrapper,
+html.qiming-native-webview.ua-mobile .el-table .el-scrollbar__wrap {
+  overflow-x: auto !important;
+}
+
+html.qiming-native-webview.ua-mobile .el-table__body,
+html.qiming-native-webview.ua-mobile .el-table__header {
+  min-width: max-content;
+}
+
+html.qiming-native-webview.ua-mobile .el-table__fixed,
+html.qiming-native-webview.ua-mobile .el-table__fixed-right,
+html.qiming-native-webview.ua-mobile .el-table__fixed-right-patch,
+html.qiming-native-webview.ua-mobile .el-table__fixed::before,
+html.qiming-native-webview.ua-mobile .el-table__fixed-right::before {
+  box-shadow: none !important;
+}
+
+html.qiming-native-webview.ua-mobile
+  .el-table
+  .el-table-fixed-column--left,
+html.qiming-native-webview.ua-mobile
+  .el-table
+  .el-table-fixed-column--right,
+html.qiming-native-webview.ua-mobile
+  .el-table
+  .el-table__cell.is-left,
+html.qiming-native-webview.ua-mobile
+  .el-table
+  .el-table__cell.is-right {
+  position: static !important;
+  left: auto !important;
+  right: auto !important;
+  z-index: auto !important;
+  box-shadow: none !important;
+}
+
+html.qiming-native-webview.ua-mobile
+  .el-table
+  .el-table-fixed-column--left::before,
+html.qiming-native-webview.ua-mobile
+  .el-table
+  .el-table-fixed-column--right::before {
+  display: none !important;
+}
+
 html.qiming-native-webview.ua-mobile .el-table__body-wrapper,
 html.qiming-native-webview.ua-mobile .el-scrollbar__wrap {
   overflow-y: auto !important;
-  touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
 }
 

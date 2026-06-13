@@ -249,53 +249,56 @@
         </el-button>
       </div>
 
-      <el-table
-        v-loading="questionLoading"
-        :data="questionList"
-        style="width: 100%"
-        border
-        stripe
-      >
-        <el-table-column prop="questionType" label="题型" width="100">
-          <template #default="scope">
-            {{ getQuestionTypeName(scope.row.questionType) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="title" label="标题" width="150" />
-        <el-table-column
-          prop="stem"
-          label="题干"
-          min-width="250"
-          show-overflow-tooltip
-        />
-        <el-table-column prop="points" label="分值" width="80" />
-        <el-table-column prop="difficulty" label="难度" width="150">
-          <template #default="scope">
-            <el-rate
-              v-model="scope.row.difficulty"
-              disabled
-              text-color="#ff9900"
-            />
-          </template>
-        </el-table-column>
-        <el-table-column prop="sortOrder" label="排序" width="80" />
-        <el-table-column label="操作" width="150" fixed="right">
-          <template #default="scope">
-            <el-button
-              size="small"
-              type="primary"
-              @click="viewQuestionDetail(scope.row)"
-              >查看</el-button
-            >
-            <el-button
-              size="small"
-              type="danger"
-              @click="deleteQuestion(scope.row)"
-              >删除</el-button
-            >
-          </template>
-        </el-table-column>
-      </el-table>
+      <div class="question-table-scroll">
+        <el-table
+          v-loading="questionLoading"
+          class="question-management-table"
+          :data="questionList"
+          style="width: 100%"
+          border
+          stripe
+        >
+          <el-table-column prop="questionType" label="题型" width="100">
+            <template #default="scope">
+              {{ getQuestionTypeName(scope.row.questionType) }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="title" label="标题" width="150" />
+          <el-table-column
+            prop="stem"
+            label="题干"
+            min-width="250"
+            show-overflow-tooltip
+          />
+          <el-table-column prop="points" label="分值" width="80" />
+          <el-table-column prop="difficulty" label="难度" width="150">
+            <template #default="scope">
+              <el-rate
+                v-model="scope.row.difficulty"
+                disabled
+                text-color="#ff9900"
+              />
+            </template>
+          </el-table-column>
+          <el-table-column prop="sortOrder" label="排序" width="80" />
+          <el-table-column label="操作" width="150" :fixed="questionActionFixed">
+            <template #default="scope">
+              <el-button
+                size="small"
+                type="primary"
+                @click="viewQuestionDetail(scope.row)"
+                >查看</el-button
+              >
+              <el-button
+                size="small"
+                type="danger"
+                @click="deleteQuestion(scope.row)"
+                >删除</el-button
+              >
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
 
       <div class="pagination-container">
         <el-pagination
@@ -404,6 +407,9 @@ const paginationLayout = computed(() =>
 );
 const formDialogWidth = computed(() => (isMobileLayout.value ? "92vw" : "600px"));
 const detailDialogWidth = computed(() => (isMobileLayout.value ? "92vw" : "70%"));
+const questionActionFixed = computed(() =>
+  isMobileLayout.value ? false : "right"
+);
 
 interface HomeworkItem {
   homeworkId: number;
@@ -850,6 +856,17 @@ onMounted(() => {
   margin-bottom: 20px;
 }
 
+.question-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.question-management-table {
+  min-width: 820px;
+}
+
 .question-detail {
   .option-item {
     margin-bottom: 8px;
@@ -963,6 +980,32 @@ onMounted(() => {
     max-height: min(68vh, 620px);
     overflow-y: auto;
     padding: 16px 18px;
+  }
+
+  .question-dialog-header {
+    margin-bottom: 14px;
+
+    h3 {
+      font-size: 20px;
+      line-height: 1.25;
+      word-break: break-word;
+    }
+  }
+
+  .question-operation-bar {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 16px;
+  }
+
+  .question-table-scroll {
+    margin: 0 -4px;
+    padding: 0 4px 8px;
+    overscroll-behavior-x: contain;
+  }
+
+  .question-management-table {
+    min-width: 760px;
   }
 
   :deep(.el-form-item) {

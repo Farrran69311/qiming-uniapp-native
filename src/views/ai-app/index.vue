@@ -1931,6 +1931,12 @@ onUnmounted(() => {
   }
 }
 
+:global(html.qiming-native-keyboard-open .ai-app-left-rail.is-collapsed) {
+  opacity: 0 !important;
+  transform: translate3d(-18px, -10px, 0) scale(0.84) !important;
+  pointer-events: none !important;
+}
+
 @keyframes simple-pulse {
   0% {
     box-shadow: 0 0 0 0 rgba(94, 127, 248, 0.4);

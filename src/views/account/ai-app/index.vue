@@ -2287,6 +2287,12 @@ onUnmounted(() => {
   flex: 0 0 auto !important;
 }
 
+:global(html.qiming-native-keyboard-open .ai-app-left-rail.is-collapsed) {
+  opacity: 0 !important;
+  transform: translate3d(-18px, -10px, 0) scale(0.84) !important;
+  pointer-events: none !important;
+}
+
 :global(html.qiming-native-keyboard-open .quick-chat-box .el-textarea__inner) {
   height: 128px !important;
   min-height: 128px !important;
