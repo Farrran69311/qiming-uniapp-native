@@ -220,16 +220,17 @@ function installApp(deviceId) {
 
 function launchApp(deviceId, entry, role) {
   run("xcrun", ["simctl", "terminate", deviceId, bundleId], { allowFailure: true });
-  run("xcrun", [
-    "simctl",
-    "launch",
-    deviceId,
-    bundleId,
-    "--entry",
-    entry,
-    "--demoRole",
-    role
-  ]);
+    run("xcrun", [
+      "simctl",
+      "launch",
+      deviceId,
+      bundleId,
+      "--entry",
+      entry,
+      "--demoRole",
+      role,
+      ...testScriptLaunchArgs()
+    ]);
   console.log(`Launched ${bundleId}: role=${role} entry=${entry}`);
 }
 
@@ -398,6 +399,12 @@ function evaluateSmokeCase(item, screenshotPath, diagnostics) {
   const unhandledRejections = webMessages.filter(event => event.type === "unhandledrejection");
   const fetchErrors = webMessages.filter(event => event.type === "fetch-error");
   const probeErrors = events.filter(event => event.type === "web-probe-error");
+  const testScriptErrors = events.filter(event => event.type === "test-script-error");
+  const testScriptFailures = events.filter(event => {
+    if (event.type !== "test-script") return false;
+    const result = event.payload?.result ?? event.payload;
+    return result && typeof result === "object" && result.ok === false;
+  });
 
   if (!events.length) failures.push("missing WebView diagnostics");
   if (!probe) failures.push("missing DOM probe");
@@ -407,6 +414,8 @@ function evaluateSmokeCase(item, screenshotPath, diagnostics) {
   if (unhandledRejections.length) failures.push(`${unhandledRejections.length} unhandled rejection(s)`);
   if (fetchErrors.length) failures.push(`${fetchErrors.length} fetch error(s)`);
   if (probeErrors.length) failures.push(`${probeErrors.length} probe error(s)`);
+  if (testScriptErrors.length) failures.push(`${testScriptErrors.length} test script error(s)`);
+  if (testScriptFailures.length) failures.push(`${testScriptFailures.length} test script failure(s)`);
 
   if (probe) {
     const appText = probe.appText || "";
@@ -486,6 +495,19 @@ function getEntry() {
 function getDemoRole() {
   const role = getString("demo-role", getString("demoRole", "teacher"));
   return ["student", "teacher", "admin"].includes(role) ? role : "teacher";
+}
+
+function testScriptLaunchArgs() {
+  const script = resolveTestScript();
+  return script ? ["--test-script", script] : [];
+}
+
+function resolveTestScript() {
+  const inline = getString("test-script", "");
+  if (inline) return inline;
+  const file = getString("test-script-file", "");
+  if (!file) return "";
+  return captureFile(resolve(repoRoot, file));
 }
 
 function resolveOutputPath(value) {

@@ -14,6 +14,7 @@ final class QimingWebViewController: UIViewController, WKNavigationDelegate, WKS
     private var webView: WKWebView!
     private var lastRequestedEntry = "/welcome/index"
     private var lastRequestedRole = "teacher"
+    private var launchTestScript = ""
     private var probeGeneration = 0
 
     override var preferredStatusBarStyle: UIStatusBarStyle {
@@ -57,6 +58,7 @@ final class QimingWebViewController: UIViewController, WKNavigationDelegate, WKS
         let options = LaunchOptions(arguments: ProcessInfo.processInfo.arguments)
         lastRequestedRole = options.demoRole
         lastRequestedEntry = resolvedEntry(options.entry, role: options.demoRole)
+        launchTestScript = options.testScript
         resetDiagnosticsFile()
         logNative("launch role=\(lastRequestedRole) entry=\(lastRequestedEntry)")
         loadOfflineBundle(entry: lastRequestedEntry, role: lastRequestedRole)
@@ -195,6 +197,59 @@ final class QimingWebViewController: UIViewController, WKNavigationDelegate, WKS
                 guard let self, generation == self.probeGeneration else { return }
                 self.collectWebProbe(label: "\(Int(delay * 1000))ms")
             }
+        }
+        scheduleLaunchTestScript(generation: generation)
+    }
+
+    private func scheduleLaunchTestScript(generation: Int) {
+        let script = launchTestScript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !script.isEmpty else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+            guard let self, generation == self.probeGeneration else { return }
+            self.runLaunchTestScript(script)
+        }
+    }
+
+    private func runLaunchTestScript(_ script: String) {
+        let wrappedScript = """
+        (function () {
+          function postResult(result) {
+            window.webkit.messageHandlers.qimingNative.postMessage({
+              source: 'qiming-native-diagnostics',
+              type: 'test-script',
+              href: location.href,
+              timestamp: Date.now(),
+              result: result
+            });
+          }
+          function postError(error) {
+            window.webkit.messageHandlers.qimingNative.postMessage({
+              source: 'qiming-native-diagnostics',
+              type: 'test-script-error',
+              href: location.href,
+              timestamp: Date.now(),
+              error: error && (error.stack || error.message || String(error))
+            });
+          }
+          try {
+            Promise.resolve((async function () {
+              \(script)
+            })()).then(postResult, postError);
+          } catch (error) {
+            postError(error);
+          }
+        })();
+        """
+        webView.evaluateJavaScript(wrappedScript) { [weak self] result, error in
+            guard let self else { return }
+            if let error {
+                self.recordDiagnostic(type: "test-script-error", payload: [
+                    "error": error.localizedDescription
+                ])
+                self.logNative("test script failed \(error.localizedDescription)")
+                return
+            }
+            self.logNative("test script scheduled \(self.compactJSONString(result as Any))")
         }
     }
 
@@ -624,10 +679,12 @@ private final class QimingSchemeHandler: NSObject, WKURLSchemeHandler {
 private struct LaunchOptions {
     let entry: String
     let demoRole: String
+    let testScript: String
 
     init(arguments: [String]) {
         var entry = ProcessInfo.processInfo.environment["QIMING_ENTRY"] ?? "/welcome/index"
         var role = ProcessInfo.processInfo.environment["QIMING_DEMO_ROLE"] ?? "teacher"
+        var testScript = ProcessInfo.processInfo.environment["QIMING_TEST_SCRIPT"] ?? ""
 
         var index = 0
         while index < arguments.count {
@@ -643,11 +700,17 @@ private struct LaunchOptions {
                 index += 2
                 continue
             }
+            if (current == "--testScript" || current == "--test-script"), let next {
+                testScript = next
+                index += 2
+                continue
+            }
             index += 1
         }
 
         self.entry = entry
         self.demoRole = ["student", "teacher", "admin"].contains(role) ? role : "teacher"
+        self.testScript = testScript
     }
 }
 
