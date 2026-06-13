@@ -1007,6 +1007,7 @@ const radarPoints = computed(() => {
 @media (max-width: 680px) {
   .smd {
     min-height: 0;
+    height: 100%;
   }
 
   .smd__chrome {
@@ -1021,6 +1022,7 @@ const radarPoints = computed(() => {
 
   .smd__workspace {
     display: block;
+    min-height: 0;
   }
 
   .smd__side {
@@ -1031,6 +1033,7 @@ const radarPoints = computed(() => {
     display: flex;
     flex-direction: column;
     gap: 8px;
+    min-height: 214px;
     padding: 12px 12px 10px;
   }
 

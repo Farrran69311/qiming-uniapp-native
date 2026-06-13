@@ -420,6 +420,15 @@ function applyNativeWebViewRuntime() {
         ""
     );
 
+    const canUseBrowserHistory =
+      window.history.length > 1 &&
+      !["/account", "/welcome/index", "/home", "/login"].includes(currentPath);
+
+    if (canUseBrowserHistory) {
+      router.back();
+      return "handled";
+    }
+
     if (currentPath === "/account") {
       if (currentMenu && currentMenu !== "home") {
         navigateNativeBack(

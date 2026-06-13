@@ -118,7 +118,7 @@ watch(() => [props.courseId, props.targetStudentId], loadPath);
 <template>
   <div
     v-loading="loading"
-    class="h-full flex flex-col p-6 bg-transparent overflow-y-auto custom-scrollbar"
+    class="ai-learning-path-panel h-full flex flex-col p-6 bg-transparent overflow-y-auto custom-scrollbar"
   >
     <div class="mb-8">
       <div class="flex items-start justify-between gap-4">
@@ -345,3 +345,73 @@ watch(() => [props.courseId, props.targetStudentId], loadPath);
     </div>
   </div>
 </template>
+
+<style scoped>
+@media screen and (max-width: 768px) {
+  .ai-learning-path-panel {
+    padding: 18px 16px 96px;
+  }
+
+  .ai-learning-path-panel > div:first-child {
+    margin-bottom: 18px;
+  }
+
+  .ai-learning-path-panel > div:first-child > div:first-child {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+  }
+
+  .ai-learning-path-panel > div:first-child > div:first-child > div:last-child {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .ai-learning-path-panel :deep(.el-button) {
+    min-width: 0;
+    margin-left: 0;
+    padding: 0 12px;
+  }
+
+  .ai-learning-path-panel h2 {
+    font-size: 20px;
+    line-height: 1.25;
+    word-break: keep-all;
+  }
+
+  .ai-learning-path-panel .max-w-4xl {
+    max-width: none;
+  }
+
+  .ai-learning-path-panel .mt-4.max-w-4xl {
+    align-items: flex-start;
+    padding: 16px;
+  }
+
+  .ai-learning-path-panel .mt-4.max-w-4xl > div:first-child {
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+  }
+
+  .ai-learning-path-panel .mt-2.text-xs {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .ai-learning-path-panel .relative.pl-10 {
+    padding-left: 30px;
+    margin-bottom: 28px;
+  }
+
+  .ai-learning-path-panel .grid.grid-cols-1 {
+    gap: 10px;
+  }
+
+  .ai-learning-path-panel .max-w-3xl {
+    max-width: none;
+    padding: 24px 16px;
+  }
+}
+</style>

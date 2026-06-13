@@ -29,7 +29,7 @@ const fetchPaperDetail = async () => {
   loading.value = true;
   try {
     const res = await getStudentPaperDetail(paperId.value);
-    if (res.code === 0) {
+    if (res.code === 0 || res.code === 200) {
       paper.value = res.data;
     } else {
       ElMessage.error(res.msg || "获取试卷详情失败");

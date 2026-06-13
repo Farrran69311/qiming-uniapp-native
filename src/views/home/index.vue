@@ -874,6 +874,12 @@ const redirectNativeDemoHomeEntry = () => {
   return true;
 };
 
+const shouldUseHomeRevealMotion = () => {
+  if (typeof window === "undefined") return false;
+  const isSmallViewport = window.matchMedia("(max-width: 680px)").matches;
+  return !isSmallViewport && !isNativeHomeEntry(buildNativeRouteQuery());
+};
+
 const userInfo = computed(() => {
   const info = storageLocal().getItem<DataInfo<number>>(userKey);
   const avatar = userStore.avatar || info?.avatar;
@@ -1768,42 +1774,51 @@ onMounted(() => {
   document.addEventListener("click", handleHomeDragClickCapture, true);
   startShowcaseTimer();
 
-  // GSAP: Bento Cards Reveal
-  gsap.from(".nx-bento", {
-    y: 40,
-    opacity: 0,
-    duration: 0.8,
-    stagger: 0.2,
-    ease: "power3.out",
-    scrollTrigger: {
-      trigger: "#features",
-      start: "top 80%"
-    }
-  });
+  if (shouldUseHomeRevealMotion()) {
+    // GSAP: Bento Cards Reveal
+    gsap.from(".nx-bento", {
+      y: 40,
+      opacity: 0,
+      duration: 0.8,
+      stagger: 0.2,
+      ease: "power3.out",
+      scrollTrigger: {
+        trigger: "#features",
+        start: "top 80%"
+      }
+    });
 
-  // GSAP: Hero satellites floating
-  gsap.to(".nx-sat", {
-    y: "random(-10, 10)",
-    x: "random(-5, 5)",
-    rotation: "random(-2, 2)",
-    duration: "random(2, 4)",
-    repeat: -1,
-    yoyo: true,
-    ease: "sine.inOut"
-  });
+    // GSAP: Hero satellites floating
+    gsap.to(".nx-sat", {
+      y: "random(-10, 10)",
+      x: "random(-5, 5)",
+      rotation: "random(-2, 2)",
+      duration: "random(2, 4)",
+      repeat: -1,
+      yoyo: true,
+      ease: "sine.inOut"
+    });
 
-  // GSAP: Workflow Steps Sequential Reveal
-  gsap.from(".nx-steps li", {
-    x: -30,
-    opacity: 0,
-    duration: 0.6,
-    stagger: 0.15,
-    ease: "back.out(1.7)",
-    scrollTrigger: {
-      trigger: ".nx-steps",
-      start: "top 85%"
-    }
-  });
+    // GSAP: Workflow Steps Sequential Reveal
+    gsap.from(".nx-steps li", {
+      x: -30,
+      opacity: 0,
+      duration: 0.6,
+      stagger: 0.15,
+      ease: "back.out(1.7)",
+      scrollTrigger: {
+        trigger: ".nx-steps",
+        start: "top 85%"
+      }
+    });
+  } else {
+    gsap.set([".nx-bento", ".nx-steps li"], {
+      clearProps: "all",
+      opacity: 1,
+      x: 0,
+      y: 0
+    });
+  }
 });
 onUnmounted(() => {
   window.removeEventListener("scroll", handleScroll);
@@ -3824,15 +3839,14 @@ onUnmounted(() => {
   .nx-section--features
     .nx-bento:not(.nx-bento--wide)
     .nx-bento__inset--scripted {
-    height: auto;
-    min-height: 0;
+    min-height: 268px;
     border-radius: 10px;
   }
 
   .nx-section--features
     .nx-bento:not(.nx-bento--wide)
     .nx-bento__inset--scripted {
-    height: auto;
+    min-height: 248px;
   }
 
   .nx-bento__inset--lg.nx-bento__inset--scripted,
@@ -3887,6 +3901,7 @@ onUnmounted(() => {
 
   .nx-steps {
     grid-template-columns: 1fr;
+    gap: 0;
   }
   .nx-steps li + li::before {
     display: none;
@@ -3934,5 +3949,11 @@ onUnmounted(() => {
   .nx-bento__title {
     font-size: 18px;
   }
+}
+
+:global(html.qiming-native-webview) .nx-section--features .nx-bento,
+:global(html.qiming-native-webview) .nx-steps li {
+  opacity: 1 !important;
+  transform: none !important;
 }
 </style>

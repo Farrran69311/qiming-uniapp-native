@@ -347,4 +347,40 @@ watch(() => props.profileDimensions, renderRadar, { deep: true });
 .custom-scrollbar:hover::-webkit-scrollbar-thumb {
   background: #cbd5e1;
 }
+
+@media screen and (max-width: 768px) {
+  .ai-inspector {
+    height: auto;
+    min-height: 0;
+    padding: 14px 14px 96px;
+    border-left: 0;
+    overflow: visible;
+  }
+
+  .custom-tabs {
+    height: auto;
+
+    :deep(.el-tabs__content) {
+      overflow: visible;
+    }
+
+    :deep(.el-tab-pane) {
+      height: auto;
+      overflow: visible;
+    }
+  }
+
+  .ai-inspector :deep(.custom-scrollbar) {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .ai-inspector :deep(.el-tabs__item) {
+    padding: 0 12px;
+    font-size: 12px;
+    letter-spacing: 0;
+  }
+}
 </style>

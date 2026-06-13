@@ -1516,9 +1516,9 @@ export interface StudentPaperItem {
     | "expired"
     | "retake";
   /** 提交ID（已提交时） */
-  submissionId?: number;
+  submissionId?: number | null;
   /** 得分（已完成且成绩发布后） */
-  score?: number;
+  score?: number | null;
   /** 是否允许补考 */
   allowRetake?: boolean;
   /** 剩余补考次数 */

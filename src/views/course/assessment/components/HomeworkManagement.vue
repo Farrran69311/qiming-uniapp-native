@@ -1,7 +1,7 @@
 <template>
-  <div class="homework-management">
+  <div class="homework-management" :class="{ 'is-mobile-layout': isMobileLayout }">
     <div
-      class="mb-5 flex justify-between items-center bg-[var(--el-fill-color-light)] p-4 rounded-lg"
+      class="homework-toolbar mb-5 flex justify-between items-center bg-[var(--el-fill-color-light)] p-4 rounded-lg"
     >
       <div class="text-[var(--el-text-color-regular)] font-medium">
         <el-icon class="mr-1 mt-0.5"><Notebook /></el-icon>
@@ -15,6 +15,7 @@
     <!-- 作业列表 -->
     <el-table
       v-loading="loading"
+      class="desktop-homework-table"
       :data="homeworkList"
       style="width: 100%"
       border
@@ -85,13 +86,65 @@
       </el-table-column>
     </el-table>
 
+    <div v-loading="loading" class="mobile-homework-list">
+      <div
+        v-for="homework in homeworkList"
+        :key="homework.homeworkId"
+        class="mobile-homework-card"
+      >
+        <div class="mobile-homework-card__header">
+          <div class="min-w-0">
+            <div class="mobile-homework-card__id">ID {{ homework.homeworkId }}</div>
+            <button
+              class="mobile-homework-card__title"
+              type="button"
+              @click="showQuestionDialog(homework)"
+            >
+              {{ homework.title || "未命名作业" }}
+            </button>
+          </div>
+          <el-tag size="small" effect="plain">
+            {{ homework.questionNum || 0 }} 题
+          </el-tag>
+        </div>
+
+        <div class="mobile-homework-card__meta">
+          <span>章节：{{ homework.chapterName || "-" }}</span>
+          <span>课时：{{ homework.hourName || "-" }}</span>
+          <span>总分：{{ homework.totalPoints ?? "-" }}</span>
+          <span>截止：{{ homework.dueDate || "-" }}</span>
+        </div>
+
+        <div class="mobile-homework-card__actions">
+          <el-button
+            type="primary"
+            plain
+            round
+            @click="showQuestionDialog(homework)"
+          >
+            试题管理
+          </el-button>
+          <el-button round @click="showEditDialog(homework)">编辑</el-button>
+          <el-button type="danger" plain round @click="confirmDelete(homework)">
+            删除
+          </el-button>
+        </div>
+      </div>
+
+      <el-empty
+        v-if="!loading && homeworkList.length === 0"
+        description="暂无作业"
+      />
+    </div>
+
     <!-- 分页 -->
     <div class="pagination-container">
       <el-pagination
         v-model:current-page="currentPage"
         v-model:page-size="pageSize"
         :page-sizes="[10, 20, 30, 50]"
-        layout="total, sizes, prev, pager, next, jumper"
+        :layout="paginationLayout"
+        :small="isMobileLayout"
         :total="total"
         @size-change="handleSizeChange"
         @current-change="handleCurrentChange"
@@ -102,7 +155,7 @@
     <el-dialog
       v-model="dialogVisible"
       :title="isEdit ? '编辑作业' : '创建作业'"
-      width="600px"
+      :width="formDialogWidth"
       align-center
     >
       <el-form
@@ -182,6 +235,7 @@
       v-model="questionDialogVisible"
       title="作业管理"
       width="90%"
+      :fullscreen="isMobileLayout"
       top="5vh"
       @closed="handleQuestionDialogClosed"
     >
@@ -248,7 +302,8 @@
           v-model:current-page="questionCurrentPage"
           v-model:page-size="questionPageSize"
           :page-sizes="[10, 20, 30, 50]"
-          layout="total, sizes, prev, pager, next, jumper"
+          :layout="paginationLayout"
+          :small="isMobileLayout"
           :total="questionTotal"
           @size-change="handleQuestionSizeChange"
           @current-change="handleQuestionCurrentChange"
@@ -257,7 +312,11 @@
     </el-dialog>
 
     <!-- 查看试题详情弹窗 -->
-    <el-dialog v-model="detailDialogVisible" title="试题详情" width="70%">
+    <el-dialog
+      v-model="detailDialogVisible"
+      title="试题详情"
+      :width="detailDialogWidth"
+    >
       <div v-if="currentQuestion" class="question-detail">
         <el-descriptions border :column="1" size="default">
           <el-descriptions-item label="题型">
@@ -312,9 +371,10 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, watch, onMounted } from "vue";
+import { computed, ref, watch, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Plus } from "@element-plus/icons-vue";
+import { useAppStoreHook } from "@/store/modules/app";
 import {
   getHomeworkList,
   getHomeworkQuestionList,
@@ -332,9 +392,45 @@ const props = defineProps({
   }
 });
 
+const appStore = useAppStoreHook();
+const isNativeMobile = () =>
+  typeof document !== "undefined" &&
+  document.documentElement.classList.contains("qiming-native-webview");
+const isMobileLayout = computed(
+  () => appStore.getDevice === "mobile" || isNativeMobile()
+);
+const paginationLayout = computed(() =>
+  isMobileLayout.value ? "prev, pager, next" : "total, sizes, prev, pager, next, jumper"
+);
+const formDialogWidth = computed(() => (isMobileLayout.value ? "92vw" : "600px"));
+const detailDialogWidth = computed(() => (isMobileLayout.value ? "92vw" : "70%"));
+
+interface HomeworkItem {
+  homeworkId: number;
+  title?: string;
+  chapterName?: string;
+  hourName?: string;
+  questionNum?: number;
+  totalPoints?: number;
+  dueDate?: string;
+}
+
+interface QuestionItem {
+  questionId?: number;
+  questionType: number;
+  title?: string;
+  stem?: string;
+  options?: string;
+  correctAnswer?: string;
+  analysis?: string;
+  points?: number;
+  difficulty?: number;
+  sortOrder?: number;
+}
+
 // 作业列表相关
 const loading = ref(false);
-const homeworkList = ref([]);
+const homeworkList = ref<HomeworkItem[]>([]);
 const currentPage = ref(1);
 const pageSize = ref(10);
 const total = ref(0);
@@ -371,15 +467,15 @@ const rules = {
 // 试题管理相关
 const questionDialogVisible = ref(false);
 const questionLoading = ref(false);
-const currentHomework = ref(null);
-const questionList = ref([]);
+const currentHomework = ref<HomeworkItem | null>(null);
+const questionList = ref<QuestionItem[]>([]);
 const questionCurrentPage = ref(1);
 const questionPageSize = ref(10);
 const questionTotal = ref(0);
 
 // 试题详情相关
 const detailDialogVisible = ref(false);
-const currentQuestion = ref(null);
+const currentQuestion = ref<QuestionItem | null>(null);
 
 // 监听课程ID变化，重新加载数据
 watch(
@@ -721,6 +817,10 @@ onMounted(() => {
   padding: 10px 0;
 }
 
+.mobile-homework-list {
+  display: none;
+}
+
 .operation-bar {
   margin-bottom: 20px;
 }
@@ -758,6 +858,121 @@ onMounted(() => {
   .analysis-content {
     line-height: 1.5;
     white-space: pre-wrap;
+  }
+}
+
+@media screen and (max-width: 768px) {
+  .homework-management.is-mobile-layout {
+    padding: 0;
+  }
+
+  .homework-toolbar {
+    align-items: stretch;
+    gap: 12px;
+    padding: 14px;
+    border-radius: 18px;
+
+    :deep(.el-button) {
+      width: auto;
+      min-width: 112px;
+      height: 40px;
+      margin-left: auto;
+    }
+  }
+
+  .desktop-homework-table {
+    display: none;
+  }
+
+  .mobile-homework-list {
+    display: grid;
+    gap: 12px;
+  }
+
+  .mobile-homework-card {
+    padding: 16px;
+    background: var(--el-bg-color-overlay);
+    border: 1px solid var(--el-border-color-lighter);
+    border-radius: 18px;
+    box-shadow: 0 10px 26px rgb(15 23 42 / 6%);
+  }
+
+  .mobile-homework-card__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .mobile-homework-card__id {
+    margin-bottom: 4px;
+    color: var(--el-text-color-placeholder);
+    font-size: 12px;
+    line-height: 1.2;
+  }
+
+  .mobile-homework-card__title {
+    display: block;
+    width: 100%;
+    padding: 0;
+    color: var(--el-text-color-primary);
+    font-size: 17px;
+    font-weight: 800;
+    line-height: 1.35;
+    text-align: left;
+    word-break: break-word;
+    background: transparent;
+    border: 0;
+  }
+
+  .mobile-homework-card__meta {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 6px;
+    margin-top: 12px;
+    color: var(--el-text-color-regular);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .mobile-homework-card__actions {
+    display: grid;
+    grid-template-columns: 1fr 0.8fr 0.8fr;
+    gap: 8px;
+    margin-top: 14px;
+
+    :deep(.el-button) {
+      min-width: 0;
+      margin-left: 0;
+      padding: 0 10px;
+    }
+  }
+
+  .pagination-container {
+    justify-content: center;
+    margin-top: 16px;
+    overflow-x: auto;
+  }
+
+  :deep(.el-dialog) {
+    max-width: calc(100vw - 24px);
+    border-radius: 22px;
+  }
+
+  :deep(.el-dialog__body) {
+    max-height: min(68vh, 620px);
+    overflow-y: auto;
+    padding: 16px 18px;
+  }
+
+  :deep(.el-form-item) {
+    display: block;
+  }
+
+  :deep(.el-form-item__label) {
+    justify-content: flex-start;
+    margin-bottom: 6px;
+    font-weight: 700;
   }
 }
 </style>

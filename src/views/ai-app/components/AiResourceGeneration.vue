@@ -241,7 +241,7 @@ watch(() => [props.courseId, props.targetStudentId], loadResources);
 <template>
   <div
     v-loading="loading"
-    class="h-full flex flex-col p-6 bg-gray-50/30 overflow-hidden"
+    class="ai-resource-generation-panel h-full flex flex-col p-6 bg-gray-50/30 overflow-hidden"
   >
     <div class="flex items-center justify-between mb-6">
       <div>
@@ -655,3 +655,92 @@ watch(() => [props.courseId, props.targetStudentId], loadResources);
     </el-dialog>
   </div>
 </template>
+
+<style scoped>
+@media screen and (max-width: 768px) {
+  .ai-resource-generation-panel {
+    padding: 18px 16px 96px;
+    overflow-y: auto;
+  }
+
+  .ai-resource-generation-panel > div:first-child {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+    margin-bottom: 16px;
+  }
+
+  .ai-resource-generation-panel h2 {
+    font-size: 20px;
+    line-height: 1.25;
+    word-break: keep-all;
+  }
+
+  .ai-resource-generation-panel > div:first-child > div:last-child {
+    display: grid;
+    grid-template-columns: 0.72fr 1.28fr;
+    gap: 10px;
+  }
+
+  .ai-resource-generation-panel :deep(.el-button) {
+    min-width: 0;
+    margin-left: 0;
+    padding: 0 12px;
+  }
+
+  .ai-resource-generation-panel .mb-6.flex.gap-4 {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .ai-resource-generation-panel :deep(.el-input),
+  .ai-resource-generation-panel :deep(.el-select) {
+    width: 100%;
+    max-width: none;
+  }
+
+  .ai-resource-generation-panel .flex-1.min-h-0.grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 14px;
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .ai-resource-generation-panel .bg-white.border.border-gray-100.rounded-xl {
+    max-height: none;
+    border-radius: 18px;
+  }
+
+  .ai-resource-generation-panel .overflow-y-auto.pr-1 {
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .ai-resource-generation-panel .grid.grid-cols-1.md\:grid-cols-2 {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .ai-resource-generation-panel .bg-white.rounded-xl.p-5 {
+    padding: 16px;
+    border-radius: 18px;
+  }
+
+  .assistant-resource-dialog :deep(.el-dialog__body) {
+    max-height: 72vh;
+    overflow-y: auto;
+  }
+
+  .assistant-resource-dialog :deep(.el-dialog__footer > div) {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .assistant-resource-dialog :deep(.el-dialog__footer .el-button) {
+    width: 100%;
+  }
+}
+</style>
