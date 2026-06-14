@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { computed, ref, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useDark } from "@pureadmin/utils";
 import { ElMessage, ElMessageBox } from "element-plus";
+import { usePageResponsive } from "@/utils/pageResponsive";
 import IconDocument from "@/assets/home-icons/document.svg?component";
 import IconFolder from "@/assets/home-icons/folder.svg?component";
 import {
@@ -11,7 +12,16 @@ import {
   deleteTemplate,
   getSystemTemplateStats
 } from "@/api/examPaper";
-import { logNativeFallback } from "@/utils/nativeRuntime";
+import {
+  isNativeWebViewRuntime,
+  logNativeFallback
+} from "@/utils/nativeRuntime";
+import {
+  applyTemplateStatsToList,
+  cloneNativeDemoMyTemplates,
+  nativeDemoSystemTemplateStats,
+  type NativeDemoTemplateItem
+} from "@/views/exam-paper/nativeDemoTemplates";
 
 defineOptions({
   name: "ExamPaperTemplates"
@@ -19,6 +29,19 @@ defineOptions({
 
 const router = useRouter();
 const { isDark } = useDark();
+const { isMobile, getDialogWidth } = usePageResponsive();
+const previewDialogWidth = computed(() =>
+  getDialogWidth("680px", "calc(100vw - 32px)")
+);
+const createDialogWidth = computed(() =>
+  getDialogWidth("500px", "calc(100vw - 32px)")
+);
+const createDialogLabelPosition = computed(() =>
+  isMobile.value ? "top" : "right"
+);
+const createDialogLabelWidth = computed(() =>
+  isMobile.value ? "auto" : "80px"
+);
 
 // 系统模板
 const systemTemplates = ref([
@@ -70,6 +93,10 @@ const systemTemplates = ref([
 
 // 我的模板（私有模板）
 const myTemplates = ref<any[]>([]);
+const nativeMyTemplates = ref<NativeDemoTemplateItem[]>(
+  cloneNativeDemoMyTemplates()
+);
+const isUsingNativeDemoData = ref(false);
 
 // 当前激活的标签页
 const activeTab = ref("system");
@@ -81,39 +108,72 @@ const newTemplateForm = ref({
   description: ""
 });
 
+const applyNativeTemplateStats = () => {
+  applyTemplateStatsToList(
+    systemTemplates.value,
+    nativeDemoSystemTemplateStats
+  );
+};
+
+const applyNativeMyTemplates = () => {
+  myTemplates.value = JSON.parse(JSON.stringify(nativeMyTemplates.value));
+};
+
+const applyNativeTemplatesFallback = (reason: string, error?: unknown) => {
+  if (!isNativeWebViewRuntime()) return false;
+
+  isUsingNativeDemoData.value = true;
+  logNativeFallback(reason, error);
+  applyNativeMyTemplates();
+  return true;
+};
+
 // 加载系统模板统计（使用人数）
 const loadTemplateStats = async () => {
   try {
     const result = await getSystemTemplateStats();
     if (result.code === 0 && result.data) {
-      result.data.forEach((stat: any) => {
-        const tpl = systemTemplates.value.find(
-          t => t.templateKey === stat.templateKey
-        );
-        if (tpl) {
-          tpl.useCount = stat.useCount;
-        }
-      });
+      applyTemplateStatsToList(systemTemplates.value, result.data);
+    } else if (isNativeWebViewRuntime()) {
+      logNativeFallback("使用原生演示模板统计", result);
+      applyNativeTemplateStats();
     }
   } catch (error) {
     logNativeFallback("加载模板统计失败:", error);
+    if (isNativeWebViewRuntime()) applyNativeTemplateStats();
   }
 };
 
 // 加载我的模板
 const loadMyTemplates = async () => {
+  if (isUsingNativeDemoData.value) {
+    applyNativeMyTemplates();
+    return;
+  }
+
   try {
     const result = await getMyTemplates();
     if (result.code === 0 && result.data) {
       myTemplates.value = result.data;
+    } else {
+      applyNativeTemplatesFallback("使用原生演示私有模板", result);
     }
   } catch (error) {
-    logNativeFallback("加载我的模板失败:", error);
+    applyNativeTemplatesFallback(
+      "加载我的模板失败，已使用原生演示模板:",
+      error
+    );
   }
 };
 
 // 使用模板
 const useTemplate = (templateId: number, isSystem: boolean) => {
+  if (!isSystem && isUsingNativeDemoData.value) {
+    ElMessage.info("已进入模板编辑器，可继续完善私有模板");
+    router.push("/exam-paper/editor");
+    return;
+  }
+
   const prefix = isSystem ? "" : "my-";
   router.push(`/exam-paper/editor?template=${prefix}${templateId}`);
 };
@@ -286,6 +346,29 @@ const handleCreateTemplate = async () => {
     return;
   }
 
+  const createNativeTemplate = () => {
+    const templateId = Date.now();
+    nativeMyTemplates.value.unshift({
+      id: templateId,
+      name: newTemplateForm.value.name.trim(),
+      description: newTemplateForm.value.description.trim(),
+      questionTypes: ["单选题", "多选题", "简答题"],
+      totalQuestions: 0,
+      totalPoints: 0,
+      createTime: new Date().toISOString().slice(0, 10)
+    });
+    isUsingNativeDemoData.value = true;
+    applyNativeMyTemplates();
+    ElMessage.success("模板创建成功");
+    createDialogVisible.value = false;
+    router.push("/exam-paper/editor");
+  };
+
+  if (isUsingNativeDemoData.value) {
+    createNativeTemplate();
+    return;
+  }
+
   try {
     const result = await createTemplate({
       name: newTemplateForm.value.name,
@@ -299,9 +382,23 @@ const handleCreateTemplate = async () => {
         `/exam-paper/editor?template=my-${result.data.templateId}&edit=true`
       );
     } else {
-      ElMessage.error(result.msg || "创建失败");
+      if (
+        !applyNativeTemplatesFallback(
+          "创建模板失败，已使用原生演示模板",
+          result
+        )
+      ) {
+        ElMessage.error(result.msg || "创建失败");
+      } else {
+        createNativeTemplate();
+      }
     }
   } catch (error) {
+    if (isNativeWebViewRuntime()) {
+      logNativeFallback("创建模板失败，已使用原生演示模板:", error);
+      createNativeTemplate();
+      return;
+    }
     console.error("创建模板失败:", error);
     ElMessage.error("创建模板失败");
   }
@@ -316,6 +413,15 @@ const deleteMyTemplate = (templateId: number, templateName: string) => {
   })
     .then(async () => {
       try {
+        if (isUsingNativeDemoData.value) {
+          nativeMyTemplates.value = nativeMyTemplates.value.filter(
+            template => template.id !== templateId
+          );
+          applyNativeMyTemplates();
+          ElMessage.success("删除成功");
+          return;
+        }
+
         const result = await deleteTemplate(templateId);
         if (result.code === 0) {
           ElMessage.success("删除成功");
@@ -324,6 +430,16 @@ const deleteMyTemplate = (templateId: number, templateName: string) => {
           ElMessage.error(result.msg || "删除失败");
         }
       } catch (error) {
+        if (isNativeWebViewRuntime()) {
+          logNativeFallback("删除模板失败，已在本地演示数据中删除:", error);
+          nativeMyTemplates.value = nativeMyTemplates.value.filter(
+            template => template.id !== templateId
+          );
+          isUsingNativeDemoData.value = true;
+          applyNativeMyTemplates();
+          ElMessage.success("删除成功");
+          return;
+        }
         console.error("删除模板失败:", error);
         ElMessage.error("删除模板失败");
       }
@@ -333,6 +449,12 @@ const deleteMyTemplate = (templateId: number, templateName: string) => {
 
 // 编辑我的模板
 const editMyTemplate = (templateId: number) => {
+  if (isUsingNativeDemoData.value) {
+    ElMessage.info("已进入模板编辑器，可继续完善私有模板");
+    router.push("/exam-paper/editor");
+    return;
+  }
+
   router.push(`/exam-paper/editor?template=my-${templateId}&edit=true`);
 };
 
@@ -343,7 +465,10 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="templates-page" :class="{ 'is-dark': isDark }">
+  <div
+    class="templates-page"
+    :class="{ 'is-dark': isDark, 'is-mobile': isMobile }"
+  >
     <div class="page-header">
       <div class="header-content">
         <div class="header-icon">
@@ -483,7 +608,9 @@ onMounted(() => {
     <el-dialog
       v-model="previewDialogVisible"
       :title="previewData?.name || '模板预览'"
-      width="680px"
+      class="templates-preview-dialog"
+      :width="previewDialogWidth"
+      :fullscreen="isMobile"
       :close-on-click-modal="true"
     >
       <div v-loading="previewLoading">
@@ -549,10 +676,15 @@ onMounted(() => {
     <el-dialog
       v-model="createDialogVisible"
       title="新建私有模板"
-      width="500px"
+      class="templates-create-dialog"
+      :width="createDialogWidth"
       :close-on-click-modal="false"
     >
-      <el-form :model="newTemplateForm" label-width="80px">
+      <el-form
+        :model="newTemplateForm"
+        :label-width="createDialogLabelWidth"
+        :label-position="createDialogLabelPosition"
+      >
         <el-form-item label="模板名称" required>
           <el-input
             v-model="newTemplateForm.name"
@@ -970,6 +1102,187 @@ $primary-gradient: linear-gradient(135deg, #4a7fc8 0%, #739cf9 100%);
     margin-top: 16px;
     padding-top: 16px;
     border-top: 1px solid #ebeef5;
+  }
+}
+
+.templates-page.is-mobile {
+  padding: 16px 16px calc(var(--pure-mobile-content-bottom-gap, 140px) + 24px);
+
+  .page-header {
+    align-items: stretch;
+    min-height: auto;
+    padding: 18px;
+    margin-bottom: 18px;
+    border-radius: 14px;
+
+    .header-content {
+      align-items: flex-start;
+    }
+
+    .header-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+
+      :deep(.el-icon) {
+        width: 24px;
+        height: 24px;
+        font-size: 24px;
+      }
+    }
+
+    .page-title {
+      font-size: 22px;
+      line-height: 1.25;
+    }
+
+    .page-desc {
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    :deep(.el-button.create-btn) {
+      min-height: 44px;
+      height: 44px;
+      padding: 0 18px;
+      border-radius: 12px;
+      font-weight: 600;
+    }
+  }
+
+  .template-tabs {
+    :deep(.el-tabs__header) {
+      margin-bottom: 16px;
+    }
+
+    :deep(.el-tabs__nav-wrap::after) {
+      height: 1px;
+    }
+  }
+
+  .templates-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .empty-state {
+    display: flex;
+    justify-content: center;
+    min-height: calc(100vh - 420px);
+    padding: 32px 0 calc(var(--pure-mobile-content-bottom-gap, 140px) + 24px);
+
+    :deep(.el-empty) {
+      width: 100%;
+      padding: 0;
+    }
+
+    :deep(.el-empty__bottom) {
+      margin-top: 18px;
+    }
+
+    :deep(.el-button) {
+      min-height: 42px;
+      border-radius: 12px;
+    }
+  }
+
+  .template-card {
+    border-radius: 12px;
+
+    :deep(.el-card__body) {
+      padding: 16px;
+    }
+
+    .template-cover {
+      height: 96px;
+      margin-bottom: 14px;
+    }
+
+    .template-info {
+      .template-name {
+        font-size: 16px;
+        line-height: 1.35;
+      }
+
+      .template-stats {
+        flex-wrap: wrap;
+        gap: 8px 14px;
+        line-height: 1.4;
+      }
+    }
+
+    .template-actions {
+      flex-wrap: wrap;
+      gap: 8px;
+      padding-top: 14px;
+
+      :deep(.el-button) {
+        flex: 1 1 calc(50% - 4px);
+        min-width: 0;
+        min-height: 40px;
+        margin-left: 0;
+        border-radius: 10px;
+      }
+
+      :deep(.el-button.is-link) {
+        flex: 0 0 auto;
+        min-height: 40px;
+        padding-right: 6px;
+        padding-left: 6px;
+      }
+    }
+  }
+}
+
+:global(.templates-preview-dialog.is-fullscreen) {
+  display: flex;
+  flex-direction: column;
+  margin: 0 !important;
+  padding-top: env(safe-area-inset-top, 0);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+
+  .el-dialog__body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+  }
+
+  .el-dialog__footer {
+    padding: 12px 16px calc(env(safe-area-inset-bottom, 0) + 16px);
+    border-top: 1px solid var(--el-border-color-lighter);
+  }
+}
+
+:global(.templates-create-dialog) {
+  max-width: calc(100vw - 32px);
+}
+
+@media screen and (max-width: 520px) {
+  .templates-page.is-mobile {
+    padding-right: 14px;
+    padding-left: 14px;
+
+    .page-header {
+      flex-direction: column;
+      gap: 14px;
+
+      .header-actions,
+      :deep(.el-button.create-btn) {
+        width: 100%;
+      }
+
+      .header-content {
+        gap: 12px;
+      }
+    }
+
+    .template-card {
+      .template-actions {
+        :deep(.el-button:not(.is-link)) {
+          flex-basis: 100%;
+        }
+      }
+    }
   }
 }
 </style>
