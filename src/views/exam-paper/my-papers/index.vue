@@ -28,7 +28,15 @@ import {
   type PaperStatus,
   type PaperFolder
 } from "@/api/examPaper";
-import { logNativeFallback } from "@/utils/nativeRuntime";
+import {
+  isNativeWebViewRuntime,
+  logNativeFallback
+} from "@/utils/nativeRuntime";
+import {
+  nativeDemoMyPaperFolders,
+  nativeDemoMyPaperList,
+  type NativeDemoMyPaperItem
+} from "@/views/exam-paper/nativeDemoMyPapers";
 
 // 导入 SVG 图标组件
 import IconDocument from "@/assets/home-icons/document.svg?component";
@@ -63,12 +71,21 @@ const pagination = reactive({
 const paperList = ref<any[]>([]);
 
 const loading = ref(false);
+const isUsingNativeDemoData = ref(false);
+const nativePaperList = ref<NativeDemoMyPaperItem[]>(
+  JSON.parse(JSON.stringify(nativeDemoMyPaperList))
+);
+const nativePaperFolders = ref<PaperFolder[]>(
+  JSON.parse(JSON.stringify(nativeDemoMyPaperFolders))
+);
 
 // 课程列表
 const courseList = ref([
   { id: 1, name: "高等数学" },
-  { id: 2, name: "线性代数" },
-  { id: 3, name: "概率论" }
+  { id: 2, name: "嵌入式 Linux" },
+  { id: 3, name: "计算机基础" },
+  { id: 4, name: "线性代数" },
+  { id: 5, name: "概率论" }
 ]);
 
 // 统计数据
@@ -124,6 +141,8 @@ const getPaperUpdateTime = (paper: any) => {
   return paper.updateTime || paper.updatedAt || paper.createTime || "-";
 };
 
+const deepClone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
+
 // ==================== 文件夹相关状态 ====================
 const folderList = ref<PaperFolder[]>([]);
 const folderTreeData = computed(() => {
@@ -142,9 +161,82 @@ const moveDialogVisible = ref(false);
 const targetFolderId = ref<number | null>(null);
 const selectedPaperIds = ref<number[]>([]);
 
+const refreshNativePaperFolders = () => {
+  nativePaperFolders.value = nativePaperFolders.value.map(folder => ({
+    ...folder,
+    paperCount: nativePaperList.value.filter(
+      paper => paper.folderId === folder.id
+    ).length
+  }));
+};
+
+const applyNativePaperStatistics = () => {
+  statistics.value = {
+    total: nativePaperList.value.length,
+    published: nativePaperList.value.filter(paper => paper.status === 1).length,
+    draft: nativePaperList.value.filter(paper => paper.status === 0).length,
+    recent: nativePaperList.value.filter(paper =>
+      String(paper.updateTime || paper.createTime || "").startsWith("2026-06")
+    ).length
+  };
+};
+
+const applyNativePaperList = () => {
+  const keyword = searchForm.keyword.trim().toLowerCase();
+  const status =
+    searchForm.status !== "" ? Number(searchForm.status) : undefined;
+  const courseId = searchForm.courseId ? Number(searchForm.courseId) : null;
+  const selectedCourseName = courseList.value.find(
+    course => course.id === courseId
+  )?.name;
+
+  const filtered = nativePaperList.value.filter(paper => {
+    const matchesKeyword =
+      !keyword ||
+      paper.title.toLowerCase().includes(keyword) ||
+      paper.courseName.toLowerCase().includes(keyword) ||
+      (paper.folderName || "").toLowerCase().includes(keyword);
+    const matchesStatus = status === undefined || paper.status === status;
+    const matchesCourse =
+      !selectedCourseName || paper.courseName === selectedCourseName;
+    const matchesFolder =
+      selectedFolderId.value === null ||
+      paper.folderId === selectedFolderId.value;
+
+    return matchesKeyword && matchesStatus && matchesCourse && matchesFolder;
+  });
+
+  pagination.total = filtered.length;
+  const start = (pagination.page - 1) * pagination.pageSize;
+  paperList.value = filtered.slice(start, start + pagination.pageSize);
+};
+
+const refreshNativePaperState = () => {
+  refreshNativePaperFolders();
+  applyNativePaperStatistics();
+  folderList.value = nativePaperFolders.value;
+  applyNativePaperList();
+};
+
+const applyNativeMyPapersFallback = (reason: string, error?: unknown) => {
+  if (!isNativeWebViewRuntime()) return false;
+
+  isUsingNativeDemoData.value = true;
+  logNativeFallback(reason, error);
+  refreshNativePaperState();
+  return true;
+};
+
+const resolveFolderName = (folderId?: number | null) =>
+  nativePaperFolders.value.find(folder => folder.id === folderId)?.name || "";
+
 // 搜索
 const handleSearch = () => {
   pagination.page = 1;
+  if (isUsingNativeDemoData.value) {
+    applyNativePaperList();
+    return;
+  }
   loadData();
 };
 
@@ -158,18 +250,30 @@ const handleReset = () => {
 
 // 加载统计数据
 const loadStatistics = async () => {
+  if (isUsingNativeDemoData.value) {
+    applyNativePaperStatistics();
+    return;
+  }
+
   try {
     const res = await getMyPaperStatistics();
     if (res.code === 0 && res.data) {
       statistics.value = res.data;
+    } else {
+      applyNativeMyPapersFallback("使用原生演示试卷统计", res);
     }
   } catch (e) {
-    logNativeFallback("获取统计数据失败", e);
+    applyNativeMyPapersFallback("获取统计数据失败，已使用原生演示试卷", e);
   }
 };
 
 // 加载试卷列表
 const loadData = async () => {
+  if (isUsingNativeDemoData.value) {
+    applyNativePaperList();
+    return;
+  }
+
   loading.value = true;
   try {
     const res = await getPaperList({
@@ -185,9 +289,11 @@ const loadData = async () => {
     if (res.code === 0 && res.data) {
       paperList.value = res.data.list || [];
       pagination.total = res.data.total || 0;
+    } else {
+      applyNativeMyPapersFallback("使用原生演示试卷列表", res);
     }
   } catch (e) {
-    logNativeFallback("获取试卷列表失败", e);
+    applyNativeMyPapersFallback("获取试卷列表失败，已使用原生演示试卷", e);
   } finally {
     loading.value = false;
   }
@@ -195,13 +301,21 @@ const loadData = async () => {
 
 // ==================== 文件夹相关方法 ====================
 const fetchFolders = async () => {
+  if (isUsingNativeDemoData.value) {
+    refreshNativePaperFolders();
+    folderList.value = nativePaperFolders.value;
+    return;
+  }
+
   try {
     const res = await getPaperFolders();
     if (res.code === 0 && res.data) {
       folderList.value = res.data;
+    } else {
+      applyNativeMyPapersFallback("使用原生演示试卷文件夹", res);
     }
   } catch (e) {
-    logNativeFallback("获取文件夹列表失败", e);
+    applyNativeMyPapersFallback("获取文件夹列表失败，已使用原生演示文件夹", e);
   }
 };
 
@@ -230,12 +344,43 @@ const saveFolder = async () => {
   }
   try {
     if (isNewFolder.value) {
+      if (isUsingNativeDemoData.value) {
+        nativePaperFolders.value.push({
+          id: Date.now(),
+          name: editingFolder.value.name.trim(),
+          parentId: editingFolder.value.parentId,
+          paperCount: 0,
+          createTime: new Date().toISOString().split("T")[0]
+        });
+        ElMessage.success("创建成功");
+        folderDialogVisible.value = false;
+        refreshNativePaperState();
+        return;
+      }
+
       await createPaperFolder({
         name: editingFolder.value.name,
         parentId: editingFolder.value.parentId
       });
       ElMessage.success("创建成功");
     } else {
+      if (isUsingNativeDemoData.value) {
+        nativePaperFolders.value = nativePaperFolders.value.map(folder =>
+          folder.id === editingFolder.value.id
+            ? { ...folder, name: editingFolder.value.name.trim() }
+            : folder
+        );
+        nativePaperList.value = nativePaperList.value.map(paper =>
+          paper.folderId === editingFolder.value.id
+            ? { ...paper, folderName: editingFolder.value.name.trim() }
+            : paper
+        );
+        ElMessage.success("更新成功");
+        folderDialogVisible.value = false;
+        refreshNativePaperState();
+        return;
+      }
+
       await updatePaperFolder({
         id: editingFolder.value.id!,
         name: editingFolder.value.name
@@ -260,6 +405,23 @@ const handleDeleteFolder = (folder: PaperFolder) => {
     }
   ).then(async () => {
     try {
+      if (isUsingNativeDemoData.value) {
+        nativePaperFolders.value = nativePaperFolders.value.filter(
+          item => item.id !== folder.id
+        );
+        nativePaperList.value = nativePaperList.value.map(paper =>
+          paper.folderId === folder.id
+            ? { ...paper, folderId: undefined, folderName: "" }
+            : paper
+        );
+        if (selectedFolderId.value === folder.id) {
+          selectedFolderId.value = null;
+        }
+        ElMessage.success("删除成功");
+        refreshNativePaperState();
+        return;
+      }
+
       await deletePaperFolder(folder.id);
       ElMessage.success("删除成功");
       if (selectedFolderId.value === folder.id) {
@@ -285,6 +447,20 @@ const handleMoveToFolder = async () => {
     return;
   }
   try {
+    if (isUsingNativeDemoData.value) {
+      const folderName = resolveFolderName(targetFolderId.value);
+      nativePaperList.value = nativePaperList.value.map(paper =>
+        selectedPaperIds.value.includes(paper.paperId)
+          ? { ...paper, folderId: targetFolderId.value!, folderName }
+          : paper
+      );
+      ElMessage.success("移动成功");
+      moveDialogVisible.value = false;
+      selectedPaperIds.value = [];
+      refreshNativePaperState();
+      return;
+    }
+
     await movePapersToFolder({
       paperIds: selectedPaperIds.value,
       folderId: targetFolderId.value
@@ -315,6 +491,22 @@ const copyPaper = (paper: any) => {
     cancelButtonText: "取消",
     type: "info"
   }).then(() => {
+    if (isUsingNativeDemoData.value) {
+      nativePaperList.value.unshift({
+        ...deepClone(paper),
+        paperId: Date.now(),
+        title: `${paper.title} 副本`,
+        status: 0,
+        statusText: "草稿",
+        publishCount: 0,
+        createTime: new Date().toISOString().slice(0, 16).replace("T", " "),
+        updateTime: new Date().toISOString().slice(0, 16).replace("T", " ")
+      });
+      ElMessage.success("复制成功");
+      refreshNativePaperState();
+      return;
+    }
+
     ElMessage.success("复制成功");
   });
 };
@@ -326,6 +518,15 @@ const deletePaper = (paper: any) => {
     cancelButtonText: "取消",
     type: "warning"
   }).then(() => {
+    if (isUsingNativeDemoData.value) {
+      nativePaperList.value = nativePaperList.value.filter(
+        item => item.paperId !== paper.paperId
+      );
+      ElMessage.success("删除成功");
+      refreshNativePaperState();
+      return;
+    }
+
     ElMessage.success("删除成功");
     loadData();
   });
@@ -333,7 +534,10 @@ const deletePaper = (paper: any) => {
 
 // 发布试卷
 const publishPaper = (paper: any) => {
-  router.push(`/exam-paper/publish/${paper.paperId}`);
+  router.push({
+    path: `/exam-paper/editor/${paper.paperId}`,
+    query: { publish: "1" }
+  });
 };
 
 const handleMobileAction = (command: string, paper: any) => {
@@ -370,6 +574,10 @@ const getStatusText = (status: number) => {
 
 // 分页变化
 const handlePageChange = () => {
+  if (isUsingNativeDemoData.value) {
+    applyNativePaperList();
+    return;
+  }
   loadData();
 };
 

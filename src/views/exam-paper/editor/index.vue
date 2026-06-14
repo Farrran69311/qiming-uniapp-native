@@ -35,7 +35,10 @@ import {
   type ClassInfo,
   type PublishTargetStudent
 } from "@/api/examPaper";
-import { logNativeFallback, isNativeWebViewRuntime } from "@/utils/nativeRuntime";
+import {
+  logNativeFallback,
+  isNativeWebViewRuntime
+} from "@/utils/nativeRuntime";
 import { nativeDemoStudentPaper } from "@/views/exam-paper/nativeDemoPaper";
 
 defineOptions({
@@ -1135,6 +1138,17 @@ const confirmPublish = async () => {
           ? publishSelectedStudentIds.value
           : [];
 
+    if (isNativeWebViewRuntime()) {
+      logNativeFallback("原生演示模式下模拟发布试卷", {
+        paperId: Number(paperId.value) || Date.now(),
+        targetType: publishTargetType.value,
+        targetIds
+      });
+      ElMessage.success("试卷发布成功！");
+      publishDialogVisible.value = false;
+      return;
+    }
+
     const res = await publishPaperAdvanced({
       paperId: Number(paperId.value) || Date.now(),
       config: {
@@ -2168,7 +2182,7 @@ const loadPaperDetail = async () => {
   }
 };
 
-onMounted(() => {
+onMounted(async () => {
   document.addEventListener("keydown", handleKeydown);
   document.addEventListener("keydown", handleKeydownForAssistant);
   startAutoSave();
@@ -2177,9 +2191,14 @@ onMounted(() => {
   // 检查是否有模板参数
   const templateId = route.query.template as string;
   if (templateId) {
-    loadTemplate(templateId);
+    await loadTemplate(templateId);
   } else if (isEditMode.value) {
-    loadPaperDetail();
+    await loadPaperDetail();
+  }
+
+  if (route.query.publish === "1") {
+    await nextTick();
+    publishPaperHandler();
   }
 });
 
