@@ -90,6 +90,9 @@ const categoryOptions = [
 ];
 
 const selectedCount = computed(() => selectedRows.value.length);
+const selectedWordIds = computed(
+  () => new Set(selectedRows.value.map(item => item.id))
+);
 const activeFilterCount = computed(() => {
   let count = 0;
 
@@ -235,6 +238,20 @@ const handleSizeChange = (size: number) => {
 
 const handleSelectionChange = (rows: SensitiveWord[]) => {
   selectedRows.value = rows;
+};
+
+const isWordSelected = (row: SensitiveWord) =>
+  selectedWordIds.value.has(row.id);
+
+const toggleMobileSelection = (row: SensitiveWord, checked: boolean) => {
+  if (checked) {
+    if (!isWordSelected(row)) {
+      selectedRows.value = [...selectedRows.value, row];
+    }
+    return;
+  }
+
+  selectedRows.value = selectedRows.value.filter(item => item.id !== row.id);
 };
 
 const refreshData = async () => {
@@ -600,6 +617,15 @@ onMounted(() => {
         <div v-for="row in words" :key="row.id" class="mobile-word-card">
           <div class="mobile-word-card__header">
             <div class="mobile-word-card__title">
+              <el-checkbox
+                :model-value="isWordSelected(row)"
+                class="mobile-word-card__checkbox"
+                @change="
+                  checked => toggleMobileSelection(row, Boolean(checked))
+                "
+              >
+                选择
+              </el-checkbox>
               <span :class="{ 'is-disabled': !row.isEnabled }">
                 {{ getContentPreview(row.word, 28) }}
               </span>
