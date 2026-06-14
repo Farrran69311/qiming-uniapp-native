@@ -91,6 +91,8 @@ const props = defineProps<{
 
 const MOBILE_BREAKPOINT = 767;
 const MOBILE_COLLAPSE_DISTANCE = 72;
+const MOBILE_TOUCH_DISTANCE = 18;
+const MOBILE_WHEEL_DISTANCE = 6;
 const MOBILE_TOP_RESET = 8;
 const sidebarRef = ref<HTMLElement | null>(null);
 const itemRefs = new Map<string, HTMLElement>();
@@ -100,6 +102,10 @@ const mobileExpandAnchor = ref(0);
 let scrollStateRafId: number | null = null;
 let scrollElementsObserver: MutationObserver | null = null;
 let boundScrollableElements: HTMLElement[] = [];
+let touchStartY = 0;
+let touchLastY = 0;
+let touchTracking = false;
+let gestureLockedCollapsed = false;
 
 // Emits
 defineEmits<{
@@ -164,6 +170,37 @@ const getWindowScrollTop = () => {
   ];
 
   return Math.max(0, ...scrollCandidates.filter(Number.isFinite));
+};
+
+const isCourseAtTop = () => getWindowScrollTop() <= MOBILE_TOP_RESET;
+
+const isCourseGestureTarget = (target: EventTarget | null) => {
+  const root = getCourseScrollRoot();
+  if (!(target instanceof Node) || !root.contains(target)) return false;
+
+  if (
+    target instanceof Element &&
+    target.closest("#layout-sidebar, .mobile-sidebar-toggle")
+  ) {
+    return false;
+  }
+
+  return true;
+};
+
+const collapseFromGesture = () => {
+  if (!isMobileViewport()) return;
+
+  gestureLockedCollapsed = true;
+  mobileExpandAnchor.value = getWindowScrollTop();
+  mobileCollapsed.value = true;
+  scheduleMobileScrollState();
+};
+
+const expandAtTop = () => {
+  gestureLockedCollapsed = false;
+  mobileCollapsed.value = false;
+  mobileExpandAnchor.value = 0;
 };
 
 const scheduleMobileScrollState = () => {
@@ -232,6 +269,7 @@ const updateViewportState = () => {
     window.innerWidth <= MOBILE_BREAKPOINT || isNativeCourseWebView();
 
   if (!isMobileView.value) {
+    gestureLockedCollapsed = false;
     mobileCollapsed.value = false;
     mobileExpandAnchor.value = 0;
   }
@@ -243,10 +281,13 @@ const handleMobileScrollState = () => {
   const scrollTop = getWindowScrollTop();
 
   if (scrollTop <= MOBILE_TOP_RESET) {
-    mobileCollapsed.value = false;
-    mobileExpandAnchor.value = 0;
+    if (!gestureLockedCollapsed) {
+      expandAtTop();
+    }
     return;
   }
+
+  gestureLockedCollapsed = false;
 
   if (mobileCollapsed.value) return;
 
@@ -260,6 +301,7 @@ const handleMobileScrollState = () => {
 const handleMobileToggle = () => {
   if (!isMobileViewport()) return;
 
+  gestureLockedCollapsed = false;
   mobileCollapsed.value = false;
   mobileExpandAnchor.value = getWindowScrollTop();
 
@@ -273,6 +315,71 @@ const handleViewportResize = () => {
 };
 
 const handleWindowScroll = () => {
+  scheduleMobileScrollState();
+};
+
+const handleTouchStart = (event: TouchEvent) => {
+  if (!isMobileViewport() || !isCourseGestureTarget(event.target)) {
+    touchTracking = false;
+    return;
+  }
+
+  const touch = event.touches[0];
+  if (!touch) return;
+
+  touchStartY = touch.clientY;
+  touchLastY = touch.clientY;
+  touchTracking = true;
+};
+
+const handleTouchMove = (event: TouchEvent) => {
+  if (!isMobileViewport() || !touchTracking) return;
+
+  const touch = event.touches[0];
+  if (!touch) return;
+
+  const deltaFromStart = touchStartY - touch.clientY;
+  const deltaFromLast = touchLastY - touch.clientY;
+  touchLastY = touch.clientY;
+
+  if (
+    deltaFromStart >= MOBILE_TOUCH_DISTANCE ||
+    deltaFromLast >= MOBILE_TOUCH_DISTANCE
+  ) {
+    collapseFromGesture();
+    return;
+  }
+
+  if (
+    (deltaFromStart <= -MOBILE_TOUCH_DISTANCE ||
+      deltaFromLast <= -MOBILE_TOUCH_DISTANCE) &&
+    isCourseAtTop()
+  ) {
+    expandAtTop();
+  }
+
+  scheduleMobileScrollState();
+};
+
+const handleTouchEnd = () => {
+  touchTracking = false;
+  touchStartY = 0;
+  touchLastY = 0;
+  scheduleMobileScrollState();
+};
+
+const handleWheelGesture = (event: WheelEvent) => {
+  if (!isMobileViewport() || !isCourseGestureTarget(event.target)) return;
+
+  if (event.deltaY >= MOBILE_WHEEL_DISTANCE) {
+    collapseFromGesture();
+    return;
+  }
+
+  if (event.deltaY <= -MOBILE_WHEEL_DISTANCE && isCourseAtTop()) {
+    expandAtTop();
+  }
+
   scheduleMobileScrollState();
 };
 
@@ -303,8 +410,7 @@ watch(
     ensureActiveItemVisible();
 
     if (isMobileViewport()) {
-      mobileCollapsed.value = false;
-      mobileExpandAnchor.value = 0;
+      expandAtTop();
       notifyCollapseChange();
       scheduleMobileScrollState();
     }
@@ -328,11 +434,23 @@ onMounted(() => {
     capture: true,
     passive: true
   });
-  document.addEventListener("touchmove", handleWindowScroll, {
+  document.addEventListener("touchstart", handleTouchStart, {
     capture: true,
     passive: true
   });
-  document.addEventListener("wheel", handleWindowScroll, {
+  document.addEventListener("touchmove", handleTouchMove, {
+    capture: true,
+    passive: true
+  });
+  document.addEventListener("touchend", handleTouchEnd, {
+    capture: true,
+    passive: true
+  });
+  document.addEventListener("touchcancel", handleTouchEnd, {
+    capture: true,
+    passive: true
+  });
+  document.addEventListener("wheel", handleWheelGesture, {
     capture: true,
     passive: true
   });
@@ -357,8 +475,11 @@ onBeforeUnmount(() => {
   window.removeEventListener("resize", handleViewportResize);
   window.removeEventListener("scroll", handleWindowScroll);
   document.removeEventListener("scroll", handleWindowScroll, true);
-  document.removeEventListener("touchmove", handleWindowScroll, true);
-  document.removeEventListener("wheel", handleWindowScroll, true);
+  document.removeEventListener("touchstart", handleTouchStart, true);
+  document.removeEventListener("touchmove", handleTouchMove, true);
+  document.removeEventListener("touchend", handleTouchEnd, true);
+  document.removeEventListener("touchcancel", handleTouchEnd, true);
+  document.removeEventListener("wheel", handleWheelGesture, true);
   scrollElementsObserver?.disconnect();
   scrollElementsObserver = null;
   unbindScrollableElements();

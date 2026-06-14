@@ -20,6 +20,7 @@ $apksigner = "G:\qiming-uniapp-native-tools\android-sdk\build-tools\35.0.0\apksi
 $adb = "G:\qiming-uniapp-native-tools\android-sdk\platform-tools\adb.exe"
 $keytool = "C:\Program Files\Microsoft\jdk-21.0.11.10-hotspot\bin\keytool.exe"
 $desktopLogo = "C:\Users\farde\Desktop\logo.png"
+$androidPackageName = "cn.intelledu.qiming"
 
 function Require-File([string]$Path, [string]$Message) {
   if (-not (Test-Path -LiteralPath $Path)) {
@@ -447,7 +448,10 @@ try {
 
           node (Join-Path $repoRoot "scripts\strip-android-permissions.mjs") `
             $sourceManifestPath `
-            $patchedManifestPath
+            $patchedManifestPath `
+            $androidPackageName `
+            $VersionCode `
+            $VersionName
           if ($LASTEXITCODE -ne 0) {
             throw "AndroidManifest permission stripping failed with exit code $LASTEXITCODE"
           }
@@ -602,14 +606,14 @@ if ($Install) {
     throw "No Android device found for install."
   }
   if ($ForceReinstall) {
-    & $adb -s $targetDevice shell am force-stop io.dcloud.HBuilder | Out-Null
-    & $adb -s $targetDevice uninstall io.dcloud.HBuilder | Out-Null
+    & $adb -s $targetDevice shell am force-stop $androidPackageName | Out-Null
+    & $adb -s $targetDevice uninstall $androidPackageName | Out-Null
   }
   $installOutput = & $adb -s $targetDevice install -r -d $latestApk 2>&1
   $installText = $installOutput | Out-String
   if ($LASTEXITCODE -ne 0) {
     if ($ForceReinstall -and $installText -match "INSTALL_FAILED_UPDATE_INCOMPATIBLE|signatures do not match|incompatible") {
-      & $adb -s $targetDevice uninstall io.dcloud.HBuilder | Out-Null
+      & $adb -s $targetDevice uninstall $androidPackageName | Out-Null
       & $adb -s $targetDevice install -r -d $latestApk
       if ($LASTEXITCODE -ne 0) {
         throw "ADB reinstall failed with exit code $LASTEXITCODE"
@@ -620,14 +624,14 @@ if ($Install) {
     }
   }
   if (-not $KeepRuntimeData) {
-    & $adb -s $targetDevice shell am force-stop io.dcloud.HBuilder | Out-Null
-    $clearOutput = & $adb -s $targetDevice shell pm clear io.dcloud.HBuilder 2>&1
+    & $adb -s $targetDevice shell am force-stop $androidPackageName | Out-Null
+    $clearOutput = & $adb -s $targetDevice shell pm clear $androidPackageName 2>&1
     $clearText = ($clearOutput | Out-String).Trim()
     if ($LASTEXITCODE -ne 0 -or $clearText -notmatch "Success") {
       Write-Host $clearText
-      throw "ADB pm clear failed; stale HBuilder app resources may remain on device."
+      throw "ADB pm clear failed; stale IntellEdu app resources may remain on device."
     }
-    Write-Host "Cleared HBuilder runtime data so this install loads bundled version $VersionCode resources."
+    Write-Host "Cleared IntellEdu runtime data so this install loads bundled version $VersionCode resources."
   }
 }
 
