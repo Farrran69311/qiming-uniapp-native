@@ -156,13 +156,25 @@ const ensureActiveItemVisible = () => {
 
   const containerRect = container.getBoundingClientRect();
   const activeRect = activeItem.getBoundingClientRect();
-  const targetLeft =
-    activeItem.offsetLeft -
-    (container.clientWidth - activeItem.offsetWidth) / 2;
+  const isNative = document.documentElement.classList.contains(
+    "qiming-native-webview"
+  );
+  const edgeGap = 10;
+  let targetLeft = container.scrollLeft;
+
+  if (props.activeMenu === "course-learn" || props.activeMenu === "mastery") {
+    targetLeft = 0;
+  } else if (activeRect.left < containerRect.left + edgeGap) {
+    targetLeft += activeRect.left - containerRect.left - edgeGap;
+  } else if (activeRect.right > containerRect.right - edgeGap) {
+    targetLeft += activeRect.right - containerRect.right + edgeGap;
+  } else {
+    return;
+  }
 
   container.scrollTo({
     left: Math.max(0, targetLeft),
-    behavior: "smooth"
+    behavior: isNative ? "auto" : "smooth"
   });
 };
 
@@ -237,12 +249,13 @@ const activeMenuItem = computed(
 watch(
   () => props.activeMenu,
   async () => {
-    await nextTick();
-    ensureActiveItemVisible();
-
-    if (isMobileViewport() && !mobileCollapsed.value) {
+    if (isMobileViewport()) {
+      mobileCollapsed.value = false;
       mobileExpandAnchor.value = getCurrentScrollTop();
     }
+
+    await nextTick();
+    ensureActiveItemVisible();
   },
   { immediate: true }
 );

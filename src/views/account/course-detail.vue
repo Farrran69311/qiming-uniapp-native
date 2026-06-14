@@ -542,6 +542,13 @@ watch(
 const handleMenuClick = (menuName: string) => {
   activeMenu.value = menuName;
 
+  if (isNativeCourseWebView()) {
+    nextTick(() => {
+      scheduleMobileTopOffsetUpdate();
+      resetNativeCourseScrollPosition();
+    });
+  }
+
   // 如果视频正在播放且切换到了非课程学习菜单，则暂停视频
   const videoPlayerEl = resolveVideoPlayerEl();
   if (menuName !== "course-learn" && videoPlayerEl) {
