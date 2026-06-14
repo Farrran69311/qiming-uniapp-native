@@ -424,9 +424,35 @@ function injectHeadScript(input, scriptName) {
   return `${output}\n<script src="./${scriptName}"></script>\n`;
 }
 
+function stripNativeBlockingExternalResources(input) {
+  return input
+    .replace(
+      /\s*<!--\s*[^>]*?(?:Google Fonts|Noto Sans SC|思源黑体)[\s\S]*?-->/gi,
+      ""
+    )
+    .replace(/\s*<!--\s*[^>]*?Microsoft Clarity[\s\S]*?-->/gi, "")
+    .replace(
+      /\s*<link\b[^>]+href=["']https:\/\/fonts\.(?:googleapis|gstatic)\.com[^"']*["'][^>]*>/gi,
+      ""
+    )
+    .replace(
+      /\s*<link\b[^>]+rel=["']preconnect["'][^>]+href=["']https:\/\/fonts\.(?:googleapis|gstatic)\.com[^"']*["'][^>]*>/gi,
+      ""
+    )
+    .replace(
+      /\s*<script\b[^>]+src=["']https:\/\/www\.googletagmanager\.com\/gtag\/js[^"']*["'][^>]*><\/script>/gi,
+      ""
+    )
+    .replace(
+      /\s*<script>\s*window\.dataLayer\s*=\s*window\.dataLayer\s*\|\|\s*\[\];[\s\S]*?gtag\(\s*['"]config['"][\s\S]*?<\/script>/gi,
+      ""
+    );
+}
+
 html = html
   .replace(/\b(href|src)="\/(logo\.svg[^"]*)"/g, '$1="./$2"')
   .replace(/\b(href|src)="\/(manifest\.webmanifest[^"]*)"/g, '$1="./$2"');
+html = stripNativeBlockingExternalResources(html);
 html = injectHeadScript(html, "qiming-native-bridge.js");
 html = injectHeadScript(html, "qiming-native-compat.js");
 writeFileSync(htmlPath, html, "utf8");

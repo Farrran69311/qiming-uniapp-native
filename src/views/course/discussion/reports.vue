@@ -131,6 +131,14 @@ const listSummaryText = computed(() => {
   return `共 ${pagination.total} 条举报记录`;
 });
 
+const normalizeFilteredReports = (
+  list: ReportItem[],
+  status: ReportStatus | ""
+) => {
+  if (!status) return list;
+  return list.filter(item => item.status === status);
+};
+
 const fetchData = async () => {
   loading.value = true;
   try {
@@ -146,8 +154,13 @@ const fetchData = async () => {
     if (searchForm.status) params.status = searchForm.status;
 
     const res = await getReportList(params);
-    reports.value = res.list || [];
-    pagination.total = res.total || 0;
+    const rawList = res.list || [];
+    const filteredList = normalizeFilteredReports(rawList, searchForm.status);
+    reports.value = filteredList;
+    pagination.total =
+      searchForm.status && filteredList.length !== rawList.length
+        ? filteredList.length
+        : res.total || filteredList.length;
   } catch (error) {
     console.error("加载举报列表失败", error);
     reports.value = [];
