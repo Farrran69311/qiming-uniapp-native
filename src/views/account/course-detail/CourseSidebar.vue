@@ -97,40 +97,99 @@ const itemRefs = new Map<string, HTMLElement>();
 const isMobileView = ref(false);
 const mobileCollapsed = ref(false);
 const mobileExpandAnchor = ref(0);
+let scrollStateRafId: number | null = null;
+let scrollElementsObserver: MutationObserver | null = null;
+let boundScrollableElements: HTMLElement[] = [];
 
 // Emits
 defineEmits<{
   (e: "menu-click", menuName: string): void;
 }>();
 
-const isMobileViewport = () => isMobileView.value;
+const isNativeCourseWebView = () =>
+  typeof document !== "undefined" &&
+  document.documentElement.classList.contains("qiming-native-webview");
+
+const isMobileViewport = () => isMobileView.value || isNativeCourseWebView();
+
+const getCourseScrollRoot = () =>
+  (document.querySelector(".course-detail-root") as HTMLElement | null) ||
+  document.documentElement;
+
+const COURSE_SCROLL_SELECTORS = [
+  ".app-main",
+  ".app-main-nofixed-header",
+  ".main-container",
+  ".el-scrollbar__wrap",
+  ".layout-inner-content",
+  ".study-container",
+  ".message-board-wrapper",
+  ".message-board-container",
+  ".mastery-page-content",
+  ".homework-container",
+  ".materials-container",
+  ".course-grades-container",
+  ".animations-container",
+  ".left-scroll",
+  ".board-left-panel",
+  ".messages-list"
+];
+
+const isScrollableElement = (el: HTMLElement) => {
+  if (el.closest("#layout-sidebar")) return false;
+  return el.scrollHeight - el.clientHeight > 4 || el.scrollTop > 0;
+};
+
+const getScrollableCourseElements = () => {
+  const root = getCourseScrollRoot();
+  const elements = new Set<HTMLElement>();
+
+  document
+    .querySelectorAll<HTMLElement>(COURSE_SCROLL_SELECTORS.join(","))
+    .forEach(el => elements.add(el));
+
+  root?.querySelectorAll<HTMLElement>("*").forEach(el => {
+    if (isScrollableElement(el)) elements.add(el);
+  });
+
+  return Array.from(elements).filter(isScrollableElement);
+};
 
 const getWindowScrollTop = () => {
   const scrollCandidates = [
     window.scrollY,
     document.documentElement.scrollTop,
     document.body.scrollTop,
-    ...Array.from(
-      document.querySelectorAll<HTMLElement>(
-        [
-          ".app-main",
-          ".app-main-nofixed-header",
-          ".layout-inner-content",
-          ".study-container",
-          ".message-board-container",
-          ".mastery-page-content",
-          ".homework-container",
-          ".materials-container",
-          ".course-grades-container",
-          ".animations-container",
-          ".left-scroll",
-          ".el-scrollbar__wrap"
-        ].join(",")
-      )
-    ).map(el => el.scrollTop)
+    ...getScrollableCourseElements().map(el => el.scrollTop)
   ];
 
   return Math.max(0, ...scrollCandidates.filter(Number.isFinite));
+};
+
+const scheduleMobileScrollState = () => {
+  if (scrollStateRafId !== null) return;
+
+  scrollStateRafId = requestAnimationFrame(() => {
+    scrollStateRafId = null;
+    handleMobileScrollState();
+  });
+};
+
+const unbindScrollableElements = () => {
+  boundScrollableElements.forEach(el => {
+    el.removeEventListener("scroll", scheduleMobileScrollState);
+  });
+  boundScrollableElements = [];
+};
+
+const bindScrollableElements = () => {
+  unbindScrollableElements();
+  boundScrollableElements = getScrollableCourseElements();
+  boundScrollableElements.forEach(el => {
+    el.addEventListener("scroll", scheduleMobileScrollState, {
+      passive: true
+    });
+  });
 };
 
 const notifyCollapseChange = () => {
@@ -169,7 +228,8 @@ const ensureActiveItemVisible = () => {
 };
 
 const updateViewportState = () => {
-  isMobileView.value = window.innerWidth <= MOBILE_BREAKPOINT;
+  isMobileView.value =
+    window.innerWidth <= MOBILE_BREAKPOINT || isNativeCourseWebView();
 
   if (!isMobileView.value) {
     mobileCollapsed.value = false;
@@ -213,7 +273,7 @@ const handleViewportResize = () => {
 };
 
 const handleWindowScroll = () => {
-  handleMobileScrollState();
+  scheduleMobileScrollState();
 };
 
 // 侧边栏菜单配置
@@ -239,10 +299,14 @@ watch(
   () => props.activeMenu,
   async () => {
     await nextTick();
+    bindScrollableElements();
     ensureActiveItemVisible();
 
-    if (isMobileViewport() && !mobileCollapsed.value) {
-      mobileExpandAnchor.value = getWindowScrollTop();
+    if (isMobileViewport()) {
+      mobileCollapsed.value = false;
+      mobileExpandAnchor.value = 0;
+      notifyCollapseChange();
+      scheduleMobileScrollState();
     }
   },
   { immediate: true }
@@ -264,7 +328,28 @@ onMounted(() => {
     capture: true,
     passive: true
   });
-  nextTick(() => ensureActiveItemVisible());
+  document.addEventListener("touchmove", handleWindowScroll, {
+    capture: true,
+    passive: true
+  });
+  document.addEventListener("wheel", handleWindowScroll, {
+    capture: true,
+    passive: true
+  });
+  scrollElementsObserver = new MutationObserver(() => {
+    nextTick(() => {
+      bindScrollableElements();
+      scheduleMobileScrollState();
+    });
+  });
+  scrollElementsObserver.observe(getCourseScrollRoot(), {
+    childList: true,
+    subtree: true
+  });
+  nextTick(() => {
+    bindScrollableElements();
+    ensureActiveItemVisible();
+  });
   handleMobileScrollState();
 });
 
@@ -272,6 +357,15 @@ onBeforeUnmount(() => {
   window.removeEventListener("resize", handleViewportResize);
   window.removeEventListener("scroll", handleWindowScroll);
   document.removeEventListener("scroll", handleWindowScroll, true);
+  document.removeEventListener("touchmove", handleWindowScroll, true);
+  document.removeEventListener("wheel", handleWindowScroll, true);
+  scrollElementsObserver?.disconnect();
+  scrollElementsObserver = null;
+  unbindScrollableElements();
+  if (scrollStateRafId !== null) {
+    cancelAnimationFrame(scrollStateRafId);
+    scrollStateRafId = null;
+  }
 });
 </script>
 

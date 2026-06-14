@@ -2009,6 +2009,28 @@ const filterByTag = (tagName: string) => {
   overflow-y: auto;
 }
 
+@media (max-width: 768px) {
+  .message-board-wrapper {
+    min-height: 100vh;
+    overflow: visible;
+  }
+
+  .message-board-container {
+    height: auto;
+    min-height: 100vh;
+    padding: var(--course-mobile-top-offset, 176px) 14px
+      calc(24px + env(safe-area-inset-bottom));
+    overflow: visible;
+  }
+}
+
+@media (max-width: 479px) {
+  .message-board-container {
+    padding: var(--course-mobile-top-offset, 176px) 10px
+      calc(20px + env(safe-area-inset-bottom));
+  }
+}
+
 .message-board-container :deep(.el-input__wrapper.is-focus),
 .message-board-container :deep(.el-textarea__inner:focus),
 .message-board-container :deep(.el-select__wrapper.is-focused),
