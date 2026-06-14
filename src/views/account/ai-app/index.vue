@@ -1905,6 +1905,14 @@ onUnmounted(() => {
   }
   &::after {
     content: "IntellEdu";
+    display: inline-block;
+    font-family:
+      "Arial Black", "Arial Narrow", "Inter Tight", "Inter", "Microsoft YaHei",
+      sans-serif;
+    font-style: italic;
+    font-weight: 900;
+    letter-spacing: -0.06em;
+    transform: skewX(-8deg);
   }
 }
 

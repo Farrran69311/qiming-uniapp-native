@@ -43,11 +43,15 @@ const { title, getLogo } = useNav();
       margin: 2px 0 0 12px;
       overflow: hidden;
       text-overflow: ellipsis;
+      font-family:
+        "Arial Black", "Arial Narrow", "Inter Tight", "Inter",
+        "Microsoft YaHei", sans-serif;
       font-size: 24px;
+      font-style: italic;
       font-weight: 900;
       line-height: 40px;
       color: var(--el-color-primary);
-      letter-spacing: 0.05em;
+      letter-spacing: -0.06em;
       white-space: nowrap;
       background: linear-gradient(
         135deg,
@@ -55,6 +59,7 @@ const { title, getLogo } = useNav();
         color-mix(in srgb, var(--el-color-primary), #4facfe 100%) 100%
       );
       background-clip: text;
+      transform: skewX(-8deg);
       transition: all 0.3s;
       -webkit-text-fill-color: transparent;
     }

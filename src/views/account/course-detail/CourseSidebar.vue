@@ -90,7 +90,7 @@ const props = defineProps<{
 }>();
 
 const MOBILE_BREAKPOINT = 767;
-const MOBILE_COLLAPSE_DISTANCE = 120;
+const MOBILE_COLLAPSE_DISTANCE = 72;
 const MOBILE_TOP_RESET = 8;
 const sidebarRef = ref<HTMLElement | null>(null);
 const itemRefs = new Map<string, HTMLElement>();
@@ -105,11 +105,41 @@ defineEmits<{
 
 const isMobileViewport = () => isMobileView.value;
 
-const getWindowScrollTop = () =>
-  window.scrollY ||
-  document.documentElement.scrollTop ||
-  document.body.scrollTop ||
-  0;
+const getWindowScrollTop = () => {
+  const scrollCandidates = [
+    window.scrollY,
+    document.documentElement.scrollTop,
+    document.body.scrollTop,
+    ...Array.from(
+      document.querySelectorAll<HTMLElement>(
+        [
+          ".app-main",
+          ".app-main-nofixed-header",
+          ".layout-inner-content",
+          ".study-container",
+          ".message-board-container",
+          ".mastery-page-content",
+          ".homework-container",
+          ".materials-container",
+          ".course-grades-container",
+          ".animations-container",
+          ".left-scroll",
+          ".el-scrollbar__wrap"
+        ].join(",")
+      )
+    ).map(el => el.scrollTop)
+  ];
+
+  return Math.max(0, ...scrollCandidates.filter(Number.isFinite));
+};
+
+const notifyCollapseChange = () => {
+  window.dispatchEvent(
+    new CustomEvent("qiming:course-sidebar-collapse-change", {
+      detail: { collapsed: mobileCollapsed.value }
+    })
+  );
+};
 
 const setItemRef = (key: string, el: HTMLDivElement | null) => {
   if (!key) return;
@@ -218,10 +248,22 @@ watch(
   { immediate: true }
 );
 
+watch(
+  mobileCollapsed,
+  () => {
+    notifyCollapseChange();
+  },
+  { flush: "post" }
+);
+
 onMounted(() => {
   updateViewportState();
   window.addEventListener("resize", handleViewportResize, { passive: true });
   window.addEventListener("scroll", handleWindowScroll, { passive: true });
+  document.addEventListener("scroll", handleWindowScroll, {
+    capture: true,
+    passive: true
+  });
   nextTick(() => ensureActiveItemVisible());
   handleMobileScrollState();
 });
@@ -229,6 +271,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener("resize", handleViewportResize);
   window.removeEventListener("scroll", handleWindowScroll);
+  document.removeEventListener("scroll", handleWindowScroll, true);
 });
 </script>
 

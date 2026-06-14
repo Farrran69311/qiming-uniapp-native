@@ -379,6 +379,10 @@ const isNativeCourseWebView = () =>
   typeof document !== "undefined" &&
   document.documentElement.classList.contains("qiming-native-webview");
 
+const isCourseMobileViewport = () =>
+  typeof window !== "undefined" &&
+  (window.innerWidth <= MOBILE_BREAKPOINT || isNativeCourseWebView());
+
 const updateMobileTopOffset = () => {
   const root = courseRootEl.value;
   if (!root) return;
@@ -397,14 +401,27 @@ const updateMobileTopOffset = () => {
   ) as HTMLElement | null;
   const headerBottom = headerEl?.getBoundingClientRect().bottom ?? 0;
   const sidebarBottom = sidebarEl?.getBoundingClientRect().bottom ?? 0;
-  const safeGap = isNative ? 30 : 16;
+  const sidebarCollapsed =
+    sidebarEl?.classList.contains("mobile-collapsed") ?? false;
+  const safeGap = isNative ? 14 : 12;
   const measuredOffset = Math.ceil(
-    Math.max(headerBottom, sidebarBottom) + safeGap
+    Math.max(headerBottom, sidebarCollapsed ? 0 : sidebarBottom) + safeGap
   );
+  const fallbackOffset = sidebarCollapsed
+    ? isNative
+      ? 106
+      : 92
+    : isNative
+      ? 174
+      : 158;
 
   root.style.setProperty(
     "--course-mobile-top-offset",
-    `${Math.max(measuredOffset, isNative ? 224 : 176)}px`
+    `${Math.max(measuredOffset, fallbackOffset)}px`
+  );
+  root.style.setProperty(
+    "--course-mobile-fab-clearance",
+    isNative ? "64px" : "72px"
   );
 };
 
@@ -420,6 +437,40 @@ const scheduleMobileTopOffsetUpdate = () => {
 };
 
 const handleViewportResize = () => {
+  scheduleMobileTopOffsetUpdate();
+};
+
+const COURSE_SCROLL_CONTAINERS = [
+  ".app-main",
+  ".app-main-nofixed-header",
+  ".layout-inner-content",
+  ".study-container",
+  ".message-board-container",
+  ".mastery-page-content",
+  ".homework-container",
+  ".materials-container",
+  ".course-grades-container",
+  ".animations-container",
+  ".left-scroll",
+  ".el-scrollbar__wrap"
+];
+
+const resetCourseScrollPosition = () => {
+  if (!isCourseMobileViewport()) return;
+
+  window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
+
+  COURSE_SCROLL_CONTAINERS.forEach(selector => {
+    document.querySelectorAll<HTMLElement>(selector).forEach(el => {
+      el.scrollTop = 0;
+      el.scrollLeft = 0;
+    });
+  });
+};
+
+const handleCourseSidebarCollapseChange = () => {
   scheduleMobileTopOffsetUpdate();
 };
 
@@ -517,6 +568,11 @@ const handleMenuClick = (menuName: string) => {
       videoPlayerEl.pause();
     }
   }
+
+  requestAnimationFrame(() => {
+    resetCourseScrollPosition();
+    scheduleMobileTopOffsetUpdate();
+  });
 
   // 数据加载统一由 watch(activeMenu) 处理，避免重复请求
 };
@@ -1101,6 +1157,10 @@ onMounted(async () => {
   ) as HTMLElement | null;
   baseCourseId.value = Number(route.params.id);
   window.addEventListener("resize", handleViewportResize, { passive: true });
+  window.addEventListener(
+    "qiming:course-sidebar-collapse-change",
+    handleCourseSidebarCollapseChange
+  );
   window.addEventListener("qiming:native-back", handleNativeBack);
 
   // 获取用户ID（如果还没有）
@@ -1185,6 +1245,10 @@ onBeforeUnmount(() => {
   setAiScreenCaptureVisibilityOverride(null);
   document.body.classList.remove("course-page");
   window.removeEventListener("resize", handleViewportResize);
+  window.removeEventListener(
+    "qiming:course-sidebar-collapse-change",
+    handleCourseSidebarCollapseChange
+  );
   window.removeEventListener("qiming:native-back", handleNativeBack);
   if (mobileOffsetRafId !== null) {
     cancelAnimationFrame(mobileOffsetRafId);

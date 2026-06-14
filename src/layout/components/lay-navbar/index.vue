@@ -123,7 +123,7 @@ const {
           alt="logo"
           class="app-logo-img mobile-brand-logo"
         />
-        <span>{{ title }}</span>
+        <span class="mobile-brand-wordmark">{{ title }}</span>
       </span>
 
       <div v-if="device !== 'mobile'" class="flex items-center ml-4">
@@ -421,6 +421,17 @@ const {
     font-size: 12.5px;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .mobile-brand-wordmark {
+    display: inline-block;
+    font-family:
+      "Arial Black", "Arial Narrow", "Inter Tight", "Inter", "Microsoft YaHei",
+      sans-serif;
+    font-style: italic;
+    font-weight: 900;
+    letter-spacing: -0.06em;
+    transform: skewX(-8deg);
   }
 
   :deep(.el-avatar) {
