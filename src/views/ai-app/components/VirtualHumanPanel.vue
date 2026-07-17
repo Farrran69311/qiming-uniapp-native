@@ -24,8 +24,7 @@ const humanBaseUrl = computed(() => {
 });
 const humanUrl = computed(() => `${humanBaseUrl.value}?embed=ai-app`);
 const messageTargetOrigin = computed(() => {
-  const target = new URL(humanBaseUrl.value);
-  return target.protocol === "file:" ? "*" : target.origin;
+  return new URL(humanBaseUrl.value).origin;
 });
 
 const iframeRef = ref<HTMLIFrameElement | null>(null);

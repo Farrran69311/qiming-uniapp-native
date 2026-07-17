@@ -791,11 +791,11 @@
         </select>
         <select id="moodSelect">
           <option value="neutral">neutral</option>
-        </select>
-        <option value="relaxed">relaxed</option>
-        <option value="sad">sad</option>
-        <option value="angry">angry</option>
-        <option value="surprised">surprised</option>
+          <option value="happy">happy</option>
+          <option value="relaxed">relaxed</option>
+          <option value="sad">sad</option>
+          <option value="angry">angry</option>
+          <option value="surprised">surprised</option>
         </select>
         <button id="applyMoodBtn" type="button">只应用表情</button>
         <button id="resetFaceBtn" type="button">重置表情口型</button>
@@ -827,7 +827,6 @@
         <span id="selectionText">未选中</span>
       </div>
 
-      <div id="motionList" class="motion-list"></div>
     </div>
   </aside>
 
@@ -1154,12 +1153,7 @@
     }
     window.addEventListener('message', (event) => {
       if (isEmbeddedAiApp && event.source !== window.parent) return;
-      const isSameOrigin = event.origin === window.location.origin;
-      const isTrustedFileParent =
-        window.location.protocol === 'file:' &&
-        event.source === window.parent &&
-        (event.origin === 'null' || event.origin === 'file://');
-      if (!isSameOrigin && !isTrustedFileParent) return;
+      if (event.origin !== window.location.origin) return;
       const data = event && event.data;
       if (!data || typeof data !== 'object') return;
       if (data.type === 'speechState') {
