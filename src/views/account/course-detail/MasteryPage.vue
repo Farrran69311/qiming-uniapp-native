@@ -406,7 +406,7 @@ import {
   onMounted,
   onUnmounted
 } from "vue";
-import * as echarts from "echarts";
+import echarts from "@/plugins/echarts";
 import CourseHeader from "./CourseHeader.vue";
 
 // Props

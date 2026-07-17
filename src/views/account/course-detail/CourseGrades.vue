@@ -7,7 +7,7 @@ import {
   ref,
   type Component
 } from "vue";
-import * as echarts from "echarts";
+import echarts from "@/plugins/echarts";
 import {
   Document,
   TrendCharts,
