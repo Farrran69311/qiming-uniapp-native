@@ -5,7 +5,7 @@ main:
         tags: cnb:arch:amd64
         cpus: 16
       docker:
-        image: node:20
+        image: node:24
         volumes:
           - /root/.local/share/pnpm/store:copy-on-write
       imports:
@@ -61,7 +61,7 @@ dev:
         tags: cnb:arch:amd64
         cpus: 16
       docker:
-        image: node:20
+        image: node:24
         volumes:
           - /root/.local/share/pnpm/store:copy-on-write
       imports:
@@ -117,7 +117,7 @@ agent:
         tags: cnb:arch:amd64
         cpus: 16
       docker:
-        image: node:20
+        image: node:24
         volumes:
           - /root/.local/share/pnpm/store:copy-on-write
       imports:
