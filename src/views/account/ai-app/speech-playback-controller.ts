@@ -295,6 +295,8 @@ export class SpeechPlaybackController {
   private liveStarted = false;
   private liveFailed = false;
   private liveTerminalReceived = false;
+  private livePlaybackEnded = true;
+  private readonly liveDrainWaiters = new Set<() => void>();
   private liveArchiveStatus = "";
   private timeline: AssistantSpeechTimeline | null = null;
   private currentViseme = "sil";
@@ -609,6 +611,7 @@ export class SpeechPlaybackController {
       this.liveStarted = false;
       this.liveFailed = false;
       this.liveTerminalReceived = false;
+      this.livePlaybackEnded = false;
       this.liveArchiveStatus = "";
       this.timeline = null;
       this.currentViseme = "sil";
@@ -1061,6 +1064,7 @@ export class SpeechPlaybackController {
       return;
     }
     if (data.type === "ended") {
+      this.markLivePlaybackEnded();
       this.playedSample = Math.max(
         0,
         Number(data.playedSample) || this.playedSample
@@ -1128,6 +1132,35 @@ export class SpeechPlaybackController {
   private sendRealtimeControl(payload: Record<string, unknown>) {
     if (this.websocket?.readyState !== WebSocket.OPEN) return;
     this.websocket.send(JSON.stringify(payload));
+  }
+
+  private markLivePlaybackEnded() {
+    if (this.livePlaybackEnded) return;
+    this.livePlaybackEnded = true;
+    this.liveDrainWaiters.forEach(resolve => resolve());
+    this.liveDrainWaiters.clear();
+  }
+
+  private waitForLiveDrain() {
+    if (this.livePlaybackEnded || !this.workletNode || !this.liveStarted) {
+      return Promise.resolve();
+    }
+
+    // A complete archive may become ready before the final realtime buffer has
+    // reached the audio device. Resetting the worklet here cuts off that tail.
+    const timeoutMs = clamp(Math.round(this.bufferedMs + 1200), 1200, 3500);
+    return new Promise<void>(resolve => {
+      let completed = false;
+      const finish = () => {
+        if (completed) return;
+        completed = true;
+        window.clearTimeout(timeout);
+        this.liveDrainWaiters.delete(finish);
+        resolve();
+      };
+      const timeout = window.setTimeout(finish, timeoutMs);
+      this.liveDrainWaiters.add(finish);
+    });
   }
 
   private sendPlaybackProgress(force = false) {
@@ -1344,11 +1377,9 @@ export class SpeechPlaybackController {
         (isCurrentLiveSession && (this.liveFailed || !this.liveStarted)));
     if (shouldAutoplay && ready.audio?.url) {
       this.sessionAutoplay.set(session.session_id, false);
-      await this.playArchive(
-        ready,
-        clientMessageId,
-        this.shouldResumeArchive(ready)
-      );
+      const resumeFromLive = this.shouldResumeArchive(ready);
+      if (resumeFromLive) await this.waitForLiveDrain();
+      await this.playArchive(ready, clientMessageId, resumeFromLive);
     }
   }
 
@@ -1557,6 +1588,7 @@ export class SpeechPlaybackController {
     this.liveStarted = false;
     this.liveFailed = false;
     this.liveTerminalReceived = false;
+    this.markLivePlaybackEnded();
     this.liveArchiveStatus = "";
     this.callbacks.renderer.reset();
   }
@@ -1589,6 +1621,7 @@ export class SpeechPlaybackController {
     this.peakRms = 0;
     this.bufferedMs = 0;
     this.liveTerminalReceived = false;
+    this.markLivePlaybackEnded();
     this.timeline = null;
     this.currentViseme = "sil";
     this.updateDiagnostic({

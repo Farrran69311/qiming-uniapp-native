@@ -20,7 +20,11 @@ const ttsEngineOptions: Array<{ label: string; value: TtsEngine }> = [
 
 // 数字人已集成到项目 public/virtual-people 目录下，由 Vite 统一托管
 const humanBaseUrl = computed(() => {
-  return new URL("virtual-people/index.html", window.location.href).href;
+  const baseUrl = new URL(
+    import.meta.env.BASE_URL || "/",
+    window.location.origin
+  );
+  return new URL("virtual-people/index.html", baseUrl).href;
 });
 const humanUrl = computed(() => `${humanBaseUrl.value}?embed=ai-app`);
 const messageTargetOrigin = computed(() => {
@@ -87,21 +91,45 @@ function postControlMessage(payload: Record<string, unknown>) {
 }
 
 function handleLoad() {
+  // iframe load only means that a document arrived. The VRM page reports
+  // readiness after its model and motion manifest are loaded.
+  iframeReady = false;
+}
+
+function handleMessage(event: MessageEvent) {
+  const iframe = iframeRef.value;
+  if (!iframe || event.source !== iframe.contentWindow) return;
+  if (event.origin !== messageTargetOrigin.value) return;
+
+  const data = event.data;
+  if (!data || typeof data !== "object") return;
+
+  if (data.type === "virtual-human-ready") {
+    iframeReady = true;
+    loading.value = false;
+    errored.value = false;
+    if (probeTimer) {
+      clearTimeout(probeTimer);
+      probeTimer = null;
+    }
+    postControlMessage({ type: "resumeRender" });
+    syncTtsEngine();
+    flushPendingSpeak();
+  } else if (data.type === "virtual-human-error") {
+    iframeReady = false;
+    loading.value = false;
+    errored.value = true;
+  }
+}
+
+function handleError() {
+  iframeReady = false;
   loading.value = false;
-  errored.value = false;
-  iframeReady = true;
+  errored.value = true;
   if (probeTimer) {
     clearTimeout(probeTimer);
     probeTimer = null;
   }
-  postControlMessage({ type: "resumeRender" });
-  syncTtsEngine();
-  flushPendingSpeak();
-}
-
-function handleError() {
-  loading.value = false;
-  errored.value = true;
 }
 
 function refresh() {
@@ -145,20 +173,23 @@ function loadLocalVoice() {
 
 function schedulePing() {
   if (probeTimer) clearTimeout(probeTimer);
-  // 如果 6 秒后 iframe 还没 onload，认为静态资源加载异常
+  // The document can load before the VRM, background and motion assets finish.
   probeTimer = setTimeout(() => {
     if (loading.value) {
       errored.value = true;
       loading.value = false;
+      iframeReady = false;
     }
-  }, 6000);
+  }, 15000);
 }
 
 onMounted(() => {
+  window.addEventListener("message", handleMessage);
   schedulePing();
 });
 
 onUnmounted(() => {
+  window.removeEventListener("message", handleMessage);
   if (probeTimer) clearTimeout(probeTimer);
 });
 

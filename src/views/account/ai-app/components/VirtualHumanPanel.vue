@@ -33,7 +33,11 @@ const emit = defineEmits<{
 
 // 数字人已集成到项目 public/virtual-people 目录下，由 Vite 统一托管
 const humanBaseUrl = computed(() => {
-  return new URL("virtual-people/index.html", window.location.href).href;
+  const baseUrl = new URL(
+    import.meta.env.BASE_URL || "/",
+    window.location.origin
+  );
+  return new URL("virtual-people/index.html", baseUrl).href;
 });
 const humanUrl = computed(() => `${humanBaseUrl.value}?embed=ai-app`);
 const messageTargetOrigin = computed(() => {
@@ -44,6 +48,7 @@ const iframeRef = ref<HTMLIFrameElement | null>(null);
 const loading = ref(true);
 const errored = ref(false);
 const reloadKey = ref(0);
+const iframeReady = ref(false);
 let probeTimer: ReturnType<typeof setTimeout> | null = null;
 
 function postControlMessage(payload: Record<string, unknown>) {
@@ -57,17 +62,42 @@ function postControlMessage(payload: Record<string, unknown>) {
 }
 
 function handleLoad() {
-  loading.value = false;
-  errored.value = false;
+  // iframe load only means that a document arrived. The VRM page reports
+  // readiness after its model and motion manifest are loaded.
+  iframeReady.value = false;
+}
+
+function handleMessage(event: MessageEvent) {
+  const iframe = iframeRef.value;
+  if (!iframe || event.source !== iframe.contentWindow) return;
+  if (event.origin !== messageTargetOrigin.value) return;
+
+  const data = event.data;
+  if (!data || typeof data !== "object") return;
+
+  if (data.type === "virtual-human-ready") {
+    iframeReady.value = true;
+    loading.value = false;
+    errored.value = false;
+    if (probeTimer) {
+      clearTimeout(probeTimer);
+      probeTimer = null;
+    }
+    postControlMessage({ type: "resumeRender" });
+    postControlMessage({ type: "speechReset" });
+  } else if (data.type === "virtual-human-error") {
+    iframeReady.value = false;
+    loading.value = false;
+    errored.value = true;
+  }
+}
+
+function handleError() {
   if (probeTimer) {
     clearTimeout(probeTimer);
     probeTimer = null;
   }
-  postControlMessage({ type: "resumeRender" });
-  postControlMessage({ type: "speechReset" });
-}
-
-function handleError() {
+  iframeReady.value = false;
   loading.value = false;
   errored.value = true;
 }
@@ -75,6 +105,7 @@ function handleError() {
 function refresh() {
   loading.value = true;
   errored.value = false;
+  iframeReady.value = false;
   reloadKey.value++;
   schedulePing();
 }
@@ -90,20 +121,23 @@ function handleVoiceChange(event: Event) {
 
 function schedulePing() {
   if (probeTimer) clearTimeout(probeTimer);
-  // 如果 6 秒后 iframe 还没 onload，认为静态资源加载异常
+  // The document can load before the VRM, background and motion assets finish.
   probeTimer = setTimeout(() => {
     if (loading.value) {
       errored.value = true;
       loading.value = false;
+      iframeReady.value = false;
     }
-  }, 6000);
+  }, 15000);
 }
 
 onMounted(() => {
+  window.addEventListener("message", handleMessage);
   schedulePing();
 });
 
 onUnmounted(() => {
+  window.removeEventListener("message", handleMessage);
   if (probeTimer) clearTimeout(probeTimer);
 });
 

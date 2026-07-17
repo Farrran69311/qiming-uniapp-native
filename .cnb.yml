@@ -44,6 +44,14 @@ main:
             set -eu
             test -d dist
             test -f dist/index.html
+            test -f dist/virtual-people/index.html
+            test -f dist/virtual-people/motions.json
+            test -f dist/virtual-people/QmingVirtualPeopleTestVersion1.0.vrm
+            test -f dist/node_modules/three/build/three.module.js
+            test -f dist/node_modules/three/build/three.core.js
+            test -f dist/node_modules/three/examples/jsm/loaders/GLTFLoader.js
+            test -f dist/node_modules/@pixiv/three-vrm/lib/three-vrm.module.js
+            test -f dist/node_modules/pinyin-pro/dist/index.mjs
 
         - name: Deploy to EdgeOne Pages
           script: |

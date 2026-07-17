@@ -833,10 +833,10 @@
   <script type="importmap">
       {
         "imports": {
-          "three": "/node_modules/three/build/three.module.js",
-          "three/addons/": "/node_modules/three/examples/jsm/",
-          "@pixiv/three-vrm": "/node_modules/@pixiv/three-vrm/lib/three-vrm.module.js",
-          "pinyin-pro": "/node_modules/pinyin-pro/dist/index.mjs"
+          "three": "../node_modules/three/build/three.module.js",
+          "three/addons/": "../node_modules/three/examples/jsm/",
+          "@pixiv/three-vrm": "../node_modules/@pixiv/three-vrm/lib/three-vrm.module.js",
+          "pinyin-pro": "../node_modules/pinyin-pro/dist/index.mjs"
         }
       }
     </script>
@@ -996,6 +996,18 @@
     const teacherToTargetBtn = document.getElementById('teacherToTargetBtn');
     const teacherFaceCameraBtn = document.getElementById('teacherFaceCameraBtn');
     const copySceneStateBtn = document.getElementById('copySceneStateBtn');
+
+    function notifyParent(type, detail = {}) {
+      if (window.parent === window) return;
+      try {
+        window.parent.postMessage(
+          { type, ...detail },
+          window.location.origin,
+        );
+      } catch (error) {
+        console.warn('[virtual-people] parent notification failed', error);
+      }
+    }
 
     // === 侧边栏收起 / 展开 (默认收起，但保留快捷按钮) ===
     const sidebarToggleBtn = document.getElementById('sidebarToggleBtn');
@@ -1278,7 +1290,7 @@
 
 
     const dracoLoader = new DRACOLoader();
-    dracoLoader.setDecoderPath('/node_modules/three/examples/jsm/libs/draco/gltf/');
+    dracoLoader.setDecoderPath('../node_modules/three/examples/jsm/libs/draco/gltf/');
 
     const sceneGltfLoader = new GLTFLoader();
     sceneGltfLoader.setDRACOLoader(dracoLoader);
@@ -3331,6 +3343,9 @@
       currentTitle.textContent = 'VRM 已加载';
       currentMeta.textContent = `动作总数 ${state.motionList.length}${state.currentBackgroundName ? ` · 背景 ${state.currentBackgroundName}` : ''}，可以直接测试动作、表情和前端口型。`;
       setStatus('ok', `VRM 已加载，共 ${state.motionList.length} 个动作`);
+      notifyParent('virtual-human-ready', {
+        motionCount: state.motionList.length,
+      });
       if (!isEmbeddedAiApp) {
         speechText.textContent = '';
         speechMeta.textContent = `已识别口型通道：${getAvailableMouthSummary()} · 语音：${state.ttsEngine === 'browser' ? state.selectedVoiceName || '浏览器默认音色' : '优先本地中文女声'}`;
@@ -3584,6 +3599,9 @@
       speechText.textContent = '';
       speechMeta.textContent = error?.stack || error?.message || String(error);
       speechPanel.classList.remove('hidden');
+      notifyParent('virtual-human-error', {
+        message: error?.message || String(error),
+      });
     });
   </script>
 </body>
