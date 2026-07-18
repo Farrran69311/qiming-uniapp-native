@@ -73,6 +73,7 @@ import {
   type AssistantChatTraceStep,
   type AssistantConversationItem,
   type AssistantExplanationImage,
+  type AssistantExplanationImageMode,
   type AssistantInteractionScope,
   type AssistantOption,
   type AssistantResourceSummary,
@@ -89,6 +90,10 @@ import {
   type SpeechPlaybackDiagnostic,
   type SpeechPlaybackState
 } from "./speech-playback-controller";
+import {
+  explanationImageTerminalStatuses,
+  shouldApplyExplanationImageUpdate
+} from "./explanationImageState";
 
 defineOptions({ name: "AiAppWorkbench" });
 
@@ -271,6 +276,7 @@ const selectedAgentKey = ref("");
 const selectedModelKey = ref("");
 const thinkingModeKey = ref("");
 const selectedSkillKeys = ref<string[]>([]);
+const explanationImageMode = ref<AssistantExplanationImageMode>("auto_wide");
 
 const loginRoleType = computed(() => {
   const userInfoRoleType =
@@ -327,6 +333,11 @@ const roleMode = computed<{
 });
 const mode = computed(() => roleMode.value.mode);
 const apiMode = computed(() => roleMode.value.apiMode);
+const explanationImageEnabled = computed(
+  () =>
+    apiMode.value === "student" &&
+    featureFlags.value.explanation_image_generation === true
+);
 const currentUserRoleLabel = computed(() => roleMode.value.userLabel);
 const isStaffMode = computed(() => apiMode.value !== "student");
 const currentUserAvatar = computed(() => formatAvatar(userStore.avatar));
@@ -1056,24 +1067,6 @@ const clearAllResourceTaskPolling = () => {
   [...resourceTaskTimers.keys()].forEach(clearResourceTaskPolling);
 };
 
-const explanationImageTerminalStatuses = new Set([
-  "succeeded",
-  "failed",
-  "blocked",
-  "unknown_outcome",
-  "cancelled"
-]);
-const explanationImageStatusRank: Record<string, number> = {
-  queued: 1,
-  generating: 2,
-  retrying: 3,
-  succeeded: 4,
-  failed: 4,
-  blocked: 4,
-  unknown_outcome: 4,
-  cancelled: 4
-};
-
 const clearExplanationImagePolling = (imageId: string) => {
   const timer = explanationImageTimers.get(imageId);
   if (timer) window.clearTimeout(timer);
@@ -1102,12 +1095,9 @@ const updateMessageExplanationImage = (
   if (index === -1) images.push(image);
   else {
     const current = images[index];
-    const currentRank = explanationImageStatusRank[current.status] || 0;
-    const incomingRank = explanationImageStatusRank[image.status] || 0;
-    images[index] =
-      currentRank > incomingRank
-        ? { ...image, ...current }
-        : { ...current, ...image };
+    if (shouldApplyExplanationImageUpdate(current.status, image.status)) {
+      images[index] = { ...current, ...image };
+    }
   }
   updateAssistantMessage(assistantMessageId, { explanationImages: images });
 };
@@ -1608,12 +1598,11 @@ const handleSendMessage = async (payload: ChatSendPayload) => {
   ) {
     return;
   }
-  const explanationImageMode =
-    featureFlags.value.explanation_image_generation &&
-    apiMode.value === "student" &&
-    attachmentIds.length === 0
-      ? "auto_wide"
-      : undefined;
+  const explanationImageRequestMode = explanationImageEnabled.value
+    ? attachmentIds.length === 0
+      ? explanationImageMode.value
+      : "off"
+    : undefined;
   const conversationId = activeConversationId.value || undefined;
   const identity = conversationId
     ? {}
@@ -1631,10 +1620,11 @@ const handleSendMessage = async (payload: ChatSendPayload) => {
       attachment_ids: attachmentIds,
       enable_realtime_resource:
         selectedSkillKeys.value.includes("resource_hint"),
-      preferred_explanation_mode: selectedSkillKeys.value.includes("visual")
-        ? "visual"
-        : undefined,
-      explanation_image_mode: explanationImageMode,
+      preferred_explanation_mode:
+        explanationImageRequestMode && explanationImageRequestMode !== "off"
+          ? "visual"
+          : undefined,
+      explanation_image_mode: explanationImageRequestMode,
       speech: speechRequest,
       metadata: { ui_entry: "ai_app_workbench" }
     },
@@ -2063,6 +2053,7 @@ const loadConversationMessages = async (conversation: ConversationView) => {
       type: item.role === "user" ? "user" : "system",
       content: item.content_text || "",
       avatar: item.role === "user" ? currentUserAvatar.value : undefined,
+      resources: item.resources || [],
       metadata: item.metadata,
       explanationImages:
         item.explanation_images || item.metadata?.explanation_images || [],
@@ -2677,6 +2668,8 @@ onUnmounted(() => {
                   :selectedAgent="selectedAgentLabel"
                   :selectedModel="selectedModelLabel"
                   :thinkingMode="thinkingModeLabel"
+                  :explanation-image-enabled="explanationImageEnabled"
+                  :explanation-image-mode="explanationImageMode"
                   :model-ready="selectedModelReady"
                   :model-disabled-reason="selectedModelDisabledReason"
                   :loading="isChatStreaming"
@@ -2690,6 +2683,7 @@ onUnmounted(() => {
                   @update:selectedAgent="selectedAgentKey = $event"
                   @update:selectedModel="handleModelSelect"
                   @update:thinkingMode="thinkingModeKey = $event"
+                  @update:explanationImageMode="explanationImageMode = $event"
                 />
               </div>
             </transition>

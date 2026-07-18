@@ -715,6 +715,41 @@
               </span>
 
               <el-dropdown
+                v-if="explanationImageEnabled"
+                trigger="click"
+                popper-class="ai-chat-toolbar-dropdown"
+                @command="m => emit('update:explanationImageMode', m)"
+              >
+                <span
+                  class="chat-toolbar-chip chat-toolbar-chip--interactive"
+                  :title="
+                    explanationImageMode === 'off'
+                      ? '已关闭讲解图片'
+                      : '讲解图片将在文字回答完成后异步生成'
+                  "
+                >
+                  <el-icon class="chat-toolbar-chip__icon"><Picture /></el-icon>
+                  <span class="chat-toolbar-chip__text">
+                    讲解图
+                    {{ explanationImageMode === "off" ? "关闭" : "自动" }}
+                  </span>
+                  <el-icon class="chat-toolbar-chip__arrow">
+                    <ArrowDown />
+                  </el-icon>
+                </span>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="auto_wide">
+                      讲解图自动生成
+                    </el-dropdown-item>
+                    <el-dropdown-item command="off">
+                      关闭讲解图片
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+
+              <el-dropdown
                 trigger="click"
                 popper-class="ai-chat-toolbar-dropdown"
                 @command="a => emit('update:selectedAgent', a)"
@@ -840,6 +875,7 @@ import {
   More,
   FolderOpened,
   Monitor,
+  Picture,
   ArrowDown,
   Star,
   Refresh,
@@ -896,6 +932,8 @@ type AssistantOptionView = {
   reason?: string;
 };
 
+type ExplanationImageMode = "off" | "auto" | "auto_wide";
+
 const props = defineProps<{
   messages: any[];
   activeCourse: string;
@@ -908,6 +946,8 @@ const props = defineProps<{
   selectedAgent?: string;
   selectedModel?: string;
   thinkingMode?: string;
+  explanationImageEnabled?: boolean;
+  explanationImageMode?: ExplanationImageMode;
   modelReady?: boolean;
   modelDisabledReason?: string;
   loading?: boolean;
@@ -924,7 +964,8 @@ const emit = defineEmits([
   "stop-speech",
   "update:selectedAgent",
   "update:selectedModel",
-  "update:thinkingMode"
+  "update:thinkingMode",
+  "update:explanationImageMode"
 ]);
 const input = ref("");
 const attachmentInputRef = ref<HTMLInputElement | null>(null);

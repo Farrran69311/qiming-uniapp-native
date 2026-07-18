@@ -597,6 +597,37 @@ export interface AssistantExplanationImageResp {
   image: AssistantExplanationImage;
 }
 
+type AssistantExplanationImageApiPayload =
+  | AssistantExplanationImageResp
+  | ApiResponse<AssistantExplanationImageResp>;
+
+const normalizeAssistantExplanationImageResponse = (
+  payload: AssistantExplanationImageApiPayload
+): AssistantExplanationImageResp => {
+  if (
+    payload &&
+    typeof payload === "object" &&
+    "image" in payload &&
+    payload.image
+  ) {
+    return payload as AssistantExplanationImageResp;
+  }
+
+  if (
+    payload &&
+    typeof payload === "object" &&
+    "data" in payload &&
+    payload.data &&
+    typeof payload.data === "object" &&
+    "image" in payload.data &&
+    payload.data.image
+  ) {
+    return payload.data as AssistantExplanationImageResp;
+  }
+
+  throw new Error("讲解图片状态响应格式异常");
+};
+
 export interface AssistantDigitalHumanDirective {
   state?: string;
   status?: string;
@@ -627,6 +658,9 @@ export interface AssistantChatStreamEvent {
   error_code?: string;
   conversation_id?: string;
   message_id?: string;
+  interaction_scope?: AssistantInteractionScope;
+  subject_student_id?: number;
+  visibility_scope?: AssistantVisibilityScope;
   delta?: string;
   content_text?: string;
   finish_reason?: string;
@@ -733,6 +767,7 @@ export interface AssistantConversationMessageItem {
   role: string;
   content_text?: string;
   created_at: string;
+  resources?: AssistantChatResource[];
   metadata?: Record<string, any>;
   explanation_images?: AssistantExplanationImage[];
   speech?: AssistantSpeechSessionSummary | null;
@@ -1856,10 +1891,17 @@ export const getAssistantConversationMessages = (conversationId: string) =>
   );
 
 export const getAssistantExplanationImage = (imageId: string) =>
-  http.request<AssistantExplanationImageResp>(
-    "get",
-    `/edu/frontend/v1/assistant/explanation-images/${encodeURIComponent(imageId)}`
-  );
+  http
+    .request<AssistantExplanationImageApiPayload>(
+      "get",
+      `/edu/frontend/v1/assistant/explanation-images/${encodeURIComponent(imageId)}`,
+      {
+        // Polling must bypass browser/CDN caches without adding a custom
+        // cross-origin request header outside the backend CORS allow-list.
+        params: { _ts: Date.now() }
+      }
+    )
+    .then(normalizeAssistantExplanationImageResponse);
 
 const pickAssistantField = <T = string>(
   source: Record<string, any> | undefined,
