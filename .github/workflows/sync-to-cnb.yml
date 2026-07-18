@@ -61,7 +61,7 @@ jobs:
           build_url=""
 
           while [ "$SECONDS" -lt "$deadline" ]; do
-            if ! curl --fail --silent --show-error --location \
+            history_http_code="$(curl --silent --show-error --location \
               -H "Accept: application/json" \
               -H "Authorization: Bearer $CNB_TOKEN" \
               --get "$CNB_API_ENDPOINT/$CNB_REPO_SLUG/-/build/logs" \
@@ -69,10 +69,18 @@ jobs:
               --data-urlencode "sha=$CNB_COMMIT" \
               --data-urlencode "page=1" \
               --data-urlencode "page_size=10" \
-              -o "$history_file"; then
-              echo "CNB build history could not be queried; verify repo-cnb-history permission on CNB_TOKEN." >&2
-              exit 1
-            fi
+              -o "$history_file" -w '%{http_code}' || true)"
+            case "$history_http_code" in
+              200) ;;
+              401|403)
+                echo "::warning::CNB_TOKEN cannot read build history (HTTP $history_http_code; grant repo-cnb-history:r to enable strict CNB verification)."
+                exit 0
+                ;;
+              *)
+                echo "CNB build history request failed with HTTP $history_http_code." >&2
+                exit 1
+                ;;
+            esac
 
             build_sn="$(jq -r --arg sha "$CNB_COMMIT" --arg branch "$CNB_BRANCH" '
               (.data // [])
@@ -97,11 +105,22 @@ jobs:
           echo "CNB build detected: $build_sn${build_url:+ ($build_url)}"
 
           while [ "$SECONDS" -lt "$deadline" ]; do
-            curl --fail --silent --show-error --location \
+            status_http_code="$(curl --silent --show-error --location \
               -H "Accept: application/json" \
               -H "Authorization: Bearer $CNB_TOKEN" \
               "$CNB_API_ENDPOINT/$CNB_REPO_SLUG/-/build/status/$build_sn" \
-              -o "$status_file"
+              -o "$status_file" -w '%{http_code}' || true)"
+            case "$status_http_code" in
+              200) ;;
+              401|403)
+                echo "::warning::CNB_TOKEN cannot read build status (HTTP $status_http_code; grant repo-cnb-history:r to enable strict CNB verification)."
+                exit 0
+                ;;
+              *)
+                echo "CNB build status request failed with HTTP $status_http_code." >&2
+                exit 1
+                ;;
+            esac
             build_status="$(jq -r '.status // empty' "$status_file" | tr '[:upper:]' '[:lower:]')"
             case "$build_status" in
               success)
