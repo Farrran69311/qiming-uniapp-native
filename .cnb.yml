@@ -53,11 +53,15 @@ main:
             test -f dist/virtual-people/index.html
             test -f dist/virtual-people/motions.json
             test -f dist/virtual-people/QmingVirtualPeopleTestVersion1.0.vrm
-            test -f dist/node_modules/three/build/three.module.js
-            test -f dist/node_modules/three/build/three.core.js
-            test -f dist/node_modules/three/examples/jsm/loaders/GLTFLoader.js
-            test -f dist/node_modules/@pixiv/three-vrm/lib/three-vrm.module.js
-            test -f dist/node_modules/pinyin-pro/dist/index.mjs
+            test -f dist/virtual-people/vendor/three/build/three.module.js
+            test -f dist/virtual-people/vendor/three/build/three.core.js
+            test -f dist/virtual-people/vendor/three/examples/jsm/loaders/GLTFLoader.js
+            test -f dist/virtual-people/vendor/three-vrm/three-vrm.module.js
+            test -f dist/virtual-people/vendor/pinyin-pro/index.mjs
+            if grep -q 'node_modules/' dist/virtual-people/index.html; then
+              echo "Standalone digital human still references node_modules" >&2
+              exit 1
+            fi
 
         - name: Deploy to EdgeOne Pages
           script: |
@@ -78,7 +82,11 @@ main:
             ' "$deploy_log")"
             node scripts/verify-edgeone-deployment.mjs "$deploy_url" \
               --json virtual-people/motions.json \
-              --binary virtual-people/QmingVirtualPeopleTestVersion1.0.vrm
+              --binary virtual-people/QmingVirtualPeopleTestVersion1.0.vrm \
+              --asset virtual-people/vendor/three/build/three.module.js \
+              --asset virtual-people/vendor/three-vrm/three-vrm.module.js \
+              --asset virtual-people/vendor/three/examples/jsm/libs/draco/gltf/draco_wasm_wrapper.js \
+              --asset virtual-people/vendor/three/examples/jsm/libs/draco/gltf/draco_decoder.wasm
             echo "EdgeOne deployment verified: $deploy_url"
 
 dev:
@@ -133,6 +141,15 @@ dev:
               exit 1
             fi
             test -f dist/index.html
+            test -f dist/virtual-people/index.html
+            test -f dist/virtual-people/motions.json
+            test -f dist/virtual-people/vendor/three/build/three.module.js
+            test -f dist/virtual-people/vendor/three-vrm/three-vrm.module.js
+            test -f dist/virtual-people/vendor/pinyin-pro/index.mjs
+            if grep -q 'node_modules/' dist/virtual-people/index.html; then
+              echo "Standalone digital human still references node_modules" >&2
+              exit 1
+            fi
 
         - name: Deploy to EdgeOne Pages
           script: |
@@ -152,7 +169,9 @@ dev:
               process.stdout.write(result.url);
             ' "$deploy_log")"
             node scripts/verify-edgeone-deployment.mjs "$deploy_url" \
-              --json virtual-people/motions.json
+              --json virtual-people/motions.json \
+              --asset virtual-people/vendor/three/build/three.module.js \
+              --asset virtual-people/vendor/three-vrm/three-vrm.module.js
             echo "EdgeOne deployment verified: $deploy_url"
 
 agent:
@@ -210,11 +229,15 @@ agent:
             test -f dist/virtual-people/index.html
             test -f dist/virtual-people/motions.json
             test -f dist/virtual-people/QmingVirtualPeopleTestVersion1.0.vrm
-            test -f dist/node_modules/three/build/three.module.js
-            test -f dist/node_modules/three/build/three.core.js
-            test -f dist/node_modules/three/examples/jsm/loaders/GLTFLoader.js
-            test -f dist/node_modules/@pixiv/three-vrm/lib/three-vrm.module.js
-            test -f dist/node_modules/pinyin-pro/dist/index.mjs
+            test -f dist/virtual-people/vendor/three/build/three.module.js
+            test -f dist/virtual-people/vendor/three/build/three.core.js
+            test -f dist/virtual-people/vendor/three/examples/jsm/loaders/GLTFLoader.js
+            test -f dist/virtual-people/vendor/three-vrm/three-vrm.module.js
+            test -f dist/virtual-people/vendor/pinyin-pro/index.mjs
+            if grep -q 'node_modules/' dist/virtual-people/index.html; then
+              echo "Standalone digital human still references node_modules" >&2
+              exit 1
+            fi
 
         - name: Deploy to EdgeOne Pages
           script: |
@@ -235,5 +258,9 @@ agent:
             ' "$deploy_log")"
             node scripts/verify-edgeone-deployment.mjs "$deploy_url" \
               --json virtual-people/motions.json \
-              --binary virtual-people/QmingVirtualPeopleTestVersion1.0.vrm
+              --binary virtual-people/QmingVirtualPeopleTestVersion1.0.vrm \
+              --asset virtual-people/vendor/three/build/three.module.js \
+              --asset virtual-people/vendor/three-vrm/three-vrm.module.js \
+              --asset virtual-people/vendor/three/examples/jsm/libs/draco/gltf/draco_wasm_wrapper.js \
+              --asset virtual-people/vendor/three/examples/jsm/libs/draco/gltf/draco_decoder.wasm
             echo "EdgeOne deployment verified: $deploy_url"

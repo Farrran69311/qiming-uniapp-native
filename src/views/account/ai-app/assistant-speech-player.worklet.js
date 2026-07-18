@@ -4,14 +4,21 @@ class AssistantSpeechPlayerProcessor extends AudioWorkletProcessor {
     const config = options.processorOptions || {};
     this.sourceSampleRate = Number(config.sourceSampleRate) || 24000;
     this.jitterBufferMs = Number(config.jitterBufferMs) || 120;
-    this.initialBufferMs = Math.min(180, Math.max(100, this.jitterBufferMs));
+    // The provider recommendation is a starting point, not a safe playback
+    // target. A 120 ms target starts too eagerly for the intermittent 500-900
+    // ms delivery gaps seen on real networks, so keep a practical client-side
+    // cushion while retaining a cap for short responses.
+    this.initialBufferMs = Math.min(
+      900,
+      Math.max(480, Math.round(this.jitterBufferMs * 4))
+    );
     this.rebufferMs = Math.min(
-      480,
-      Math.max(220, Math.round(this.initialBufferMs * 1.8))
+      1400,
+      Math.max(720, Math.round(this.initialBufferMs * 1.6))
     );
     this.lowWaterMs = Math.min(
-      this.initialBufferMs - 30,
-      Math.max(60, Math.round(this.initialBufferMs * 0.55))
+      this.initialBufferMs - 80,
+      Math.max(220, Math.round(this.initialBufferMs * 0.5))
     );
     this.capacity = Math.max(this.sourceSampleRate * 120, 48000);
     this.buffer = new Float32Array(this.capacity);

@@ -316,7 +316,7 @@ defineExpose({
           请检查
           <code
             class="bg-gray-100 text-rose-500 px-1 py-0.5 rounded text-[11px] mx-0.5"
-            >public/virtual-people/motions.json</code
+            >virtual-people/motions.json</code
           >
           与对应的
           <code

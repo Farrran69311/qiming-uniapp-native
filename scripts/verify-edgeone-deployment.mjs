@@ -12,7 +12,7 @@ const ASSET_RETRY_DELAY_MS = 2_000;
 
 function usage() {
   console.error(
-    "Usage: node scripts/verify-edgeone-deployment.mjs <deploy-url> [--json <path>] [--binary <path>]"
+    "Usage: node scripts/verify-edgeone-deployment.mjs <deploy-url> [--json <path>] [--binary <path>] [--asset <path>]"
   );
 }
 
@@ -26,7 +26,7 @@ function parseArguments(argv) {
   const checks = [];
   for (let index = 0; index < rest.length; index += 1) {
     const option = rest[index];
-    if (option !== "--json" && option !== "--binary") {
+    if (option !== "--json" && option !== "--binary" && option !== "--asset") {
       usage();
       throw new Error(`Unknown option: ${option}`);
     }
@@ -342,6 +342,25 @@ function assertBinaryAsset(response, body, path) {
   }
 }
 
+function assertStaticAsset(response, body, path) {
+  if (!response.ok) {
+    throw new Error(`${path}: ${responseStatus(response)}`);
+  }
+
+  const type = contentType(response);
+  if (!type || /^text\/html(?:\s*;|$)/i.test(type)) {
+    throw new Error(
+      `${path}: unexpected content type ${type || "<missing>"}; expected a static asset response`
+    );
+  }
+  if (body.byteLength === 0) {
+    throw new Error(`${path}: response is empty`);
+  }
+  if (/^\s*(?:<!doctype\s+html|<html\b)/i.test(body.toString("utf8", 0, 256))) {
+    throw new Error(`${path}: response contains the SPA HTML fallback`);
+  }
+}
+
 async function verifyAsset(baseUrl, accessSession, check) {
   const useCookie = Boolean(accessSession.cookieHeader);
   const url = assetUrl(
@@ -352,7 +371,9 @@ async function verifyAsset(baseUrl, accessSession, check) {
   const headers = useCookie ? { Cookie: accessSession.cookieHeader } : {};
   const { response, body } = await requestAsset(url, headers);
   if (check.kind === "json") assertJsonAsset(response, body, check.path);
-  else assertBinaryAsset(response, body, check.path);
+  else if (check.kind === "binary")
+    assertBinaryAsset(response, body, check.path);
+  else assertStaticAsset(response, body, check.path);
   return { url, bytes: body.byteLength };
 }
 

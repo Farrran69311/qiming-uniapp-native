@@ -3,7 +3,6 @@ import {
   existsSync,
   mkdirSync,
   readdirSync,
-  realpathSync,
   readFileSync,
   statSync,
   writeFileSync
@@ -43,27 +42,73 @@ const STATIC_ASSET_MAPPINGS = [
   }
 ];
 
-// The standalone VRM page is intentionally kept outside the main Vite graph.
-// Copy only the browser modules it imports so production does not need the full
-// node_modules tree while the page remains independently loadable.
-const VIRTUAL_PEOPLE_DEPENDENCY_MAPPINGS = [
-  {
-    source: resolve("node_modules/three/build"),
-    target: "node_modules/three/build"
-  },
-  {
-    source: resolve("node_modules/three/examples/jsm"),
-    target: "node_modules/three/examples/jsm"
-  },
-  {
-    source: resolve("node_modules/@pixiv/three-vrm/lib"),
-    target: "node_modules/@pixiv/three-vrm/lib"
-  },
-  {
-    source: resolve("node_modules/pinyin-pro/dist"),
-    target: "node_modules/pinyin-pro/dist"
-  }
-];
+// EdgeOne Pages may treat a top-level `node_modules` path as an application
+// route and return the SPA fallback instead of the requested JavaScript module.
+// Keep the standalone viewer's small runtime under its own public directory.
+// Only copy the files that the viewer imports (and the Draco decoder files it
+// loads at runtime), rather than publishing the complete Three.js examples tree.
+const VIRTUAL_PEOPLE_DEPENDENCY_FILES = [
+  [
+    "node_modules/three/build/three.module.js",
+    "vendor/three/build/three.module.js"
+  ],
+  [
+    "node_modules/three/build/three.core.js",
+    "vendor/three/build/three.core.js"
+  ],
+  [
+    "node_modules/three/examples/jsm/controls/OrbitControls.js",
+    "vendor/three/examples/jsm/controls/OrbitControls.js"
+  ],
+  [
+    "node_modules/three/examples/jsm/loaders/DRACOLoader.js",
+    "vendor/three/examples/jsm/loaders/DRACOLoader.js"
+  ],
+  [
+    "node_modules/three/examples/jsm/loaders/GLTFLoader.js",
+    "vendor/three/examples/jsm/loaders/GLTFLoader.js"
+  ],
+  [
+    "node_modules/three/examples/jsm/loaders/FBXLoader.js",
+    "vendor/three/examples/jsm/loaders/FBXLoader.js"
+  ],
+  [
+    "node_modules/three/examples/jsm/utils/BufferGeometryUtils.js",
+    "vendor/three/examples/jsm/utils/BufferGeometryUtils.js"
+  ],
+  [
+    "node_modules/three/examples/jsm/curves/NURBSCurve.js",
+    "vendor/three/examples/jsm/curves/NURBSCurve.js"
+  ],
+  [
+    "node_modules/three/examples/jsm/curves/NURBSUtils.js",
+    "vendor/three/examples/jsm/curves/NURBSUtils.js"
+  ],
+  [
+    "node_modules/three/examples/jsm/libs/fflate.module.js",
+    "vendor/three/examples/jsm/libs/fflate.module.js"
+  ],
+  [
+    "node_modules/three/examples/jsm/libs/draco/gltf/draco_decoder.js",
+    "vendor/three/examples/jsm/libs/draco/gltf/draco_decoder.js"
+  ],
+  [
+    "node_modules/three/examples/jsm/libs/draco/gltf/draco_decoder.wasm",
+    "vendor/three/examples/jsm/libs/draco/gltf/draco_decoder.wasm"
+  ],
+  [
+    "node_modules/three/examples/jsm/libs/draco/gltf/draco_wasm_wrapper.js",
+    "vendor/three/examples/jsm/libs/draco/gltf/draco_wasm_wrapper.js"
+  ],
+  [
+    "node_modules/@pixiv/three-vrm/lib/three-vrm.module.js",
+    "vendor/three-vrm/three-vrm.module.js"
+  ],
+  ["node_modules/pinyin-pro/dist/index.mjs", "vendor/pinyin-pro/index.mjs"]
+].map(([source, target]) => ({
+  source: resolve(source),
+  target
+}));
 
 function isDeployableFile(filePath: string) {
   if (!existsSync(filePath)) return false;
@@ -107,6 +152,20 @@ function copyDirectoryWithinLimit(sourceDir: string, targetDir: string) {
   }
 }
 
+function copyFileWithinLimit(sourcePath: string, targetPath: string) {
+  if (!isDeployableFile(sourcePath)) {
+    if (existsSync(sourcePath)) {
+      console.warn(
+        `[vite:copyPublicAssets] skipped oversized or invalid asset: ${sourcePath}`
+      );
+    }
+    return;
+  }
+
+  mkdirSync(dirname(targetPath), { recursive: true });
+  cpSync(sourcePath, targetPath, { force: true });
+}
+
 function copyVirtualPeopleAssets(sourceDir: string, targetDir: string) {
   copyDirectoryWithinLimit(sourceDir, targetDir);
 
@@ -124,7 +183,9 @@ function copyVirtualPeopleAssets(sourceDir: string, targetDir: string) {
   const isDeployableManifestPath = (value: unknown) => {
     if (typeof value !== "string" || !value.trim()) return false;
     const candidate = resolve(sourceDir, value);
-    return isWithinDirectory(sourceDir, candidate) && isDeployableFile(candidate);
+    return (
+      isWithinDirectory(sourceDir, candidate) && isDeployableFile(candidate)
+    );
   };
 
   if (!isDeployableManifestPath(manifest.vrm)) manifest.vrm = "";
@@ -145,6 +206,49 @@ function copyVirtualPeopleAssets(sourceDir: string, targetDir: string) {
     `${JSON.stringify(manifest, null, 2)}\n`,
     "utf8"
   );
+}
+
+function rewriteVirtualPeopleRuntime(targetDir: string) {
+  const indexPath = join(targetDir, "index.html");
+  if (!existsSync(indexPath)) return;
+
+  const replacements = new Map([
+    [
+      "../node_modules/three/examples/jsm/libs/draco/gltf/",
+      "./vendor/three/examples/jsm/libs/draco/gltf/"
+    ],
+    [
+      "/node_modules/three/examples/jsm/libs/draco/gltf/",
+      "./vendor/three/examples/jsm/libs/draco/gltf/"
+    ],
+    [
+      "../node_modules/three/build/three.module.js",
+      "./vendor/three/build/three.module.js"
+    ],
+    [
+      "/node_modules/three/build/three.module.js",
+      "./vendor/three/build/three.module.js"
+    ],
+    ["../node_modules/three/examples/jsm/", "./vendor/three/examples/jsm/"],
+    ["/node_modules/three/examples/jsm/", "./vendor/three/examples/jsm/"],
+    [
+      "../node_modules/@pixiv/three-vrm/lib/three-vrm.module.js",
+      "./vendor/three-vrm/three-vrm.module.js"
+    ],
+    [
+      "/node_modules/@pixiv/three-vrm/lib/three-vrm.module.js",
+      "./vendor/three-vrm/three-vrm.module.js"
+    ],
+    [
+      "../node_modules/pinyin-pro/dist/index.mjs",
+      "./vendor/pinyin-pro/index.mjs"
+    ],
+    ["/node_modules/pinyin-pro/dist/index.mjs", "./vendor/pinyin-pro/index.mjs"]
+  ]);
+
+  let html = readFileSync(indexPath, "utf8");
+  for (const [from, to] of replacements) html = html.replaceAll(from, to);
+  writeFileSync(indexPath, html, "utf8");
 }
 
 export function copyPublicAssets(): Plugin {
@@ -191,22 +295,14 @@ export function copyPublicAssets(): Plugin {
         });
       }
 
-      for (const asset of VIRTUAL_PEOPLE_DEPENDENCY_MAPPINGS) {
-        if (!existsSync(asset.source)) continue;
-        const source = realpathSync(asset.source);
-        const target = join(distDir, asset.target);
-        const sourceStat = statSync(source);
-
-        if (sourceStat.isDirectory()) {
-          cpSync(source, target, {
-            recursive: true,
-            force: true
-          });
-        } else {
-          mkdirSync(dirname(target), { recursive: true });
-          cpSync(source, target, { force: true });
-        }
+      const virtualPeopleDist = join(distDir, "virtual-people");
+      for (const asset of VIRTUAL_PEOPLE_DEPENDENCY_FILES) {
+        copyFileWithinLimit(
+          asset.source,
+          join(virtualPeopleDist, asset.target)
+        );
       }
+      rewriteVirtualPeopleRuntime(virtualPeopleDist);
     }
   };
 }
