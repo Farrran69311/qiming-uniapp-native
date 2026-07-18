@@ -94,6 +94,74 @@ async function fetchWithTimeout(url, options = {}) {
   }
 }
 
+function cookiePairsFromResponse(response) {
+  const setCookies =
+    typeof response.headers.getSetCookie === "function"
+      ? response.headers.getSetCookie()
+      : [response.headers.get("set-cookie")].filter(Boolean);
+  return setCookies
+    .map(value => String(value).split(";", 1)[0].trim())
+    .filter(Boolean)
+    .map(value => {
+      const separator = value.indexOf("=");
+      return separator > 0
+        ? [value.slice(0, separator), value.slice(separator + 1)]
+        : null;
+    })
+    .filter(Boolean);
+}
+
+function cookieMapFromHeader(value = "") {
+  const cookies = new Map();
+  for (const pair of String(value).split(";")) {
+    const separator = pair.indexOf("=");
+    if (separator > 0) {
+      cookies.set(
+        pair.slice(0, separator).trim(),
+        pair.slice(separator + 1).trim()
+      );
+    }
+  }
+  return cookies;
+}
+
+function cookieHeaderFromMap(cookies) {
+  return Array.from(cookies, ([name, value]) => `${name}=${value}`).join("; ");
+}
+
+async function fetchFollowingRedirects(url, options = {}) {
+  let currentUrl = new URL(url);
+  const headers = new Headers(options.headers || {});
+  const cookies = cookieMapFromHeader(headers.get("cookie") || "");
+  headers.delete("cookie");
+
+  for (let redirectCount = 0; redirectCount <= 5; redirectCount += 1) {
+    const requestHeaders = new Headers(headers);
+    const cookieHeader = cookieHeaderFromMap(cookies);
+    if (cookieHeader) requestHeaders.set("Cookie", cookieHeader);
+    const response = await fetchWithTimeout(currentUrl, {
+      ...options,
+      headers: requestHeaders,
+      redirect: "manual"
+    });
+    for (const [name, value] of cookiePairsFromResponse(response)) {
+      cookies.set(name, value);
+    }
+
+    const location = response.headers.get("location");
+    if (location && response.status >= 300 && response.status < 400) {
+      currentUrl = new URL(location, currentUrl);
+      continue;
+    }
+    return {
+      response,
+      cookieHeader: cookieHeaderFromMap(cookies)
+    };
+  }
+
+  throw new Error("EdgeOne access redirect limit exceeded");
+}
+
 function responsePayloadToken(payload) {
   const response =
     payload?.Data?.Response ||
@@ -166,17 +234,6 @@ async function readResponseBody(response) {
   return Buffer.from(await response.arrayBuffer());
 }
 
-function responseCookieHeader(response) {
-  const setCookies =
-    typeof response.headers.getSetCookie === "function"
-      ? response.headers.getSetCookie()
-      : [response.headers.get("set-cookie")].filter(Boolean);
-  return setCookies
-    .map(value => String(value).split(";", 1)[0].trim())
-    .filter(Boolean)
-    .join("; ");
-}
-
 function isRetryableAssetStatus(status) {
   return (
     status === 404 ||
@@ -195,16 +252,25 @@ function contentType(response) {
   return String(response.headers.get("content-type") || "").toLowerCase();
 }
 
+function responseStatus(response) {
+  const message = response.headers.get("x-eop-msg");
+  return `HTTP ${response.status}${message ? ` (${message})` : ""}`;
+}
+
 async function requestAsset(url, headers = {}) {
   let response;
   let body;
   let lastError;
+  let cookieHeader = headers.Cookie || headers.cookie || "";
   for (let attempt = 1; attempt <= MAX_ASSET_ATTEMPTS; attempt += 1) {
     try {
-      response = await fetchWithTimeout(url, {
-        redirect: "follow",
-        headers
+      const requestHeaders = { ...headers };
+      if (cookieHeader) requestHeaders.Cookie = cookieHeader;
+      const result = await fetchFollowingRedirects(url, {
+        headers: requestHeaders
       });
+      response = result.response;
+      cookieHeader = result.cookieHeader || cookieHeader;
       body = await readResponseBody(response);
       if (
         !isRetryableAssetStatus(response.status) ||
@@ -221,25 +287,25 @@ async function requestAsset(url, headers = {}) {
   if (!response || !body) {
     throw lastError || new Error("EdgeOne returned no response");
   }
-  return { response, body };
+  return { response, body, cookieHeader };
 }
 
 async function establishAccessSession(baseUrl, tokenData) {
   if (!tokenData?.token) return { tokenData: null, cookieHeader: "" };
   const rootUrl = withAccessToken(baseUrl, tokenData);
-  const { response } = await requestAsset(rootUrl);
+  const { response, cookieHeader } = await requestAsset(rootUrl);
   if (!response.ok) {
-    throw new Error(`EdgeOne access session: HTTP ${response.status}`);
+    throw new Error(`EdgeOne access session: ${responseStatus(response)}`);
   }
   return {
     tokenData,
-    cookieHeader: responseCookieHeader(response)
+    cookieHeader
   };
 }
 
 function assertJsonAsset(response, body, path) {
   if (!response.ok) {
-    throw new Error(`${path}: HTTP ${response.status}`);
+    throw new Error(`${path}: ${responseStatus(response)}`);
   }
   if (!/^application\/json(?:\s*;|$)/i.test(contentType(response))) {
     throw new Error(
@@ -255,7 +321,7 @@ function assertJsonAsset(response, body, path) {
 
 function assertBinaryAsset(response, body, path) {
   if (!response.ok) {
-    throw new Error(`${path}: HTTP ${response.status}`);
+    throw new Error(`${path}: ${responseStatus(response)}`);
   }
   if (
     !/^(?:application\/octet-stream|model\/gltf-binary|application\/vrm)(?:\s*;|$)/i.test(
