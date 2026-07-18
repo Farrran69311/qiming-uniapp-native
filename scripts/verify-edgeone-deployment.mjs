@@ -7,8 +7,8 @@ const EDGEONE_API_ENDPOINTS = {
 
 const REQUEST_TIMEOUT_MS = 30_000;
 const MAX_TOKEN_REFRESHES = 2;
-const MAX_ASSET_ATTEMPTS = 5;
-const ASSET_RETRY_DELAY_MS = 2_000;
+const MAX_ASSET_ATTEMPTS = 10;
+const ASSET_RETRY_DELAY_MS = 3_000;
 
 function usage() {
   console.error(
@@ -252,12 +252,19 @@ function contentType(response) {
   return String(response.headers.get("content-type") || "").toLowerCase();
 }
 
+function isHtmlFallback(response, body) {
+  return (
+    /^text\/html(?:\s*;|$)/i.test(contentType(response)) ||
+    /^\s*(?:<!doctype\s+html|<html\b)/i.test(body.toString("utf8", 0, 256))
+  );
+}
+
 function responseStatus(response) {
   const message = response.headers.get("x-eop-msg");
   return `HTTP ${response.status}${message ? ` (${message})` : ""}`;
 }
 
-async function requestAsset(url, headers = {}) {
+async function requestAsset(url, headers = {}, options = {}) {
   let response;
   let body;
   let lastError;
@@ -272,11 +279,20 @@ async function requestAsset(url, headers = {}) {
       response = result.response;
       cookieHeader = result.cookieHeader || cookieHeader;
       body = await readResponseBody(response);
+      const awaitingPropagation =
+        options.retryHtmlFallback &&
+        response.ok &&
+        isHtmlFallback(response, body);
       if (
-        !isRetryableAssetStatus(response.status) ||
+        (!isRetryableAssetStatus(response.status) && !awaitingPropagation) ||
         attempt === MAX_ASSET_ATTEMPTS
       ) {
         break;
+      }
+      if (awaitingPropagation) {
+        console.warn(
+          `EdgeOne asset is still serving the SPA fallback; retrying (${attempt}/${MAX_ASSET_ATTEMPTS}): ${new URL(url).pathname}`
+        );
       }
     } catch (error) {
       lastError = error;
@@ -361,7 +377,7 @@ function assertStaticAsset(response, body, path) {
   if (body.byteLength === 0) {
     throw new Error(`${path}: response is empty`);
   }
-  if (/^\s*(?:<!doctype\s+html|<html\b)/i.test(body.toString("utf8", 0, 256))) {
+  if (isHtmlFallback(response, body)) {
     throw new Error(`${path}: response contains the SPA HTML fallback`);
   }
 }
@@ -374,7 +390,9 @@ async function verifyAsset(baseUrl, accessSession, check) {
     check.path
   );
   const headers = useCookie ? { Cookie: accessSession.cookieHeader } : {};
-  const { response, body } = await requestAsset(url, headers);
+  const { response, body } = await requestAsset(url, headers, {
+    retryHtmlFallback: true
+  });
   if (check.kind === "json") assertJsonAsset(response, body, check.path);
   else if (check.kind === "binary")
     assertBinaryAsset(response, body, check.path);
