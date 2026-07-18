@@ -104,7 +104,7 @@ const VIRTUAL_PEOPLE_DEPENDENCY_FILES = [
     "node_modules/@pixiv/three-vrm/lib/three-vrm.module.js",
     "vendor/three-vrm/three-vrm.module.js"
   ],
-  ["node_modules/pinyin-pro/dist/index.mjs", "vendor/pinyin-pro/index.mjs"]
+  ["node_modules/pinyin-pro/dist/index.mjs", "vendor/pinyin-pro/index.js"]
 ].map(([source, target]) => ({
   source: resolve(source),
   target
@@ -241,9 +241,9 @@ function rewriteVirtualPeopleRuntime(targetDir: string) {
     ],
     [
       "../node_modules/pinyin-pro/dist/index.mjs",
-      "./vendor/pinyin-pro/index.mjs"
+      "./vendor/pinyin-pro/index.js"
     ],
-    ["/node_modules/pinyin-pro/dist/index.mjs", "./vendor/pinyin-pro/index.mjs"]
+    ["/node_modules/pinyin-pro/dist/index.mjs", "./vendor/pinyin-pro/index.js"]
   ]);
 
   let html = readFileSync(indexPath, "utf8");

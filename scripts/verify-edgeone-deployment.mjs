@@ -353,6 +353,11 @@ function assertStaticAsset(response, body, path) {
       `${path}: unexpected content type ${type || "<missing>"}; expected a static asset response`
     );
   }
+  if (/\.(?:m?js)$/i.test(path) && !/(?:java|ecma)script/i.test(type)) {
+    throw new Error(
+      `${path}: unexpected JavaScript content type ${type || "<missing>"}`
+    );
+  }
   if (body.byteLength === 0) {
     throw new Error(`${path}: response is empty`);
   }
