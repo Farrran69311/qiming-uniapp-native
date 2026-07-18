@@ -84,10 +84,6 @@ function initialAccessToken(deployUrl) {
   return { token, timestamp };
 }
 
-function isUnauthorized(response) {
-  return response.status === 401;
-}
-
 async function fetchWithTimeout(url, options = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -170,6 +166,17 @@ async function readResponseBody(response) {
   return Buffer.from(await response.arrayBuffer());
 }
 
+function responseCookieHeader(response) {
+  const setCookies =
+    typeof response.headers.getSetCookie === "function"
+      ? response.headers.getSetCookie()
+      : [response.headers.get("set-cookie")].filter(Boolean);
+  return setCookies
+    .map(value => String(value).split(";", 1)[0].trim())
+    .filter(Boolean)
+    .join("; ");
+}
+
 function isRetryableAssetStatus(status) {
   return (
     status === 404 ||
@@ -186,6 +193,48 @@ function sleep(durationMs) {
 
 function contentType(response) {
   return String(response.headers.get("content-type") || "").toLowerCase();
+}
+
+async function requestAsset(url, headers = {}) {
+  let response;
+  let body;
+  let lastError;
+  for (let attempt = 1; attempt <= MAX_ASSET_ATTEMPTS; attempt += 1) {
+    try {
+      response = await fetchWithTimeout(url, {
+        redirect: "follow",
+        headers
+      });
+      body = await readResponseBody(response);
+      if (
+        !isRetryableAssetStatus(response.status) ||
+        attempt === MAX_ASSET_ATTEMPTS
+      ) {
+        break;
+      }
+    } catch (error) {
+      lastError = error;
+      if (attempt === MAX_ASSET_ATTEMPTS) throw error;
+    }
+    await sleep(ASSET_RETRY_DELAY_MS);
+  }
+  if (!response || !body) {
+    throw lastError || new Error("EdgeOne returned no response");
+  }
+  return { response, body };
+}
+
+async function establishAccessSession(baseUrl, tokenData) {
+  if (!tokenData?.token) return { tokenData: null, cookieHeader: "" };
+  const rootUrl = withAccessToken(baseUrl, tokenData);
+  const { response } = await requestAsset(rootUrl);
+  if (!response.ok) {
+    throw new Error(`EdgeOne access session: HTTP ${response.status}`);
+  }
+  return {
+    tokenData,
+    cookieHeader: responseCookieHeader(response)
+  };
 }
 
 function assertJsonAsset(response, body, path) {
@@ -227,30 +276,15 @@ function assertBinaryAsset(response, body, path) {
   }
 }
 
-async function verifyAsset(baseUrl, tokenData, check) {
-  const url = assetUrl(baseUrl, tokenData, check.path);
-  let response;
-  let body;
-  let lastError;
-  for (let attempt = 1; attempt <= MAX_ASSET_ATTEMPTS; attempt += 1) {
-    try {
-      response = await fetchWithTimeout(url, { redirect: "follow" });
-      body = await readResponseBody(response);
-      if (
-        !isRetryableAssetStatus(response.status) ||
-        attempt === MAX_ASSET_ATTEMPTS
-      ) {
-        break;
-      }
-    } catch (error) {
-      lastError = error;
-      if (attempt === MAX_ASSET_ATTEMPTS) throw error;
-    }
-    await sleep(ASSET_RETRY_DELAY_MS);
-  }
-  if (!response || !body) {
-    throw lastError || new Error(`${check.path}: no response`);
-  }
+async function verifyAsset(baseUrl, accessSession, check) {
+  const useCookie = Boolean(accessSession.cookieHeader);
+  const url = assetUrl(
+    baseUrl,
+    useCookie ? null : accessSession.tokenData,
+    check.path
+  );
+  const headers = useCookie ? { Cookie: accessSession.cookieHeader } : {};
+  const { response, body } = await requestAsset(url, headers);
   if (check.kind === "json") assertJsonAsset(response, body, check.path);
   else assertBinaryAsset(response, body, check.path);
   return { url, bytes: body.byteLength };
@@ -259,15 +293,26 @@ async function verifyAsset(baseUrl, tokenData, check) {
 async function verifyDeployment(deployUrl, checks) {
   const baseUrl = getBaseUrl(deployUrl);
   let tokenData = initialAccessToken(deployUrl);
+  let accessSession = await establishAccessSession(baseUrl, tokenData).catch(
+    error => {
+      if (!(error instanceof Error) || !/HTTP 401\b/.test(error.message)) {
+        throw error;
+      }
+      return null;
+    }
+  );
 
   let refreshes = 0;
   for (;;) {
     try {
+      if (!accessSession) {
+        throw new Error("EdgeOne access session: HTTP 401");
+      }
       const results = [];
       for (const check of checks) {
         results.push({
           check,
-          result: await verifyAsset(baseUrl, tokenData, check)
+          result: await verifyAsset(baseUrl, accessSession, check)
         });
       }
       return results;
@@ -276,9 +321,10 @@ async function verifyDeployment(deployUrl, checks) {
         error instanceof Error && /HTTP 401\b/.test(error.message);
       if (!unauthorized || refreshes >= MAX_TOKEN_REFRESHES) throw error;
       tokenData = await requestFreshAccessToken(baseUrl.hostname);
+      accessSession = await establishAccessSession(baseUrl, tokenData);
       refreshes += 1;
       console.warn(
-        "EdgeOne access URL token expired; fetched a fresh token for verification."
+        "EdgeOne access session was rejected; fetched a fresh token and renewed the session."
       );
     }
   }
