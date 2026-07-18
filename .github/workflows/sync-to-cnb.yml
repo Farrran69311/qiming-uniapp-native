@@ -42,3 +42,85 @@ jobs:
           PLUGIN_PASSWORD: ${{ secrets.CNB_TOKEN }}
           PLUGIN_BRANCH: ${{ github.event_name == 'workflow_dispatch' && inputs.branch || github.ref_name }}
           PLUGIN_FORCE: "true"
+
+      - name: Verify CNB build status
+        if: ${{ github.event_name == 'push' && github.ref_name == 'agent' }}
+        env:
+          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+          CNB_API_ENDPOINT: https://api.cnb.cool
+          CNB_REPO_SLUG: sorkai/vue-pure-admin-max
+          CNB_BRANCH: ${{ github.ref_name }}
+          CNB_COMMIT: ${{ github.sha }}
+        run: |
+          set -eu
+          history_file="$(mktemp)"
+          status_file="$(mktemp)"
+          trap 'rm -f "$history_file" "$status_file"' EXIT
+          deadline=$((SECONDS + 900))
+          build_sn=""
+          build_url=""
+
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            if ! curl --fail --silent --show-error --location \
+              -H "Accept: application/json" \
+              -H "Authorization: Bearer $CNB_TOKEN" \
+              --get "$CNB_API_ENDPOINT/$CNB_REPO_SLUG/-/build/logs" \
+              --data-urlencode "sourceRef=$CNB_BRANCH" \
+              --data-urlencode "sha=$CNB_COMMIT" \
+              --data-urlencode "page=1" \
+              --data-urlencode "page_size=10" \
+              -o "$history_file"; then
+              echo "CNB build history could not be queried; verify repo-cnb-history permission on CNB_TOKEN." >&2
+              exit 1
+            fi
+
+            build_sn="$(jq -r --arg sha "$CNB_COMMIT" --arg branch "$CNB_BRANCH" '
+              (.data // [])
+              | map(select(.sha == $sha and .sourceRef == $branch))
+              | .[0].sn // empty
+            ' "$history_file")"
+            build_url="$(jq -r --arg sha "$CNB_COMMIT" --arg branch "$CNB_BRANCH" '
+              (.data // [])
+              | map(select(.sha == $sha and .sourceRef == $branch))
+              | .[0].buildLogUrl // empty
+            ' "$history_file")"
+            if [ -n "$build_sn" ]; then
+              break
+            fi
+            sleep 10
+          done
+
+          if [ -z "$build_sn" ]; then
+            echo "CNB did not expose a build for $CNB_BRANCH@$CNB_COMMIT within 15 minutes." >&2
+            exit 1
+          fi
+          echo "CNB build detected: $build_sn${build_url:+ ($build_url)}"
+
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            curl --fail --silent --show-error --location \
+              -H "Accept: application/json" \
+              -H "Authorization: Bearer $CNB_TOKEN" \
+              "$CNB_API_ENDPOINT/$CNB_REPO_SLUG/-/build/status/$build_sn" \
+              -o "$status_file"
+            build_status="$(jq -r '.status // empty' "$status_file" | tr '[:upper:]' '[:lower:]')"
+            case "$build_status" in
+              success)
+                echo "CNB build succeeded: $build_sn"
+                exit 0
+                ;;
+              error|cancel)
+                echo "CNB build ended with status: $build_status ($build_sn)." >&2
+                exit 1
+                ;;
+              pending|running|process|" ")
+                sleep 15
+                ;;
+              *)
+                echo "CNB returned an unknown build status '$build_status' for $build_sn." >&2
+                exit 1
+                ;;
+            esac
+          done
+
+          echo "CNB build $build_sn did not finish within 15 minutes." >&2
+          exit 1
