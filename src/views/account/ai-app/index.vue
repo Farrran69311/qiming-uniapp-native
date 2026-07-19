@@ -35,7 +35,6 @@ import AgentPdfWorkbench from "./AgentPdfWorkbench.vue";
 import AiAppEmptyState from "./components/AiAppEmptyState.vue";
 
 import AiResourceGeneration from "./components/AiResourceGeneration.vue";
-import AiDemoResourceManager from "./components/AiDemoResourceManager.vue";
 import AiStudentResourceLibrary from "./components/AiStudentResourceLibrary.vue";
 import AiLearningPath from "./components/AiLearningPath.vue";
 import AiLearningProfile from "./components/AiLearningProfile.vue";
@@ -370,8 +369,7 @@ const resolveRailFromPath = (path: string) => {
 
 // 会话数据集
 const activeRail = ref(resolveRailFromPath(route.path));
-const resourceWorkspaceMode = ref<"demo" | "generated">("demo");
-const demoResourcePane = ref<"import" | "binding" | "publish">("import");
+const resourceWorkspaceMode = ref<"generated">("generated");
 watch(
   () => route.path,
   newPath => {
@@ -713,27 +711,15 @@ const ensureStudentContextForActiveRail = () => {
   }
   selectedStudentId.value = myStudents.value[0].id;
 };
-const isDemoResourceWorkspace = computed(
-  () =>
-    activeRail.value === "generation" &&
-    isStaffMode.value &&
-    resourceWorkspaceMode.value === "demo"
-);
-const showCourseContext = computed(
-  () =>
-    courseScopedRails.includes(activeRail.value) &&
-    !isDemoResourceWorkspace.value
+const showCourseContext = computed(() =>
+  courseScopedRails.includes(activeRail.value)
 );
 const showStudentContext = computed(
   () =>
     isStaffMode.value &&
     (studentScopedRails.includes(activeRail.value) ||
       (activeRail.value === "chat" &&
-        interactionScope.value === "student_analysis")) &&
-    !(
-      activeRail.value === "generation" &&
-      resourceWorkspaceMode.value === "demo"
-    )
+        interactionScope.value === "student_analysis"))
 );
 const supportedInteractionScopes = computed<AssistantInteractionScope[]>(() => {
   const supported =
@@ -3054,13 +3040,6 @@ onUnmounted(() => {
                 v-model="resourceWorkspaceMode"
                 class="resource-workspace-tabs h-full flex flex-col"
               >
-                <el-tab-pane label="演示导入资源" name="demo" class="h-full">
-                  <AiDemoResourceManager
-                    v-model:active-pane="demoResourcePane"
-                    :system-courses="myCourses"
-                    :can-import="apiMode === 'admin'"
-                  />
-                </el-tab-pane>
                 <el-tab-pane
                   label="AI 生成资源"
                   name="generated"
