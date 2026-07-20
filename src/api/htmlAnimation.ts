@@ -1,7 +1,27 @@
 import { http } from "@/utils/http";
+import {
+  normalizeHtmlAnimationScope,
+  normalizeHtmlAnimationTaskStatus,
+  type HtmlAnimationScopeRequest,
+  type HtmlAnimationScopeType
+} from "./htmlAnimationScope";
+
+export {
+  createHtmlAnimationIdempotencyKey,
+  htmlAnimationScopeKey,
+  normalizeHtmlAnimationScope,
+  normalizeHtmlAnimationTaskStatus
+} from "./htmlAnimationScope";
+export type {
+  HtmlAnimationScope,
+  HtmlAnimationScopeRequest,
+  HtmlAnimationScopeType
+} from "./htmlAnimationScope";
 
 export interface HtmlAnimationTask {
   taskId: string;
+  scopeType: HtmlAnimationScopeType;
+  hourId?: number;
   status: string;
   version: number;
   fileName: string;
@@ -11,7 +31,10 @@ export interface HtmlAnimationTask {
   coverObject?: string;
   coverUrl?: string;
   fileSize: number;
-  errorMessage: string;
+  errorMessage?: string;
+  errorCode?: string;
+  errorStage?: string;
+  requestId?: string;
   createdAt: string;
   updatedAt: string;
   completedAt: string;
@@ -20,6 +43,8 @@ export interface HtmlAnimationTask {
 export interface HtmlAnimationListResult {
   courseId: number;
   chapterId: number;
+  scopeType: HtmlAnimationScopeType;
+  hourId?: number;
   tasks: HtmlAnimationTask[];
   displayVersionRaw: string;
   displayVersionResolved: string;
@@ -28,9 +53,54 @@ export interface HtmlAnimationListResult {
 export interface HtmlAnimationGenerateResult {
   courseId: number;
   chapterId: number;
+  scopeType: HtmlAnimationScopeType;
+  hourId?: number;
   taskId: string;
   status: string;
   message: string;
+  reused: boolean;
+}
+
+export interface HtmlAnimationReadinessResult {
+  ready: boolean;
+  code:
+    | "READY"
+    | "CONTENT_NOT_CURATED"
+    | "CONTENT_MISSING"
+    | "SEARCH_UNAVAILABLE"
+    | string;
+  message: string;
+  retryable: boolean;
+  courseId: number;
+  chapterId: number;
+  scopeType: HtmlAnimationScopeType;
+  hourId?: number;
+  availableDocuments: number;
+  rawDocuments: number;
+}
+
+export interface HtmlAnimationBatchRequest extends HtmlAnimationScopeRequest {
+  idempotencyKey?: string;
+}
+
+export interface HtmlAnimationBatchItem {
+  courseId: number;
+  chapterId: number;
+  scopeType: HtmlAnimationScopeType;
+  hourId?: number;
+  taskId?: string;
+  status: string;
+  action: "accepted" | "reused" | "rejected" | string;
+  errorCode?: string;
+  retryable: boolean;
+  errorMessage?: string;
+}
+
+export interface HtmlAnimationBatchResult {
+  total: number;
+  successful: number;
+  failed: number;
+  items: HtmlAnimationBatchItem[];
 }
 
 export interface HtmlAnimationSyncResult {
@@ -41,6 +111,8 @@ export interface HtmlAnimationSyncResult {
 export interface HtmlAnimationDisplayResult {
   courseId: number;
   chapterId: number;
+  scopeType: HtmlAnimationScopeType;
+  hourId?: number;
   available?: boolean;
   message?: string;
   version: string;
@@ -56,97 +128,84 @@ export interface ApiResponse<T = any> {
   data: T;
 }
 
-const HTML_ANIMATION_PROCESSING_STATUSES = new Set([
-  "pending",
-  "submitted",
-  "processing",
-  "queued",
-  "running",
-  "in_progress",
-  "generating"
-]);
-
-const HTML_ANIMATION_COMPLETED_STATUSES = new Set([
-  "completed",
-  "success",
-  "succeeded",
-  "done",
-  "finished"
-]);
-
-const HTML_ANIMATION_FAILED_STATUSES = new Set([
-  "failed",
-  "failure",
-  "error",
-  "cancelled",
-  "canceled"
-]);
-
-export function normalizeHtmlAnimationTaskStatus(
-  task?: Partial<HtmlAnimationTask> | null
-) {
-  const rawStatus = String(task?.status || "")
-    .trim()
-    .toLowerCase();
-
-  const hasCompletedSignal =
-    Number(task?.version || 0) > 0 ||
-    Boolean(task?.completedAt) ||
-    Boolean(task?.fileUrl);
-
-  if (HTML_ANIMATION_FAILED_STATUSES.has(rawStatus)) {
-    return "failed";
-  }
-
-  if (HTML_ANIMATION_COMPLETED_STATUSES.has(rawStatus) || hasCompletedSignal) {
-    return "completed";
-  }
-
-  if (HTML_ANIMATION_PROCESSING_STATUSES.has(rawStatus) || !rawStatus) {
-    return "processing";
-  }
-
-  return rawStatus;
-}
-
 export function normalizeHtmlAnimationTask(task: HtmlAnimationTask) {
   return {
     ...task,
+    scopeType: task.scopeType || "chapter",
     status: normalizeHtmlAnimationTaskStatus(task)
   };
 }
 
-export const generateHtmlAnimation = (data: {
-  courseId: number;
-  chapterId: number;
-}) => {
+export const generateHtmlAnimation = (
+  data: HtmlAnimationScopeRequest & { idempotencyKey?: string }
+) => {
+  const scope = normalizeHtmlAnimationScope(data);
   return http.request<ApiResponse<HtmlAnimationGenerateResult>>(
     "post",
     "/edu/v1/html-animation/generate",
-    { data }
+    {
+      data: {
+        ...scope,
+        ...(data.idempotencyKey ? { idempotencyKey: data.idempotencyKey } : {})
+      }
+    }
   );
 };
 
-export const getHtmlAnimationList = (params: {
-  courseId: number;
-  chapterId: number;
+export const getHtmlAnimationReadiness = (
+  params: HtmlAnimationScopeRequest
+) => {
+  const scope = normalizeHtmlAnimationScope(params);
+  return http.request<ApiResponse<HtmlAnimationReadinessResult>>(
+    "get",
+    "/edu/v1/html-animation/readiness",
+    { params: scope }
+  );
+};
+
+export const batchGenerateHtmlAnimation = (data: {
+  requests: HtmlAnimationBatchRequest[];
 }) => {
+  if (
+    !Array.isArray(data.requests) ||
+    data.requests.length < 1 ||
+    data.requests.length > 10
+  ) {
+    throw new Error("批量生成一次只能提交 1 到 10 个范围");
+  }
+  const requests = data.requests.map(item => {
+    const scope = normalizeHtmlAnimationScope(item);
+    return {
+      ...scope,
+      ...(item.idempotencyKey ? { idempotencyKey: item.idempotencyKey } : {})
+    };
+  });
+  return http.request<ApiResponse<HtmlAnimationBatchResult>>(
+    "post",
+    "/edu/v1/html-animation/batch-generate",
+    { data: { requests } }
+  );
+};
+
+export const getHtmlAnimationList = (params: HtmlAnimationScopeRequest) => {
+  const scope = normalizeHtmlAnimationScope(params);
   return http.request<ApiResponse<HtmlAnimationListResult>>(
     "get",
     "/edu/v1/html-animation/list",
-    { params }
+    { params: scope }
   );
 };
 
-export const setHtmlAnimationDisplay = (data: {
-  courseId: number;
-  chapterId: number;
-  version: string;
-}) => {
+export const setHtmlAnimationDisplay = (
+  data: HtmlAnimationScopeRequest & {
+    version: string;
+  }
+) => {
+  const scope = normalizeHtmlAnimationScope(data);
   return http.request<ApiResponse>(
     "post",
     "/edu/v1/html-animation/display/set",
-    { data }
+    { data: { ...scope, version: data.version } }
   );
 };
 
@@ -158,13 +217,11 @@ export const forceSyncHtmlAnimation = () => {
   );
 };
 
-export const getHtmlAnimationDisplay = (params: {
-  courseId: number;
-  chapterId: number;
-}) => {
+export const getHtmlAnimationDisplay = (params: HtmlAnimationScopeRequest) => {
+  const scope = normalizeHtmlAnimationScope(params);
   return http.request<ApiResponse<HtmlAnimationDisplayResult>>(
     "get",
     "/edu/v1/html-animation/display",
-    { params }
+    { params: scope }
   );
 };

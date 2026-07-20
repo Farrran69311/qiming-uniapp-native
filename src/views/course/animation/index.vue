@@ -90,6 +90,54 @@
           </el-select>
         </div>
 
+        <div class="space-y-3">
+          <label
+            class="text-base font-semibold text-[var(--el-text-color-secondary)] flex items-center"
+          >
+            <el-icon class="mr-2 text-[var(--el-color-primary)]">
+              <Film />
+            </el-icon>
+            生成范围
+          </label>
+          <el-radio-group
+            v-model="selectedScopeType"
+            class="scope-segmented"
+            size="large"
+            @change="handleScopeChange"
+          >
+            <el-radio-button value="chapter">整章</el-radio-button>
+            <el-radio-button value="hour">单课时</el-radio-button>
+          </el-radio-group>
+        </div>
+
+        <div v-if="selectedScopeType === 'hour'" class="space-y-3">
+          <label
+            class="text-base font-semibold text-[var(--el-text-color-secondary)] flex items-center"
+          >
+            <el-icon class="mr-2 text-[var(--el-color-primary)]">
+              <VideoPlay />
+            </el-icon>
+            对应课时
+          </label>
+          <el-select
+            v-model="selectedHourId"
+            :disabled="!selectedChapterId"
+            placeholder="请选择章节内的课时..."
+            clearable
+            filterable
+            class="w-full !rounded-xl"
+            size="large"
+            @change="handleHourChange"
+          >
+            <el-option
+              v-for="hour in hourOptions"
+              :key="hour.hourId"
+              :label="hour.title"
+              :value="hour.hourId"
+            />
+          </el-select>
+        </div>
+
         <!-- 任务统计看板 -->
         <div class="mt-8">
           <div class="flex items-center justify-between mb-4">
@@ -193,10 +241,10 @@
             ]"
           >
             <el-button
-              :disabled="!selectedChapterId"
+              :disabled="!currentScope"
               class="!rounded-xl !h-10 !px-4"
               :icon="Refresh"
-              @click="refreshList"
+              @click="refreshScope"
             >
               刷新
             </el-button>
@@ -209,15 +257,35 @@
               同步
             </el-button>
             <el-button
+              :disabled="!canBatchGenerate"
+              class="!rounded-xl !h-10 !px-4"
+              :icon="Promotion"
+              @click="openBatchDialog"
+            >
+              批量生成
+            </el-button>
+            <el-button
               type="primary"
               :disabled="!canGenerate"
               :loading="generateLoading"
               class="!rounded-xl !h-10 !px-6 !font-bold shadow-md"
+              :icon="Cpu"
               @click="onGenerate"
             >
               AI 生成
             </el-button>
           </div>
+        </div>
+
+        <div v-if="selectedChapterId" class="scope-readiness-wrap">
+          <el-alert
+            :title="readinessTitle"
+            :description="readinessDescription"
+            :type="readinessType"
+            :closable="false"
+            show-icon
+            aria-live="polite"
+          />
         </div>
 
         <!-- 内容体 -->
@@ -381,6 +449,15 @@
                         <span class="label">Created</span>
                         <span>{{ row.createdAt }}</span>
                       </div>
+                    </div>
+                    <div
+                      v-if="row.status === 'failed'"
+                      class="mobile-animation-field"
+                    >
+                      <span class="label">异常</span>
+                      <span>{{
+                        row.errorMessage || row.errorCode || "生成失败"
+                      }}</span>
                     </div>
                   </div>
 
@@ -547,6 +624,25 @@
                   </template>
                 </el-table-column>
                 <el-table-column
+                  label="异常信息"
+                  min-width="180"
+                  show-overflow-tooltip
+                >
+                  <template #default="{ row }">
+                    <div v-if="row.status === 'failed'" class="task-error-cell">
+                      <span>{{
+                        row.errorMessage || row.errorCode || "生成失败"
+                      }}</span>
+                      <small v-if="row.requestId"
+                        >请求 {{ row.requestId }}</small
+                      >
+                    </div>
+                    <span v-else class="text-[var(--el-text-color-placeholder)]"
+                      >--</span
+                    >
+                  </template>
+                </el-table-column>
+                <el-table-column
                   label="操作"
                   width="320"
                   fixed="right"
@@ -634,6 +730,107 @@
         </div>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="batchDialogVisible"
+      title="批量生成课时动画"
+      :width="getDialogWidth('720px', '96%')"
+      :fullscreen="isMobile"
+      class="batch-generation-dialog"
+      destroy-on-close
+    >
+      <el-form label-position="top">
+        <el-form-item label="选择课时（最多 10 个）">
+          <el-select
+            v-model="batchHourIds"
+            multiple
+            filterable
+            collapse-tags
+            collapse-tags-tooltip
+            :multiple-limit="10"
+            placeholder="请选择需要生成动画的课时"
+            class="w-full"
+          >
+            <el-option
+              v-for="hour in hourOptions"
+              :key="hour.hourId"
+              :label="hour.title"
+              :value="hour.hourId"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+
+      <template v-if="batchResult">
+        <el-alert
+          :title="batchSummaryText"
+          :type="batchResult.failed > 0 ? 'warning' : 'success'"
+          :closable="false"
+          show-icon
+          class="mb-4"
+        />
+        <div v-if="isMobile" class="batch-result-list">
+          <div
+            v-for="item in batchResult.items"
+            :key="item.hourId"
+            class="batch-result-card"
+          >
+            <div class="batch-result-card__header">
+              <span class="batch-result-card__title">
+                {{ getHourTitle(item.hourId) }}
+              </span>
+              <el-tag :type="getBatchActionType(item.action)">
+                {{ getBatchActionLabel(item.action) }}
+              </el-tag>
+            </div>
+            <div class="batch-result-card__details">
+              <span class="batch-result-card__label">说明</span>
+              <span>
+                {{ item.errorMessage || item.errorCode || item.status }}
+              </span>
+              <span class="batch-result-card__label">可重试</span>
+              <span>{{ item.retryable ? "是" : "否" }}</span>
+            </div>
+          </div>
+        </div>
+        <el-table v-else :data="batchResult.items" max-height="340" border>
+          <el-table-column label="课时" min-width="160">
+            <template #default="{ row }">
+              {{ getHourTitle(row.hourId) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="结果" width="100" align="center">
+            <template #default="{ row }">
+              <el-tag :type="getBatchActionType(row.action)">
+                {{ getBatchActionLabel(row.action) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="说明" min-width="220">
+            <template #default="{ row }">
+              {{ row.errorMessage || row.errorCode || row.status }}
+            </template>
+          </el-table-column>
+          <el-table-column label="可重试" width="90" align="center">
+            <template #default="{ row }">
+              {{ row.retryable ? "是" : "否" }}
+            </template>
+          </el-table-column>
+        </el-table>
+      </template>
+
+      <template #footer>
+        <el-button @click="batchDialogVisible = false">关闭</el-button>
+        <el-button
+          type="primary"
+          :loading="batchLoading"
+          :disabled="batchHourIds.length === 0"
+          @click="submitBatchGenerate"
+        >
+          提交批量任务
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -643,12 +840,19 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { usePageResponsive } from "@/utils/pageResponsive";
 import { getCourseList, getCourseHoursList } from "@/api/course";
 import {
+  batchGenerateHtmlAnimation,
+  createHtmlAnimationIdempotencyKey,
   generateHtmlAnimation,
+  getHtmlAnimationReadiness,
   getHtmlAnimationList,
+  htmlAnimationScopeKey,
   setHtmlAnimationDisplay,
   forceSyncHtmlAnimation,
-  getHtmlAnimationDisplay,
   normalizeHtmlAnimationTask,
+  type HtmlAnimationBatchResult,
+  type HtmlAnimationReadinessResult,
+  type HtmlAnimationScope,
+  type HtmlAnimationScopeType,
   type HtmlAnimationTask
 } from "@/api/htmlAnimation";
 import {
@@ -685,26 +889,83 @@ defineOptions({
 const { isMobile, getDialogWidth } = usePageResponsive();
 const isCompactLayout = ref(false);
 
+interface AnimationHourOption {
+  hourId: number;
+  title: string;
+}
+
+interface AnimationChapterOption {
+  chapterId: number;
+  name: string;
+  hourList: AnimationHourOption[];
+}
+
 const selectedCourseId = ref<number | null>(null);
 const selectedChapterId = ref<number | null>(null);
+const selectedScopeType = ref<HtmlAnimationScopeType>("chapter");
+const selectedHourId = ref<number | null>(null);
 const courseOptions = ref<any[]>([]);
-const chapterOptions = ref<any[]>([]);
+const chapterOptions = ref<AnimationChapterOption[]>([]);
 const courseLoading = ref(false);
 const listLoading = ref(false);
 const generateLoading = ref(false);
 const syncLoading = ref(false);
 const polling = ref(false);
 let pollTimer: any = null;
+let listRequestSeq = 0;
+let readinessRequestSeq = 0;
 
 const tasks = ref<HtmlAnimationTask[]>([]);
 const displayVersionRaw = ref("");
 const displayVersionResolved = ref("");
+const readiness = ref<HtmlAnimationReadinessResult | null>(null);
+const readinessLoading = ref(false);
+const readinessError = ref("");
+const generationIntentKeys = new Map<string, string>();
+
+const batchDialogVisible = ref(false);
+const batchHourIds = ref<number[]>([]);
+const batchLoading = ref(false);
+const batchResult = ref<HtmlAnimationBatchResult | null>(null);
+const batchRetryIntent = ref("");
 
 const statusFilter = ref("all");
 const keyword = ref("");
 
 const previewVisible = ref(false);
 const previewUrl = ref("");
+
+const selectedChapter = computed(() =>
+  chapterOptions.value.find(
+    chapter => chapter.chapterId === selectedChapterId.value
+  )
+);
+
+const hourOptions = computed(
+  () => selectedChapter.value?.hourList.filter(hour => hour.hourId > 0) || []
+);
+
+const currentScope = computed<HtmlAnimationScope | null>(() => {
+  if (!selectedCourseId.value || !selectedChapterId.value) return null;
+  if (selectedScopeType.value === "hour") {
+    if (!selectedHourId.value) return null;
+    return {
+      courseId: selectedCourseId.value,
+      chapterId: selectedChapterId.value,
+      scopeType: "hour",
+      hourId: selectedHourId.value
+    };
+  }
+  return {
+    courseId: selectedCourseId.value,
+    chapterId: selectedChapterId.value,
+    scopeType: "chapter"
+  };
+});
+
+const currentScopeKey = computed(() =>
+  currentScope.value ? htmlAnimationScopeKey(currentScope.value) : ""
+);
 
 const isTaskProcessing = (task: HtmlAnimationTask) =>
   ["pending", "submitted", "processing"].includes(task.status);
@@ -747,10 +1008,61 @@ const latestSuccessTime = computed(() => {
 
 const canGenerate = computed(
   () =>
-    !!selectedCourseId.value &&
-    !!selectedChapterId.value &&
+    !!currentScope.value &&
+    readiness.value?.ready === true &&
+    !readinessLoading.value &&
     !tasks.value.some(isTaskProcessing)
 );
+
+const canBatchGenerate = computed(
+  () =>
+    !!selectedCourseId.value &&
+    !!selectedChapterId.value &&
+    !!hourOptions.value.length
+);
+
+const readinessTitle = computed(() => {
+  if (!currentScope.value) return "请选择需要生成动画的课时";
+  if (readinessLoading.value) return "正在检查内容就绪度";
+  if (readinessError.value) return "暂时无法检查内容就绪度";
+  if (readiness.value?.ready) return "当前范围可以生成动画";
+  const titles: Record<string, string> = {
+    CONTENT_NOT_CURATED: "课程内容尚未完成梳理",
+    CONTENT_MISSING: "当前范围缺少可生成内容",
+    SEARCH_UNAVAILABLE: "内容检索服务暂不可用"
+  };
+  return titles[readiness.value?.code || ""] || "当前范围暂不可生成";
+});
+
+const readinessDescription = computed(() => {
+  if (!currentScope.value) return "选择课时后将检查对应内容。";
+  if (readinessLoading.value) return "";
+  if (readinessError.value) return readinessError.value;
+  if (!readiness.value) return "刷新后重试。";
+
+  const diagnostics: string[] = [];
+  if (readiness.value.availableDocuments > 0) {
+    diagnostics.push(`可用内容 ${readiness.value.availableDocuments} 项`);
+  }
+  if (readiness.value.rawDocuments > 0) {
+    diagnostics.push(`待梳理原始内容 ${readiness.value.rawDocuments} 项`);
+  }
+  return [readiness.value.message, ...diagnostics].filter(Boolean).join("；");
+});
+
+const readinessType = computed<"success" | "warning" | "error" | "info">(() => {
+  if (readiness.value?.ready) return "success";
+  if (readiness.value?.code === "CONTENT_NOT_CURATED") return "warning";
+  if (readinessError.value || readiness.value?.code === "SEARCH_UNAVAILABLE") {
+    return "error";
+  }
+  return "info";
+});
+
+const batchSummaryText = computed(() => {
+  if (!batchResult.value) return "";
+  return `共 ${batchResult.value.total} 项，已受理或复用 ${batchResult.value.successful} 项，拒绝 ${batchResult.value.failed} 项`;
+});
 
 const filteredTasks = computed(() => {
   let arr = tasks.value.slice().sort((a, b) => b.version - a.version);
@@ -807,20 +1119,36 @@ async function preloadCourses() {
   await searchCourses("");
 }
 
+function resetScopeData() {
+  listRequestSeq += 1;
+  readinessRequestSeq += 1;
+  tasks.value = [];
+  displayVersionRaw.value = "";
+  displayVersionResolved.value = "";
+  readiness.value = null;
+  readinessError.value = "";
+  readinessLoading.value = false;
+  listLoading.value = false;
+  stopPolling();
+}
+
 async function handleCourseChange() {
   selectedChapterId.value = null;
+  selectedHourId.value = null;
   chapterOptions.value = [];
-  tasks.value = [];
-  stopPolling();
+  resetScopeData();
   if (!selectedCourseId.value) return;
-  // load chapters
   try {
     const { data } = await getCourseHoursList({
       courseId: selectedCourseId.value
     });
     chapterOptions.value = (data.courseChapters || []).map(ch => ({
       chapterId: ch.chapterId,
-      name: ch.name
+      name: ch.name,
+      hourList: (ch.hourList || []).map(hour => ({
+        hourId: Number(hour.hourId),
+        title: hour.title || `课时 ${hour.hourId}`
+      }))
     }));
   } catch (e) {
     ElMessage.error("章节加载失败");
@@ -828,48 +1156,112 @@ async function handleCourseChange() {
 }
 
 function handleChapterChange() {
-  tasks.value = [];
-  stopPolling();
-  if (selectedChapterId.value) refreshList();
+  selectedHourId.value = null;
+  resetScopeData();
+  if (selectedChapterId.value && selectedScopeType.value === "chapter") {
+    refreshScope();
+  }
+}
+
+function handleScopeChange() {
+  selectedHourId.value = null;
+  resetScopeData();
+  if (selectedScopeType.value === "chapter" && selectedChapterId.value) {
+    refreshScope();
+  }
+}
+
+function handleHourChange() {
+  resetScopeData();
+  if (currentScope.value) refreshScope();
+}
+
+async function refreshScope() {
+  if (!currentScope.value) return;
+  await Promise.all([refreshList(), refreshReadiness()]);
 }
 
 async function refreshList() {
-  if (!selectedCourseId.value || !selectedChapterId.value) return;
+  const scope = currentScope.value;
+  if (!scope) return;
+  const requestScopeKey = htmlAnimationScopeKey(scope);
+  const requestId = ++listRequestSeq;
   listLoading.value = true;
   try {
-    const { data } = await getHtmlAnimationList({
-      courseId: selectedCourseId.value,
-      chapterId: selectedChapterId.value
-    });
+    const { data } = await getHtmlAnimationList(scope);
+    if (
+      requestId !== listRequestSeq ||
+      requestScopeKey !== currentScopeKey.value
+    ) {
+      return;
+    }
     tasks.value = (data.tasks || []).map(normalizeHtmlAnimationTask);
     displayVersionRaw.value = data.displayVersionRaw;
     displayVersionResolved.value = data.displayVersionResolved;
-    // 若存在 processing 且未轮询启动 -> 启动
     if (tasks.value.some(isTaskProcessing) && !polling.value) {
       startPolling();
     } else if (!tasks.value.some(isTaskProcessing)) {
       stopPolling();
     }
   } catch (e) {
+    if (requestId !== listRequestSeq) return;
     console.error("获取动画列表失败", e);
-    ElMessage.error(getRequestErrorMessage(e, "动画列表获取失败"));
+    if (!polling.value) {
+      ElMessage.error(getRequestErrorMessage(e, "动画列表获取失败"));
+    }
   } finally {
-    listLoading.value = false;
+    if (requestId === listRequestSeq) listLoading.value = false;
+  }
+}
+
+async function refreshReadiness() {
+  const scope = currentScope.value;
+  if (!scope) return;
+  const requestScopeKey = htmlAnimationScopeKey(scope);
+  const requestId = ++readinessRequestSeq;
+  readinessLoading.value = true;
+  readiness.value = null;
+  readinessError.value = "";
+  try {
+    const { data } = await getHtmlAnimationReadiness(scope);
+    if (
+      requestId !== readinessRequestSeq ||
+      requestScopeKey !== currentScopeKey.value
+    ) {
+      return;
+    }
+    readiness.value = data;
+  } catch (e: any) {
+    if (requestId !== readinessRequestSeq) return;
+    const code = e?.response?.data?.data?.code || e?.response?.data?.code || "";
+    const message = getRequestErrorMessage(e, "内容就绪度检查失败");
+    readinessError.value = code ? `${message}（${code}）` : message;
+  } finally {
+    if (requestId === readinessRequestSeq) readinessLoading.value = false;
   }
 }
 
 async function onGenerate() {
-  if (!canGenerate.value) return;
+  const scope = currentScope.value;
+  if (!canGenerate.value || !scope) return;
+  const scopeKey = htmlAnimationScopeKey(scope);
+  const idempotencyKey =
+    generationIntentKeys.get(scopeKey) ||
+    createHtmlAnimationIdempotencyKey(scope);
+  generationIntentKeys.set(scopeKey, idempotencyKey);
   generateLoading.value = true;
   try {
-    await generateHtmlAnimation({
-      courseId: selectedCourseId.value!,
-      chapterId: selectedChapterId.value!
+    const { data } = await generateHtmlAnimation({
+      ...scope,
+      idempotencyKey
     });
-    ElMessage.success("生成任务已提交");
-    await refreshList();
+    generationIntentKeys.delete(scopeKey);
+    ElMessage.success(
+      data.reused ? "已继续跟踪现有生成任务" : "生成任务已提交"
+    );
+    if (scopeKey === currentScopeKey.value) await refreshList();
   } catch (e) {
-    ElMessage.error("生成任务提交失败");
+    ElMessage.error(getRequestErrorMessage(e, "生成任务提交失败"));
   } finally {
     generateLoading.value = false;
   }
@@ -890,11 +1282,11 @@ function stopPolling() {
 }
 
 async function setDisplayLatest() {
-  if (!latestCompletedVersion.value) return;
+  const scope = currentScope.value;
+  if (!latestCompletedVersion.value || !scope) return;
   try {
     await setHtmlAnimationDisplay({
-      courseId: selectedCourseId.value!,
-      chapterId: selectedChapterId.value!,
+      ...scope,
       version: String(latestCompletedVersion.value)
     });
     ElMessage.success("展示版本已设置");
@@ -905,17 +1297,106 @@ async function setDisplayLatest() {
 }
 
 async function setDisplay(row: HtmlAnimationTask) {
-  if (!isTaskCompleted(row)) return;
+  const scope = currentScope.value;
+  if (!isTaskCompleted(row) || !scope) return;
   try {
     await setHtmlAnimationDisplay({
-      courseId: selectedCourseId.value!,
-      chapterId: selectedChapterId.value!,
+      ...scope,
       version: String(row.version)
     });
     ElMessage.success("展示版本已设置");
     await refreshList();
   } catch (e) {
     ElMessage.error("设置展示版本失败");
+  }
+}
+
+function openBatchDialog() {
+  if (!canBatchGenerate.value) return;
+  const preferredHourIds = selectedHourId.value ? [selectedHourId.value] : [];
+  batchHourIds.value = [
+    ...preferredHourIds,
+    ...hourOptions.value.map(hour => hour.hourId)
+  ]
+    .filter((hourId, index, values) => values.indexOf(hourId) === index)
+    .slice(0, 10);
+  batchResult.value = null;
+  batchDialogVisible.value = true;
+}
+
+function getHourTitle(hourId?: number) {
+  if (!hourId) return "未知课时";
+  return (
+    hourOptions.value.find(hour => hour.hourId === hourId)?.title ||
+    `课时 ${hourId}`
+  );
+}
+
+function getBatchActionLabel(action: string) {
+  const labels: Record<string, string> = {
+    accepted: "已受理",
+    reused: "已复用",
+    rejected: "已拒绝"
+  };
+  return labels[action] || action;
+}
+
+function getBatchActionType(action: string): "success" | "info" | "danger" {
+  if (action === "accepted") return "success";
+  if (action === "reused") return "info";
+  return "danger";
+}
+
+async function submitBatchGenerate() {
+  if (
+    !selectedCourseId.value ||
+    !selectedChapterId.value ||
+    batchHourIds.value.length < 1 ||
+    batchHourIds.value.length > 10
+  ) {
+    return;
+  }
+
+  const courseId = selectedCourseId.value;
+  const chapterId = selectedChapterId.value;
+  const intentId = batchRetryIntent.value || `batch-${Date.now().toString(36)}`;
+  batchRetryIntent.value = intentId;
+  const requests = batchHourIds.value.map(hourId => {
+    const scope: HtmlAnimationScope = {
+      courseId,
+      chapterId,
+      scopeType: "hour",
+      hourId
+    };
+    return {
+      ...scope,
+      idempotencyKey: createHtmlAnimationIdempotencyKey(scope, intentId)
+    };
+  });
+
+  batchLoading.value = true;
+  try {
+    const { data } = await batchGenerateHtmlAnimation({ requests });
+    batchResult.value = data;
+    batchRetryIntent.value = "";
+    if (!isMobile.value) {
+      if (data.failed > 0) {
+        ElMessage.warning("批量请求已处理，请查看每个课时的结果");
+      } else {
+        ElMessage.success("批量生成任务已受理");
+      }
+    }
+    if (
+      selectedScopeType.value === "hour" &&
+      selectedHourId.value &&
+      batchHourIds.value.includes(selectedHourId.value)
+    ) {
+      await refreshScope();
+    }
+  } catch (e) {
+    ElMessage.error(getRequestErrorMessage(e, "批量生成请求失败"));
+  } finally {
+    batchLoading.value = false;
   }
 }
 
@@ -926,7 +1407,7 @@ async function onForceSync() {
     ElMessage.success(
       `同步完成: ${data.successChapters}/${data.totalChapters}`
     );
-    await refreshList();
+    await refreshScope();
   } catch (e) {
     ElMessage.error("强制同步失败");
   } finally {
@@ -1025,6 +1506,34 @@ onBeforeUnmount(() => {
 
 .ai-animation-page {
   margin: 10px;
+}
+
+.scope-segmented {
+  display: flex;
+  width: 100%;
+
+  :deep(.el-radio-button) {
+    flex: 1;
+  }
+
+  :deep(.el-radio-button__inner) {
+    width: 100%;
+  }
+}
+
+.scope-readiness-wrap {
+  padding: 16px 24px 0;
+}
+
+.task-error-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--el-color-danger);
+
+  small {
+    color: var(--el-text-color-secondary);
+  }
 }
 
 .toolbar {
@@ -1499,6 +2008,47 @@ onBeforeUnmount(() => {
   line-height: 1;
 }
 
+.batch-result-list {
+  display: grid;
+  gap: 10px;
+  max-height: calc(100vh - 300px);
+  overflow-y: auto;
+}
+
+.batch-result-card {
+  padding: 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 6px;
+  background: var(--el-bg-color);
+}
+
+.batch-result-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.batch-result-card__title {
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.batch-result-card__details {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px 12px;
+  margin-top: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.batch-result-card__label {
+  color: var(--el-text-color-secondary);
+}
+
 @media (width <= 768px) {
   .ai-animation-container.is-mobile-layout {
     height: auto;
@@ -1533,6 +2083,11 @@ onBeforeUnmount(() => {
   .ai-animation-container.is-mobile-layout .toolbar-actions :deep(.el-button) {
     flex: 1 1 calc(50% - 8px);
     min-width: 0;
+    min-height: 44px;
+  }
+
+  :deep(.batch-generation-dialog .el-dialog__footer .el-button) {
+    min-height: 44px;
   }
 
   .ai-animation-container.is-mobile-layout .filter-keyword {

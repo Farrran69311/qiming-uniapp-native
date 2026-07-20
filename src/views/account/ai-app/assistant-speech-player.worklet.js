@@ -4,17 +4,19 @@ class AssistantSpeechPlayerProcessor extends AudioWorkletProcessor {
     const config = options.processorOptions || {};
     this.sourceSampleRate = Number(config.sourceSampleRate) || 24000;
     this.jitterBufferMs = Number(config.jitterBufferMs) || 120;
-    // The provider recommendation is a starting point, not a safe playback
-    // target. A 120 ms target starts too eagerly for the intermittent 500-900
-    // ms delivery gaps seen on real networks, so keep a practical client-side
-    // cushion while retaining a cap for short responses.
+    // The realtime writer sends an initial 240 ms lead and only grows the
+    // window after `played_sample` starts moving. Starting above that lead
+    // deadlocks the client and writer: the client waits for more PCM while the
+    // writer waits for playback progress. Keep the startup target within the
+    // server contract, then use a larger (but still bounded) target after the
+    // first sample has been consumed.
     this.initialBufferMs = Math.min(
-      900,
-      Math.max(480, Math.round(this.jitterBufferMs * 4))
+      240,
+      Math.max(120, Math.round(this.jitterBufferMs * 2))
     );
     this.rebufferMs = Math.min(
-      1400,
-      Math.max(720, Math.round(this.initialBufferMs * 1.6))
+      560,
+      Math.max(360, Math.round(this.initialBufferMs * 2))
     );
     this.lowWaterMs = Math.min(
       this.initialBufferMs - 80,

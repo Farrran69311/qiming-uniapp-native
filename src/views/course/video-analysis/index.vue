@@ -258,6 +258,16 @@
                 </template>
               </el-table-column>
               <el-table-column
+                label="课时 ID"
+                prop="hourId"
+                width="110"
+                align="center"
+              >
+                <template #default="{ row }">
+                  {{ row.hourId || "历史任务" }}
+                </template>
+              </el-table-column>
+              <el-table-column
                 label="状态"
                 prop="status"
                 width="120"
@@ -390,9 +400,9 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="视频课时" prop="filePath">
+        <el-form-item label="视频课时" prop="hourId">
           <el-select
-            v-model="submitForm.filePath"
+            v-model="submitForm.hourId"
             :disabled="!submitForm.courseId"
             placeholder="请选择视频课时"
             filterable
@@ -401,9 +411,9 @@
           >
             <el-option
               v-for="h in videoHourOptions"
-              :key="h.fileUrl"
+              :key="`${h.chapterId}:${h.hourId}`"
               :label="h.title"
-              :value="h.fileUrl"
+              :value="h.hourId"
             />
           </el-select>
         </el-form-item>
@@ -680,7 +690,13 @@ const submitChapterOptions = ref<Array<{ chapterId: number; name: string }>>(
   []
 );
 const videoHourOptions = ref<
-  Array<{ title: string; fileUrl: string; rType: string }>
+  Array<{
+    title: string;
+    fileUrl: string;
+    rType: string;
+    chapterId: number;
+    hourId: number;
+  }>
 >([]);
 const allHoursData = ref<
   Array<{
@@ -700,13 +716,14 @@ const allHoursData = ref<
 const submitForm = reactive({
   courseId: undefined as number | undefined,
   chapterId: undefined as number | undefined,
+  hourId: undefined as number | undefined,
   filePath: "",
   fileName: ""
 });
 
 const submitRules: FormRules = {
   courseId: [{ required: true, message: "请选择课程", trigger: "change" }],
-  filePath: [{ required: true, message: "请选择视频课时", trigger: "change" }]
+  hourId: [{ required: true, message: "请选择视频课时", trigger: "change" }]
 };
 
 const canSubmit = computed(() => !!selectedCourseId.value);
@@ -714,6 +731,7 @@ const canSubmit = computed(() => !!selectedCourseId.value);
 const showSubmitDialog = () => {
   submitForm.courseId = selectedCourseId.value;
   submitForm.chapterId = selectedChapterId.value;
+  submitForm.hourId = undefined;
   submitForm.filePath = "";
   submitForm.fileName = "";
   submitDialogVisible.value = true;
@@ -741,6 +759,7 @@ const loadSubmitChapters = async (courseId: number) => {
 
 const handleSubmitCourseChange = (val: number) => {
   submitForm.chapterId = undefined;
+  submitForm.hourId = undefined;
   submitForm.filePath = "";
   submitForm.fileName = "";
   submitChapterOptions.value = [];
@@ -751,38 +770,55 @@ const handleSubmitCourseChange = (val: number) => {
 };
 
 const handleSubmitChapterChange = () => {
+  submitForm.hourId = undefined;
   submitForm.filePath = "";
   submitForm.fileName = "";
   updateVideoOptions();
 };
 
 const updateVideoOptions = () => {
-  let hours: Array<{ title: string; fileUrl: string; rType: string }> = [];
+  let hours: Array<{
+    title: string;
+    fileUrl: string;
+    rType: string;
+    chapterId: number;
+    hourId: number;
+  }> = [];
   const chapters = allHoursData.value;
   if (submitForm.chapterId) {
     const ch = chapters.find(c => c.chapterId === submitForm.chapterId);
     if (ch) {
       hours = ch.hourList
-        .filter(h => h.rType === "VIDEO")
-        .map(h => ({ title: h.title, fileUrl: h.fileUrl, rType: h.rType }));
+        .filter(h => h.rType === "VIDEO" && h.hourId > 0)
+        .map(h => ({
+          title: h.title,
+          fileUrl: h.fileUrl,
+          rType: h.rType,
+          chapterId: ch.chapterId,
+          hourId: h.hourId
+        }));
     }
   } else {
     hours = chapters.flatMap(ch =>
       ch.hourList
-        .filter(h => h.rType === "VIDEO")
+        .filter(h => h.rType === "VIDEO" && h.hourId > 0)
         .map(h => ({
           title: `[${ch.name}] ${h.title}`,
           fileUrl: h.fileUrl,
-          rType: h.rType
+          rType: h.rType,
+          chapterId: ch.chapterId,
+          hourId: h.hourId
         }))
     );
   }
   videoHourOptions.value = hours;
 };
 
-const handleVideoSelect = (fileUrl: string) => {
-  const hour = videoHourOptions.value.find(h => h.fileUrl === fileUrl);
+const handleVideoSelect = (hourId: number) => {
+  const hour = videoHourOptions.value.find(h => h.hourId === hourId);
   if (hour) {
+    submitForm.chapterId = hour.chapterId;
+    submitForm.filePath = hour.fileUrl;
     submitForm.fileName = hour.title;
   }
 };
@@ -807,6 +843,7 @@ const onSubmit = async () => {
     const { code, msg } = await submitVideoAnalysis({
       courseId: submitForm.courseId!,
       chapterId: submitForm.chapterId,
+      hourId: submitForm.hourId,
       filePath: extractObjectKey(submitForm.filePath),
       fileName: submitForm.fileName || undefined
     });
