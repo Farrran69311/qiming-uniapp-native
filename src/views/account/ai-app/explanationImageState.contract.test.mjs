@@ -7,14 +7,19 @@ import {
   shouldApplyExplanationImageUpdate
 } from "./explanationImageState.ts";
 
-const [assistantApiSource, workbenchSource, chatSource] = await Promise.all([
-  readFile(
-    new URL("../../../api/frontend/assistant.ts", import.meta.url),
-    "utf8"
-  ),
-  readFile(new URL("./index.vue", import.meta.url), "utf8"),
-  readFile(new URL("./components/AiChatModule.vue", import.meta.url), "utf8")
-]);
+const [assistantApiSource, workbenchSource, chatSource, imageCardSource] =
+  await Promise.all([
+    readFile(
+      new URL("../../../api/frontend/assistant.ts", import.meta.url),
+      "utf8"
+    ),
+    readFile(new URL("./index.vue", import.meta.url), "utf8"),
+    readFile(new URL("./components/AiChatModule.vue", import.meta.url), "utf8"),
+    readFile(
+      new URL("./components/ExplanationImageCard.vue", import.meta.url),
+      "utf8"
+    )
+  ]);
 
 test("accepts the documented retrying to generating transition", () => {
   assert.equal(
@@ -37,6 +42,15 @@ test("terminal image states cannot be overwritten by stale polls", () => {
   assert.equal(
     shouldApplyExplanationImageUpdate("generating", "succeeded"),
     true
+  );
+});
+
+test("unknown provider outcomes stay fail-closed in the image card", () => {
+  assert.equal(explanationImageTerminalStatuses.has("unknown_outcome"), true);
+  assert.match(imageCardSource, /provider_unknown_outcome/);
+  assert.match(
+    imageCardSource,
+    /status === "succeeded" && Boolean\(props\.image\.public_url\)/
   );
 });
 

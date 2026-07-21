@@ -1,9 +1,18 @@
 import type {
+  GenerateTeacherPlanResult,
   TeacherPlan,
   TeacherPlanAvailability,
   TeacherPlanProgress,
   TeacherPlanStatus
 } from "../../../api/course";
+
+export interface TeacherPlanCreationHandoff extends GenerateTeacherPlanResult {
+  courseId: number;
+  chapterId: number;
+  courseName: string;
+  chapterName: string;
+  createdAt: string;
+}
 
 const TERMINAL_STATUSES = new Set<TeacherPlanStatus>([
   "completed",
@@ -118,6 +127,43 @@ export function normalizeTeacherPlan(raw: any): TeacherPlan {
     updatedAt: text(value.updatedAt),
     createdAt: text(value.createdAt)
   };
+}
+
+export function isValidTeacherPlanCreation(
+  creation: TeacherPlanCreationHandoff | null | undefined
+): creation is TeacherPlanCreationHandoff {
+  return Boolean(
+    creation &&
+      Number.isInteger(creation.teacherPlanId) &&
+      creation.teacherPlanId > 0 &&
+      Number.isInteger(creation.courseId) &&
+      creation.courseId > 0 &&
+      Number.isInteger(creation.chapterId) &&
+      creation.chapterId > 0 &&
+      text(creation.taskId)
+  );
+}
+
+export function teacherPlanFromCreation(
+  creation: TeacherPlanCreationHandoff
+): TeacherPlan {
+  return normalizeTeacherPlan({
+    ...creation,
+    downloadUrl: "",
+    updatedAt: creation.createdAt
+  });
+}
+
+export function teacherPlanMatchesCreation(
+  plan: TeacherPlan,
+  creation: TeacherPlanCreationHandoff
+): boolean {
+  return (
+    plan.teacherPlanId === creation.teacherPlanId &&
+    plan.courseId === creation.courseId &&
+    plan.chapterId === creation.chapterId &&
+    text(plan.taskId) === text(creation.taskId)
+  );
 }
 
 export function normalizeTeacherPlanProgress(

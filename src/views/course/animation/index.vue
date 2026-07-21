@@ -257,6 +257,7 @@
               同步
             </el-button>
             <el-button
+              v-if="selectedScopeType === 'hour'"
               :disabled="!canBatchGenerate"
               class="!rounded-xl !h-10 !px-4"
               :icon="Promotion"
@@ -272,7 +273,7 @@
               :icon="Cpu"
               @click="onGenerate"
             >
-              AI 生成
+              {{ generateButtonLabel }}
             </el-button>
           </div>
         </div>
@@ -784,6 +785,8 @@
               </el-tag>
             </div>
             <div class="batch-result-card__details">
+              <span class="batch-result-card__label">任务 ID</span>
+              <span>{{ item.taskId || "-" }}</span>
               <span class="batch-result-card__label">说明</span>
               <span>
                 {{ item.errorMessage || item.errorCode || item.status }}
@@ -804,6 +807,16 @@
               <el-tag :type="getBatchActionType(row.action)">
                 {{ getBatchActionLabel(row.action) }}
               </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column
+            prop="taskId"
+            label="任务 ID"
+            min-width="210"
+            show-overflow-tooltip
+          >
+            <template #default="{ row }">
+              {{ row.taskId || "-" }}
             </template>
           </el-table-column>
           <el-table-column label="说明" min-width="220">
@@ -1006,19 +1019,29 @@ const latestSuccessTime = computed(() => {
   )[0].completedAt;
 });
 
-const canGenerate = computed(
-  () =>
-    !!currentScope.value &&
-    readiness.value?.ready === true &&
-    !readinessLoading.value &&
-    !tasks.value.some(isTaskProcessing)
-);
-
 const canBatchGenerate = computed(
   () =>
     !!selectedCourseId.value &&
     !!selectedChapterId.value &&
     !!hourOptions.value.length
+);
+
+const canGenerate = computed(() => {
+  if (
+    !currentScope.value ||
+    readiness.value?.ready !== true ||
+    readinessLoading.value
+  ) {
+    return false;
+  }
+  if (selectedScopeType.value === "chapter") {
+    return canBatchGenerate.value && !batchLoading.value;
+  }
+  return !generateLoading.value && !tasks.value.some(isTaskProcessing);
+});
+
+const generateButtonLabel = computed(() =>
+  selectedScopeType.value === "chapter" ? "按课时批量生成" : "AI 生成"
 );
 
 const readinessTitle = computed(() => {
@@ -1244,6 +1267,10 @@ async function refreshReadiness() {
 async function onGenerate() {
   const scope = currentScope.value;
   if (!canGenerate.value || !scope) return;
+  if (selectedScopeType.value === "chapter") {
+    openBatchDialog();
+    return;
+  }
   const scopeKey = htmlAnimationScopeKey(scope);
   const idempotencyKey =
     generationIntentKeys.get(scopeKey) ||

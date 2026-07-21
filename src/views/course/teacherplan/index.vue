@@ -151,13 +151,17 @@
             >
               <plan-generator
                 :course-id="selectedCourseId"
+                :course-name="currentCourse?.title || ''"
                 @switch-tab="switchTab"
+                @plan-created="handlePlanCreated"
               />
             </el-tab-pane>
             <el-tab-pane label="已生成教案库" name="list" class="h-full">
               <plan-list
                 :course-id="selectedCourseId"
+                :created-plan="createdPlan"
                 @switch-tab="switchTab"
+                @created-plan-consumed="handleCreatedPlanConsumed"
               />
             </el-tab-pane>
           </el-tabs>
@@ -234,6 +238,7 @@ import PlanGenerator from "./components/PlanGenerator.vue";
 import PlanList from "./components/PlanList.vue";
 import LottieAnimation from "@/components/LottieAnimation.vue";
 import EducationAnim from "@/animation/Education.json";
+import type { TeacherPlanCreationHandoff } from "./teacherPlanState";
 import {
   Search,
   Reading,
@@ -249,6 +254,7 @@ defineOptions({
 
 // 标签页控制
 const activeTab = ref("generate");
+const createdPlan = ref<TeacherPlanCreationHandoff | null>(null);
 const appStore = useAppStoreHook();
 const isMobileLayout = computed(() => appStore.getDevice === "mobile");
 const emptyStateAnimationSize = computed(() => {
@@ -306,6 +312,7 @@ const handleCourseSearch = async () => {
 const selectCourse = (course: any) => {
   selectedCourseId.value = course.courseId;
   currentCourse.value = course;
+  createdPlan.value = null;
 };
 
 // 获取初始课程列表
@@ -328,6 +335,29 @@ const fetchInitialCourses = async () => {
 // 切换标签页
 const switchTab = (tabName: string) => {
   activeTab.value = tabName;
+};
+
+const handlePlanCreated = (creation: TeacherPlanCreationHandoff) => {
+  const course = courseOptions.value.find(
+    item => Number(item.courseId) === creation.courseId
+  );
+  selectedCourseId.value = creation.courseId;
+  currentCourse.value =
+    course ||
+    ({
+      courseId: creation.courseId,
+      title: creation.courseName,
+      userName: currentCourse.value?.userName || ""
+    } as any);
+  createdPlan.value = creation;
+  activeTab.value = "list";
+};
+
+const handleCreatedPlanConsumed = (identity: string) => {
+  const current = createdPlan.value;
+  if (!current) return;
+  const currentIdentity = `${current.courseId}:${current.teacherPlanId}:${current.taskId}`;
+  if (currentIdentity === identity) createdPlan.value = null;
 };
 
 onMounted(() => {

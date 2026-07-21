@@ -139,6 +139,11 @@ test("all issue 249 surfaces use the new backend contract", async () => {
   }
   assert.match(animationManager, /batchGenerateHtmlAnimation/);
   assert.match(animationManager, /batchResult\.items/);
+  assert.match(
+    animationManager,
+    /selectedScopeType\.value === "chapter"[\s\S]*?openBatchDialog\(\)/
+  );
+  assert.match(animationManager, /item\.taskId \|\| "-"/);
 
   assert.match(studentDisplay, /scopeKey: htmlAnimationScopeKey/);
   assert.match(studentDisplay, /scopeType: "hour"/);

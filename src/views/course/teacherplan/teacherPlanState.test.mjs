@@ -7,11 +7,14 @@ import {
   claimTeacherPlanPoller,
   clampTeacherPlanProgress,
   getTeacherPlanPollDelay,
+  isValidTeacherPlanCreation,
   isTeacherPlanTerminal,
   mergeTeacherPlanProgress,
   normalizeTeacherPlan,
   normalizeTeacherPlanProgress,
   normalizeTeacherPlanStatus,
+  teacherPlanFromCreation,
+  teacherPlanMatchesCreation,
   teacherPlanProgressFromPlan,
   teacherPlanStateSignature
 } from "./teacherPlanState.ts";
@@ -33,6 +36,24 @@ const basePlan = {
   availability: "synced",
   updatedAt: "2026-07-20T12:00:00Z",
   createdAt: "2026-07-20T12:00:00Z"
+};
+
+const creation = {
+  teacherPlanId: 124,
+  taskId: "task-124",
+  status: "pending",
+  progressPercent: 0,
+  stage: "queued",
+  message: "教案生成任务已创建",
+  errorCode: "",
+  retryable: false,
+  requestId: "request-124",
+  availability: "synced",
+  courseId: 39,
+  chapterId: 97,
+  courseName: "测试课程",
+  chapterName: "测试章节",
+  createdAt: "2026-07-21T02:00:00Z"
 };
 
 test("normalizes every documented progress percentage without fake growth", () => {
@@ -143,6 +164,29 @@ test("merges a progress response into the matching list item", () => {
   );
 });
 
+test("creation identity creates and matches only the authoritative plan", () => {
+  assert.equal(isValidTeacherPlanCreation(creation), true);
+  assert.equal(isValidTeacherPlanCreation({ ...creation, taskId: "" }), false);
+
+  const createdPlan = teacherPlanFromCreation(creation);
+  assert.equal(createdPlan.teacherPlanId, creation.teacherPlanId);
+  assert.equal(createdPlan.taskId, creation.taskId);
+  assert.equal(createdPlan.courseId, creation.courseId);
+  assert.equal(createdPlan.chapterId, creation.chapterId);
+  assert.equal(teacherPlanMatchesCreation(createdPlan, creation), true);
+  assert.equal(
+    teacherPlanMatchesCreation(
+      { ...createdPlan, taskId: "stale-legacy-task" },
+      creation
+    ),
+    false
+  );
+  assert.equal(
+    teacherPlanMatchesCreation({ ...createdPlan, courseId: 41 }, creation),
+    false
+  );
+});
+
 test("backs polling off and adds deterministic jitter after network errors", () => {
   assert.deepEqual(
     [0, 1, 2, 3, 4, 8].map(count => getTeacherPlanPollDelay(count)),
@@ -206,6 +250,28 @@ test("PlanList uses list state directly and wires the full polling lifecycle", (
   assert.match(source, /onBeforeUnmount/);
   assert.match(source, /prefers-reduced-motion/);
   assert.match(source, /canDownloadTeacherPlan/);
+});
+
+test("teacher-plan creation response is handed off and focused by exact identity", () => {
+  const generator = readFileSync(
+    new URL("./components/PlanGenerator.vue", import.meta.url),
+    "utf8"
+  );
+  const page = readFileSync(new URL("./index.vue", import.meta.url), "utf8");
+  const list = readFileSync(
+    new URL("./components/PlanList.vue", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(generator, /hasAuthoritativeTaskIdentity\(res\.data\)/);
+  assert.match(generator, /emit\("plan-created", creation\)/);
+  assert.match(page, /:created-plan="createdPlan"/);
+  assert.match(page, /@plan-created="handlePlanCreated"/);
+  assert.match(list, /teacherPlanMatchesCreation/);
+  assert.match(list, /item\.teacherPlanId === creation\.teacherPlanId/);
+  assert.match(list, /item\.taskId === creation\.taskId/);
+  assert.match(list, /nextProgress\.taskId !== plan\.taskId/);
+  assert.doesNotMatch(list, /checkProgress\(planList\.value\[0\]\)/);
 });
 
 test("course API exposes the complete teacher-plan contract", () => {

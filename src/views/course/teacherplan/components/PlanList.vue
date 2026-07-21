@@ -49,6 +49,16 @@
       </div>
     </div>
 
+    <el-alert
+      v-if="createdPlanIdentityError"
+      :title="createdPlanIdentityError"
+      type="error"
+      show-icon
+      closable
+      class="mb-4"
+      @close="createdPlanIdentityError = ''"
+    />
+
     <!-- 列表展示区 - 垂直铺满 -->
     <div class="flex-1 min-h-0 overflow-y-auto pr-1 custom-scrollbar">
       <div
@@ -479,7 +489,14 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import {
+  computed,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+  type PropType
+} from "vue";
 import { useMediaQuery } from "@vueuse/core";
 import { ElMessage } from "element-plus";
 import {
@@ -514,22 +531,31 @@ import {
   getTeacherPlanPollDelay,
   claimTeacherPlanPoller,
   isTeacherPlanStateChanged,
+  isValidTeacherPlanCreation,
   mergeTeacherPlanProgress,
   normalizeTeacherPlan,
   normalizeTeacherPlanProgress,
+  teacherPlanFromCreation,
+  teacherPlanMatchesCreation,
   teacherPlanProgressFromPlan,
-  teacherPlanStateSignature
+  teacherPlanStateSignature,
+  type TeacherPlanCreationHandoff
 } from "../teacherPlanState";
 
 const props = defineProps({
   courseId: {
     type: Number,
     default: null
+  },
+  createdPlan: {
+    type: Object as PropType<TeacherPlanCreationHandoff | null>,
+    default: null
   }
 });
 
 const emit = defineEmits<{
   (event: "switch-tab", tab: "generate" | "list"): void;
+  (event: "created-plan-consumed", identity: string): void;
 }>();
 const appStore = useAppStoreHook();
 const isMobileLayout = computed(() => appStore.getDevice === "mobile");
@@ -545,6 +571,7 @@ const progressDialogVisible = ref(false);
 const progressLoading = ref(false);
 const retryLoading = ref(false);
 const progressError = ref("");
+const createdPlanIdentityError = ref("");
 const currentPlan = ref<TeacherPlan | null>(null);
 const currentProgress = ref<TeacherPlanProgress | null>(null);
 
@@ -558,6 +585,7 @@ let networkErrors = 0;
 let previousProgressSignature = "";
 let pollStartedAt = 0;
 let releasePollOwnership: (() => void) | null = null;
+let handledCreationIdentity = "";
 
 const MAX_POLL_DURATION_MS = 15 * 60 * 1000;
 const MAX_NETWORK_ERRORS = 5;
@@ -889,6 +917,12 @@ async function requestProgress(generation: number, showLoading: boolean) {
       res.data,
       currentProgress.value || teacherPlanProgressFromPlan(plan)
     );
+    if (plan.taskId && nextProgress.taskId !== plan.taskId) {
+      progressError.value =
+        "进度接口返回的任务身份与当前教案不一致，已停止自动轮询";
+      clearPollTimer();
+      return;
+    }
     const changed = isTeacherPlanStateChanged(previousSignature, nextProgress);
     currentProgress.value = nextProgress;
     currentPlan.value = mergeTeacherPlanProgress(plan, nextProgress);
@@ -963,6 +997,77 @@ const checkProgress = (plan: TeacherPlan) => {
   progressDialogVisible.value = true;
   startProgressPolling(true);
 };
+
+function getCreationIdentity(creation: TeacherPlanCreationHandoff): string {
+  return `${creation.courseId}:${creation.teacherPlanId}:${creation.taskId}`;
+}
+
+function rejectCreatedPlan(
+  creation: TeacherPlanCreationHandoff,
+  message: string
+) {
+  createdPlanIdentityError.value = message;
+  stopProgressPolling();
+  progressDialogVisible.value = false;
+  currentPlan.value = null;
+  currentProgress.value = null;
+  ElMessage.error(message);
+  emit("created-plan-consumed", getCreationIdentity(creation));
+}
+
+async function focusCreatedPlan(creation: TeacherPlanCreationHandoff) {
+  if (props.courseId !== creation.courseId) return;
+
+  const identity = getCreationIdentity(creation);
+  if (identity === handledCreationIdentity) return;
+  handledCreationIdentity = identity;
+  createdPlanIdentityError.value = "";
+
+  if (!isValidTeacherPlanCreation(creation)) {
+    rejectCreatedPlan(
+      creation,
+      "创建响应缺少有效的教案任务身份，已停止自动轮询"
+    );
+    return;
+  }
+
+  currentPage.value = 1;
+  await fetchPlanList();
+
+  if (props.courseId !== creation.courseId) return;
+
+  const identityCandidate = planList.value.find(
+    item =>
+      item.teacherPlanId === creation.teacherPlanId ||
+      item.taskId === creation.taskId
+  );
+  if (
+    identityCandidate &&
+    !teacherPlanMatchesCreation(identityCandidate, creation)
+  ) {
+    rejectCreatedPlan(
+      creation,
+      "新建教案与列表返回的课程、章节或任务身份不一致，已停止自动轮询"
+    );
+    return;
+  }
+
+  const plan = identityCandidate || teacherPlanFromCreation(creation);
+  if (!teacherPlanMatchesCreation(plan, creation)) {
+    rejectCreatedPlan(
+      creation,
+      "无法确认本次新建教案的任务身份，已停止自动轮询"
+    );
+    return;
+  }
+
+  if (!identityCandidate) {
+    planList.value.unshift(plan);
+    total.value = Math.max(total.value, planList.value.length);
+  }
+  checkProgress(plan);
+  emit("created-plan-consumed", identity);
+}
 
 const refreshProgressManually = () => {
   if (!currentPlan.value) return;
@@ -1039,9 +1144,19 @@ watch(
     progressDialogVisible.value = false;
     currentPlan.value = null;
     currentProgress.value = null;
+    createdPlanIdentityError.value = "";
     currentPage.value = 1;
     void fetchPlanList();
   }
+);
+
+watch(
+  [() => props.createdPlan, () => props.courseId],
+  ([creation, courseId]) => {
+    if (!creation || courseId !== creation.courseId) return;
+    void focusCreatedPlan(creation);
+  },
+  { immediate: true }
 );
 
 watch(progressDialogVisible, visible => {
