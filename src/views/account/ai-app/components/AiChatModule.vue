@@ -235,6 +235,13 @@
                 v-for="image in msg.explanationImages"
                 :key="image.image_id"
                 :image="image"
+                @refresh="
+                  imageId =>
+                    emit('refresh-explanation-image', {
+                      imageId,
+                      messageId: msg.id
+                    })
+                "
               />
             </section>
 
@@ -962,6 +969,7 @@ const emit = defineEmits([
   "stop",
   "play-speech",
   "stop-speech",
+  "refresh-explanation-image",
   "update:selectedAgent",
   "update:selectedModel",
   "update:thinkingMode",

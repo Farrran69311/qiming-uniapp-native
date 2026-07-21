@@ -14,6 +14,47 @@ export interface HtmlAnimationScopeRequest {
   hourId?: number;
 }
 
+export const HTML_ANIMATION_BATCH_LIMIT = 10;
+
+export function chunkHtmlAnimationBatchItems<T>(
+  items: readonly T[],
+  limit = HTML_ANIMATION_BATCH_LIMIT
+): T[][] {
+  if (!Number.isInteger(limit) || limit <= 0) {
+    throw new Error("HTML 动画批量大小必须为正整数");
+  }
+  const chunks: T[][] = [];
+  for (let offset = 0; offset < items.length; offset += limit) {
+    chunks.push(items.slice(offset, offset + limit));
+  }
+  return chunks;
+}
+
+/**
+ * Expands a chapter overview into the chapter scope plus every known hour
+ * scope. The list is intentionally not capped; only batch submission has the
+ * backend's ten-item limit.
+ */
+export function expandHtmlAnimationListScopes(
+  request: HtmlAnimationScopeRequest,
+  hourIds: readonly number[]
+): HtmlAnimationScope[] {
+  const scope = normalizeHtmlAnimationScope(request);
+  if (scope.scopeType === "hour") return [scope];
+  const uniqueHourIds = [...new Set(hourIds.map(Number))].filter(
+    hourId => Number.isInteger(hourId) && hourId > 0
+  );
+  return [
+    scope,
+    ...uniqueHourIds.map(hourId => ({
+      courseId: scope.courseId,
+      chapterId: scope.chapterId,
+      scopeType: "hour" as const,
+      hourId
+    }))
+  ];
+}
+
 export function normalizeHtmlAnimationScope(
   request: HtmlAnimationScopeRequest
 ): HtmlAnimationScope {
@@ -45,6 +86,18 @@ export function htmlAnimationScopeKey(scope: HtmlAnimationScopeRequest) {
     normalized.scopeType,
     normalized.hourId || 0
   ].join(":");
+}
+
+export function matchesHtmlAnimationScope(
+  expected: HtmlAnimationScopeRequest,
+  actual: HtmlAnimationScopeRequest | null | undefined
+): boolean {
+  if (!actual) return false;
+  try {
+    return htmlAnimationScopeKey(expected) === htmlAnimationScopeKey(actual);
+  } catch {
+    return false;
+  }
 }
 
 export function createHtmlAnimationIdempotencyKey(

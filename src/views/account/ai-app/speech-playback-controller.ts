@@ -40,6 +40,8 @@ export interface SpeechPlaybackDiagnostic {
   phase?: string;
   serverEvent?: string;
   clientEvent?: string;
+  clientCleanupReason?: string;
+  serverTerminalReceived?: boolean;
   eventSequence?: number;
   segmentSequence?: number;
   audioSequence?: number;
@@ -621,6 +623,8 @@ export class SpeechPlaybackController {
         phase: "reserved",
         serverEvent: undefined,
         clientEvent: "reservation.created",
+        clientCleanupReason: undefined,
+        serverTerminalReceived: false,
         eventSequence: undefined,
         segmentSequence: undefined,
         audioSequence: undefined,
@@ -732,6 +736,7 @@ export class SpeechPlaybackController {
         this.websocket = null;
         this.updateDiagnostic({
           clientEvent: "websocket.closed",
+          serverTerminalReceived: this.liveTerminalReceived,
           websocketCloseCode: event.code,
           websocketCloseReason: event.reason || undefined,
           websocketWasClean: event.wasClean
@@ -841,6 +846,7 @@ export class SpeechPlaybackController {
         break;
       case "stream.completed":
         this.liveTerminalReceived = true;
+        this.updateDiagnostic({ serverTerminalReceived: true });
         this.liveFailed ||= isIncompleteLiveDelivery(control);
         this.realtimeSessionId = control.session_id || this.realtimeSessionId;
         this.liveArchiveStatus = control.archive_status || "";
@@ -855,6 +861,7 @@ export class SpeechPlaybackController {
         break;
       case "stream.cancelled":
         this.liveTerminalReceived = true;
+        this.updateDiagnostic({ serverTerminalReceived: true });
         this.workletNode?.port.postMessage({ type: "reset" });
         this.callbacks.renderer.reset();
         this.setStatus("cancelled", "语音已停止");
@@ -862,6 +869,7 @@ export class SpeechPlaybackController {
         break;
       case "stream.error":
         this.liveTerminalReceived = true;
+        this.updateDiagnostic({ serverTerminalReceived: true });
         this.liveFailed = true;
         this.liveArchiveStatus = control.archive_status || "";
         this.workletNode?.port.postMessage({ type: "end" });
@@ -1594,12 +1602,15 @@ export class SpeechPlaybackController {
   }
 
   private async stopLive(reason: string, cancelServer: boolean) {
+    const serverTerminalReceived = this.liveTerminalReceived;
     if (this.websocket?.readyState === WebSocket.OPEN) {
-      this.sendRealtimeControl(
-        cancelServer
-          ? { event: "stream.cancel", reason }
-          : { event: "client.goodbye", reason }
-      );
+      if (!serverTerminalReceived) {
+        this.sendRealtimeControl(
+          cancelServer
+            ? { event: "stream.cancel", reason }
+            : { event: "client.goodbye", reason }
+        );
+      }
       this.websocket.close(1000, reason.slice(0, 120));
     }
     this.websocket = null;
@@ -1625,7 +1636,9 @@ export class SpeechPlaybackController {
     this.timeline = null;
     this.currentViseme = "sil";
     this.updateDiagnostic({
-      clientEvent: "stream.closed",
+      clientEvent: "stream.cleanup",
+      clientCleanupReason: reason,
+      serverTerminalReceived,
       rebuffering: false,
       audioContextState: this.audioContext?.state
     });

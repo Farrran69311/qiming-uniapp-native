@@ -1116,13 +1116,21 @@ const retryPlan = async () => {
       throw new Error(res?.msg || "重新生成失败");
     }
 
-    const nextPlan = normalizeTeacherPlan({
-      ...plan,
+    const retryCreation: TeacherPlanCreationHandoff = {
       ...res.data,
+      teacherPlanId: Number(res.data.teacherPlanId),
+      taskId: String(res.data.taskId || "").trim(),
+      courseId: plan.courseId,
+      chapterId: plan.chapterId,
       courseName: plan.courseName,
       chapterName: plan.chapterName,
-      createdAt: plan.createdAt
-    });
+      createdAt: new Date().toISOString()
+    };
+    if (!isValidTeacherPlanCreation(retryCreation)) {
+      throw new Error("重新生成响应缺少有效的教案任务身份");
+    }
+
+    const nextPlan = teacherPlanFromCreation(retryCreation);
     currentPlan.value = nextPlan;
     currentProgress.value = teacherPlanProgressFromPlan(nextPlan);
     progressError.value = "";

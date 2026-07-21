@@ -271,6 +271,12 @@ test("teacher-plan creation response is handed off and focused by exact identity
   assert.match(list, /item\.teacherPlanId === creation\.teacherPlanId/);
   assert.match(list, /item\.taskId === creation\.taskId/);
   assert.match(list, /nextProgress\.taskId !== plan\.taskId/);
+  const retryFlow = list.slice(
+    list.indexOf("const retryPlan"),
+    list.indexOf("watch(\n  () => props.courseId")
+  );
+  assert.match(retryFlow, /isValidTeacherPlanCreation\(retryCreation\)/);
+  assert.match(retryFlow, /teacherPlanFromCreation\(retryCreation\)/);
   assert.doesNotMatch(list, /checkProgress\(planList\.value\[0\]\)/);
 });
 

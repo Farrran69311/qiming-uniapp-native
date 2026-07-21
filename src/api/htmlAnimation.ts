@@ -1,5 +1,6 @@
 import { http } from "@/utils/http";
 import {
+  HTML_ANIMATION_BATCH_LIMIT,
   normalizeHtmlAnimationScope,
   normalizeHtmlAnimationTaskStatus,
   type HtmlAnimationScopeRequest,
@@ -7,8 +8,12 @@ import {
 } from "./htmlAnimationScope";
 
 export {
+  chunkHtmlAnimationBatchItems,
   createHtmlAnimationIdempotencyKey,
+  HTML_ANIMATION_BATCH_LIMIT,
+  expandHtmlAnimationListScopes,
   htmlAnimationScopeKey,
+  matchesHtmlAnimationScope,
   normalizeHtmlAnimationScope,
   normalizeHtmlAnimationTaskStatus
 } from "./htmlAnimationScope";
@@ -169,7 +174,7 @@ export const batchGenerateHtmlAnimation = (data: {
   if (
     !Array.isArray(data.requests) ||
     data.requests.length < 1 ||
-    data.requests.length > 10
+    data.requests.length > HTML_ANIMATION_BATCH_LIMIT
   ) {
     throw new Error("批量生成一次只能提交 1 到 10 个范围");
   }

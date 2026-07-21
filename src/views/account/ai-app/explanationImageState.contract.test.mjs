@@ -52,6 +52,9 @@ test("unknown provider outcomes stay fail-closed in the image card", () => {
     imageCardSource,
     /status === "succeeded" && Boolean\(props\.image\.public_url\)/
   );
+  assert.match(imageCardSource, /emit\("refresh", props\.image\.image_id\)/);
+  assert.match(chatSource, /refresh-explanation-image/);
+  assert.match(workbenchSource, /handleRefreshExplanationImage/);
 });
 
 test("frontend follows the raw image-status contract and bypasses cache", () => {

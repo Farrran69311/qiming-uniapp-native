@@ -3,8 +3,12 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
+  chunkHtmlAnimationBatchItems,
   createHtmlAnimationIdempotencyKey,
+  expandHtmlAnimationListScopes,
+  HTML_ANIMATION_BATCH_LIMIT,
   htmlAnimationScopeKey,
+  matchesHtmlAnimationScope,
   normalizeHtmlAnimationScope,
   normalizeHtmlAnimationTaskStatus
 } from "./htmlAnimationScope.ts";
@@ -74,6 +78,37 @@ test("scope and idempotency keys isolate chapter and lesson intents", () => {
     createHtmlAnimationIdempotencyKey(hour251, "user-action-01"),
     createHtmlAnimationIdempotencyKey(hour251, "user-action-01")
   );
+  assert.equal(matchesHtmlAnimationScope(hour251, { ...hour251 }), true);
+  assert.equal(
+    matchesHtmlAnimationScope(hour251, { ...hour251, hourId: 252 }),
+    false
+  );
+  assert.equal(matchesHtmlAnimationScope(hour251, chapter), false);
+  assert.equal(matchesHtmlAnimationScope(hour251, null), false);
+});
+
+test("whole chapters are split into backend-sized batches", () => {
+  const hourIds = Array.from({ length: 12 }, (_, index) => 287 + index);
+  assert.deepEqual(
+    chunkHtmlAnimationBatchItems(hourIds).map(chunk => chunk.length),
+    [HTML_ANIMATION_BATCH_LIMIT, 2]
+  );
+  assert.deepEqual(chunkHtmlAnimationBatchItems([]), []);
+  assert.throws(() => chunkHtmlAnimationBatchItems(hourIds, 0), /正整数/);
+});
+
+test("chapter overviews include every hour without a task-count cap", () => {
+  const hourIds = Array.from({ length: 12 }, (_, index) => 287 + index);
+  const scopes = expandHtmlAnimationListScopes(
+    { courseId: 39, chapterId: 97, scopeType: "chapter" },
+    hourIds
+  );
+
+  assert.equal(scopes.length, hourIds.length + 1);
+  assert.deepEqual(
+    scopes.slice(1).map(scope => scope.hourId),
+    hourIds
+  );
 });
 
 test("only a complete artifact can become previewable", () => {
@@ -134,11 +169,21 @@ test("all issue 249 surfaces use the new backend contract", async () => {
   for (const manager of [animationManager, virtualLab]) {
     assert.match(manager, /getHtmlAnimationReadiness/);
     assert.match(manager, /createHtmlAnimationIdempotencyKey/);
+    assert.match(manager, /matchesHtmlAnimationScope/);
     assert.match(manager, /scopeType/);
     assert.match(manager, /hourId/);
   }
   assert.match(animationManager, /batchGenerateHtmlAnimation/);
   assert.match(animationManager, /batchResult\.items/);
+  assert.match(animationManager, /chunkHtmlAnimationBatchItems/);
+  assert.match(animationManager, /submissionFeedback/);
+  assert.match(animationManager, /addPendingTaskHint/);
+  assert.match(animationManager, /viewBatchTask/);
+  assert.match(animationManager, /fetchScopedAnimationLists/);
+  assert.match(animationManager, /getListScopes/);
+  assert.match(animationManager, /MAX_CONCURRENT_HOUR_LIST_REQUESTS/);
+  assert.match(animationManager, /所属课时/);
+  assert.match(animationManager, /任务已汇总显示在下方生成列表/);
   assert.match(
     animationManager,
     /selectedScopeType\.value === "chapter"[\s\S]*?openBatchDialog\(\)/

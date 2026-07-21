@@ -198,6 +198,8 @@ const speechDiagnosticText = computed(() => {
     ["phase", diagnostic.phase],
     ["server_event", diagnostic.serverEvent],
     ["client_event", diagnostic.clientEvent],
+    ["client_cleanup_reason", diagnostic.clientCleanupReason],
+    ["server_terminal_received", diagnostic.serverTerminalReceived],
     ["event_seq", diagnostic.eventSequence],
     ["stream_id", diagnostic.streamId],
     ["session_id", diagnostic.sessionId],
@@ -1159,6 +1161,35 @@ const startExplanationImagePolling = (
   }
   if (!explanationImageTimers.has(image.image_id)) {
     void pollExplanationImage(image.image_id, assistantMessageId);
+  }
+};
+
+const handleRefreshExplanationImage = async (payload: {
+  imageId: string;
+  messageId: string | number;
+}) => {
+  const imageId = String(payload?.imageId || "").trim();
+  const message = messages.value.find(item => item.id === payload?.messageId);
+  if (
+    !imageId ||
+    !message ||
+    !message.explanationImages?.some(image => image.image_id === imageId)
+  ) {
+    return;
+  }
+
+  try {
+    const response = await getAssistantExplanationImage(imageId);
+    if (!response.image?.image_id) {
+      throw new Error("讲解图片状态响应缺少图片标识");
+    }
+    updateMessageExplanationImage(payload.messageId, response.image);
+    if (!explanationImageTerminalStatuses.has(response.image.status)) {
+      startExplanationImagePolling(response.image, payload.messageId);
+    }
+  } catch (error) {
+    console.warn("[AiApp] 讲解图片手动刷新失败:", error);
+    ElMessage.warning("讲解图片状态刷新失败，请稍后重试");
   }
 };
 
@@ -2663,6 +2694,7 @@ onUnmounted(() => {
                   @stop="handleStopStreaming"
                   @preview="handlePreview"
                   @regenerate="handleRegenerateMessage"
+                  @refresh-explanation-image="handleRefreshExplanationImage"
                   @play-speech="handlePlaySpeech"
                   @stop-speech="handleStopSpeech"
                   @switch-course="handleSwitchCourse"
@@ -3058,6 +3090,7 @@ onUnmounted(() => {
                   <AiResourceGeneration
                     v-else
                     :course-id="selectedCourseId"
+                    :course-name="selectedCourseName"
                     :target-student-id="selectedStudentContextId"
                     :requires-target-student="isStaffMode"
                     :resource-types="assistantBootstrap?.resource_types || []"

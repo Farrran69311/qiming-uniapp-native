@@ -392,6 +392,7 @@ import {
   getHtmlAnimationReadiness,
   generateHtmlAnimation,
   htmlAnimationScopeKey,
+  matchesHtmlAnimationScope,
   setHtmlAnimationDisplay,
   forceSyncHtmlAnimation,
   normalizeHtmlAnimationTask,
@@ -635,12 +636,21 @@ const getRequestErrorMessage = (error: any, fallback: string) => {
       : "接口不存在(404)，请确认当前环境已部署HTML动画接口";
   }
 
-  return (
+  const message =
     error?.response?.data?.msg ||
     error?.response?.data?.message ||
     error?.message ||
-    fallback
-  );
+    fallback;
+  const responseData = error?.response?.data;
+  const requestId = String(
+    responseData?.request_id ||
+      responseData?.requestId ||
+      responseData?.data?.request_id ||
+      responseData?.data?.requestId ||
+      error?.response?.headers?.["x-request-id"] ||
+      ""
+  ).trim();
+  return requestId ? `${message}（请求 ${requestId}）` : message;
 };
 
 const isDisplayVersion = (task: HtmlAnimationTask) => {
@@ -746,6 +756,14 @@ const handleSearch = async () => {
         ) {
           return;
         }
+        if (!matchesHtmlAnimationScope(scope, res.data)) {
+          currentAnimationData.value = null;
+          taskList.value = [];
+          ElMessage.error(
+            "动画列表返回的课程、章节或课时与当前选择不一致，已停止展示"
+          );
+          return;
+        }
         currentAnimationData.value = res.data;
         taskList.value = (res.data.tasks || []).map(normalizeHtmlAnimationTask);
       })
@@ -762,6 +780,12 @@ const handleSearch = async () => {
           requestId !== scopeRequestSeq ||
           requestScopeKey !== currentScopeKey.value
         ) {
+          return;
+        }
+        if (!matchesHtmlAnimationScope(scope, res.data)) {
+          readiness.value = null;
+          readinessError.value =
+            "内容就绪度返回的课程、章节或课时与当前选择不一致，已停止生成";
           return;
         }
         readiness.value = res.data;
@@ -807,11 +831,16 @@ const handleGenerate = async () => {
       ...scope,
       idempotencyKey
     });
+    if (!matchesHtmlAnimationScope(scope, res.data)) {
+      throw new Error(
+        "生成接口返回的课程、章节或课时与当前选择不一致，已停止跟踪任务"
+      );
+    }
     generationIntentKeys.delete(scopeKey);
     ElMessage.success(
       res.data.reused
-        ? "已继续跟踪现有生成任务"
-        : res.data.message || "生成任务已启动"
+        ? `已继续跟踪现有生成任务（任务 ${res.data.taskId}）`
+        : `${res.data.message || "生成任务已启动"}（任务 ${res.data.taskId}）`
     );
     if (scopeKey === currentScopeKey.value) await handleSearch();
   } catch (error) {
