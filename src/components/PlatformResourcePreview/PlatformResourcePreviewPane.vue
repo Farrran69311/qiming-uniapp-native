@@ -26,11 +26,12 @@ import {
   decodePlatformTextBuffer,
   downloadPlatformResource,
   fetchPlatformResourceBuffer,
-  fetchPlatformResourceText,
   getResourceUrlExtension,
   isOfficePreviewKind,
+  normalizePlatformResourceFetchUrl,
   resolvePlatformPreviewSource,
-  type PlatformPreviewResource
+  type PlatformPreviewResource,
+  type PlatformResourceBufferResult
 } from "./resource-preview";
 import {
   extractPlatformMindMapTree,
@@ -119,6 +120,9 @@ markdownRenderer.renderer.rules.image = (tokens, index, options, env, self) => {
 };
 
 const resolved = computed(() => resolvePlatformPreviewSource(props.resource));
+const directPreviewCandidates = computed(() =>
+  resolved.value.urlCandidates.map(normalizePlatformResourceFetchUrl)
+);
 const previewFontVariables = computed(() => ({
   "--platform-preview-markdown-font-size": `${15 * props.fontScale}px`,
   "--platform-preview-mono-font-size": `${13 * props.fontScale}px`,
@@ -135,13 +139,16 @@ const officeBuffer = shallowRef<ArrayBuffer | null>(null);
 const officeHostRef = ref<HTMLElement | null>(null);
 const officePdfFallbackUrl = ref("");
 const officeRenderKey = ref(0);
+const loadedSourceUrl = ref("");
+const activePreviewUrl = ref("");
+const activePreviewUrlIndex = ref(0);
 let previewAbortController: AbortController | null = null;
 let pptxViewer: import("@aiden0z/pptx-renderer").PptxViewer | null = null;
 let mindMapImageObjectUrl = "";
 
 const hasStructuredSource = computed(() =>
   Boolean(
-    props.resource?.structuredData ||
+    props.resource?.structuredData !== undefined ||
       props.resource?.exerciseItems?.length ||
       props.resource?.starterCode ||
       props.resource?.testCases?.length ||
@@ -198,6 +205,9 @@ function resetContent() {
   clearMindMapImage();
   structuredJsonView.value = null;
   officeBuffer.value = null;
+  loadedSourceUrl.value = "";
+  activePreviewUrlIndex.value = 0;
+  activePreviewUrl.value = directPreviewCandidates.value[0] || "";
   clearOfficePdfFallback();
   errorMessage.value = "";
 }
@@ -236,7 +246,7 @@ function failPreview(error: unknown) {
 
 function renderMarkdown(content: string) {
   markdownHtml.value = markdownRenderer.render(content || "暂无可渲染内容。", {
-    baseUrl: resolved.value.url
+    baseUrl: loadedSourceUrl.value || resolved.value.url
   });
 }
 
@@ -285,6 +295,43 @@ function imageMimeTypeFromExtension(extension: string) {
   return types[extension] || "";
 }
 
+function validateTextPreviewResponse(result: PlatformResourceBufferResult) {
+  if (!result.contentType.toLowerCase().includes("text/html")) return;
+  const prefix = decodePlatformTextBuffer(
+    result.buffer.slice(0, 2048),
+    result.contentType
+  );
+  if (/^\s*(?:<!doctype\s+html|<html\b)/i.test(prefix)) {
+    throw new Error("INVALID_RESOURCE_RESPONSE");
+  }
+}
+
+function inspectOfficePreviewResponse(result: PlatformResourceBufferResult) {
+  const bytes = new Uint8Array(
+    result.buffer,
+    0,
+    Math.min(result.buffer.byteLength, 8)
+  );
+  return {
+    isPdf:
+      result.contentType.toLowerCase().includes("application/pdf") ||
+      String.fromCharCode(...bytes.slice(0, 4)) === "%PDF",
+    isZip:
+      bytes[0] === 0x50 &&
+      bytes[1] === 0x4b &&
+      ((bytes[2] === 0x03 && bytes[3] === 0x04) ||
+        (bytes[2] === 0x05 && bytes[3] === 0x06) ||
+        (bytes[2] === 0x07 && bytes[3] === 0x08))
+  };
+}
+
+function validateOfficePreviewResponse(result: PlatformResourceBufferResult) {
+  validateTextPreviewResponse(result);
+  const { isPdf, isZip } = inspectOfficePreviewResponse(result);
+  if (isPdf || resolved.value.kind === "spreadsheet" || isZip) return;
+  throw new Error("INVALID_OFFICE_FILE");
+}
+
 async function loadTextPreview(signal: AbortSignal) {
   const usesInlineStructuredFields =
     resolved.value.kind === "json" && hasStructuredSource.value;
@@ -301,17 +348,19 @@ async function loadTextPreview(signal: AbortSignal) {
     resolved.value.kind === "mindmap" &&
     resolved.value.url
   ) {
-    const { buffer, contentType } = await fetchPlatformResourceBuffer(
-      resolved.value.url,
+    const { buffer, contentType, url } = await fetchPlatformResourceBuffer(
+      resolved.value.urlCandidates,
       {
         signal,
         maxBytes: 16 * 1024 * 1024,
-        accept: "application/json, text/plain, text/markdown, image/*, */*"
+        accept: "application/json, text/plain, text/markdown, image/*, */*",
+        validate: validateTextPreviewResponse
       }
     );
     if (signal.aborted) return;
+    loadedSourceUrl.value = url;
 
-    const extension = getResourceUrlExtension(resolved.value.url);
+    const extension = getResourceUrlExtension(url);
     const fallbackImageType = imageMimeTypeFromExtension(extension);
     const responseType = contentType.split(";")[0].trim().toLowerCase();
     if (responseType.startsWith("image/") || fallbackImageType) {
@@ -327,10 +376,18 @@ async function loadTextPreview(signal: AbortSignal) {
     }
     content = decodePlatformTextBuffer(buffer, contentType);
   } else if (!content && !usesInlineStructuredFields && resolved.value.url) {
-    content = await fetchPlatformResourceText(resolved.value.url, {
-      signal,
-      maxBytes: 8 * 1024 * 1024
-    });
+    const { buffer, contentType, url } = await fetchPlatformResourceBuffer(
+      resolved.value.urlCandidates,
+      {
+        signal,
+        maxBytes: 8 * 1024 * 1024,
+        accept:
+          "text/plain, text/markdown, application/json, text/html, application/xml, */*",
+        validate: validateTextPreviewResponse
+      }
+    );
+    loadedSourceUrl.value = url;
+    content = decodePlatformTextBuffer(buffer, contentType);
   }
   if (signal.aborted) return;
 
@@ -385,37 +442,32 @@ async function renderPptxPreview(buffer: ArrayBuffer, signal: AbortSignal) {
 }
 
 async function loadOfficePreview(signal: AbortSignal) {
-  const { buffer, contentType } = await fetchPlatformResourceBuffer(
-    resolved.value.url,
+  const { buffer, contentType, url } = await fetchPlatformResourceBuffer(
+    resolved.value.urlCandidates,
     {
       signal,
       maxBytes: 64 * 1024 * 1024,
       accept:
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document, application/vnd.openxmlformats-officedocument.presentationml.presentation, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel, application/pdf, */*"
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document, application/vnd.openxmlformats-officedocument.presentationml.presentation, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel, application/pdf, */*",
+      validate: validateOfficePreviewResponse
     }
   );
   if (signal.aborted) return;
+  loadedSourceUrl.value = url;
 
-  const bytes = new Uint8Array(buffer, 0, Math.min(buffer.byteLength, 8));
-  const isPdf =
-    contentType.toLowerCase().includes("application/pdf") ||
-    String.fromCharCode(...bytes.slice(0, 4)) === "%PDF";
-  if (resolved.value.kind === "pptx" && isPdf) {
+  const inspection = inspectOfficePreviewResponse({
+    buffer,
+    contentType,
+    contentDisposition: "",
+    url,
+    requestUrl: url
+  });
+  if (inspection.isPdf) {
     officePdfFallbackUrl.value = URL.createObjectURL(
       new Blob([buffer], { type: "application/pdf" })
     );
     completeLoading();
     return;
-  }
-
-  const isZip =
-    bytes[0] === 0x50 &&
-    bytes[1] === 0x4b &&
-    ((bytes[2] === 0x03 && bytes[3] === 0x04) ||
-      (bytes[2] === 0x05 && bytes[3] === 0x06) ||
-      (bytes[2] === 0x07 && bytes[3] === 0x08));
-  if (resolved.value.kind !== "spreadsheet" && !isZip) {
-    throw new Error("INVALID_OFFICE_FILE");
   }
 
   if (resolved.value.kind === "pptx") {
@@ -479,7 +531,36 @@ function handleHtmlLoad() {
   completeLoading();
 }
 
+function useNextDirectPreviewUrl() {
+  const nextIndex = activePreviewUrlIndex.value + 1;
+  const nextUrl = directPreviewCandidates.value[nextIndex];
+  if (!nextUrl) {
+    if (
+      resolved.value.kind === "html" &&
+      resolved.value.content &&
+      activePreviewUrl.value
+    ) {
+      activePreviewUrlIndex.value = directPreviewCandidates.value.length;
+      activePreviewUrl.value = "";
+      loading.value = true;
+      errorMessage.value = "";
+      return true;
+    }
+    return false;
+  }
+  activePreviewUrlIndex.value = nextIndex;
+  activePreviewUrl.value = nextUrl;
+  loading.value = true;
+  errorMessage.value = "";
+  return true;
+}
+
 function handleMediaError() {
+  if (useNextDirectPreviewUrl()) return;
+  failPreview(new Error("MEDIA_LOAD_FAILED"));
+}
+
+function handleMindMapImageError() {
   failPreview(new Error("MEDIA_LOAD_FAILED"));
 }
 
@@ -549,6 +630,7 @@ watch(
     props.resource?.previewUrl,
     props.resource?.previewPdfUrl,
     props.resource?.downloadUrl,
+    props.resource?.objectKey,
     props.resource?.content,
     props.resource?.contentFormat,
     props.resource?.resourceType,
@@ -614,13 +696,14 @@ defineExpose({ reload: loadPreview, download: handleDownload });
     <template v-else>
       <iframe
         v-if="resolved.kind === 'html'"
-        :key="resolved.url || resolved.content"
-        :src="resolved.url || undefined"
-        :srcdoc="resolved.url ? undefined : resolved.content || undefined"
+        :key="activePreviewUrl || resolved.content"
+        :src="activePreviewUrl || undefined"
+        :srcdoc="activePreviewUrl ? undefined : resolved.content || undefined"
         class="platform-resource-preview__frame"
         title="HTML 课程资料预览"
         sandbox="allow-downloads allow-forms allow-scripts"
         @load="handleHtmlLoad"
+        @error="handleMediaError"
       />
 
       <article
@@ -648,7 +731,7 @@ defineExpose({ reload: loadPreview, download: handleDownload });
           :src="mindMapImageUrl"
           :alt="resolved.title"
           @load="completeLoading"
-          @error="handleMediaError"
+          @error="handleMindMapImageError"
         />
       </div>
 
@@ -661,7 +744,7 @@ defineExpose({ reload: loadPreview, download: handleDownload });
       <div
         v-else-if="resolved.kind === 'pptx' && officeBuffer"
         ref="officeHostRef"
-        :key="`${resolved.url}:${officeRenderKey}`"
+        :key="`${loadedSourceUrl || resolved.url}:${officeRenderKey}`"
         class="platform-resource-preview__office"
         :class="`is-${resolved.kind}`"
         @wheel.capture="handlePptxWheel"
@@ -674,7 +757,7 @@ defineExpose({ reload: loadPreview, download: handleDownload });
       >
         <component
           :is="officeComponent"
-          :key="`${resolved.url}:${officeRenderKey}`"
+          :key="`${loadedSourceUrl || resolved.url}:${officeRenderKey}`"
           :src="officeBuffer"
           :options="officeOptions"
           @rendered="handleOfficeRendered"
@@ -687,17 +770,18 @@ defineExpose({ reload: loadPreview, download: handleDownload });
         :key="officePdfFallbackUrl"
         :src="officePdfFallbackUrl"
         class="platform-resource-preview__frame"
-        title="PowerPoint PDF 预览"
+        title="Office PDF 预览"
         @load="handleHtmlLoad"
       />
 
       <iframe
         v-else-if="resolved.kind === 'pdf'"
-        :key="resolved.url"
-        :src="resolved.url"
+        :key="activePreviewUrl"
+        :src="activePreviewUrl"
         class="platform-resource-preview__frame"
         title="PDF 课程资料预览"
         @load="handleHtmlLoad"
+        @error="handleMediaError"
       />
 
       <div
@@ -705,8 +789,8 @@ defineExpose({ reload: loadPreview, download: handleDownload });
         class="platform-resource-preview__media"
       >
         <video
-          :key="`${resolved.url}:${props.resource?.initialTimeMs || 0}`"
-          :src="resolved.url"
+          :key="`${activePreviewUrl}:${props.resource?.initialTimeMs || 0}`"
+          :src="activePreviewUrl"
           controls
           playsinline
           preload="metadata"
@@ -722,7 +806,8 @@ defineExpose({ reload: loadPreview, download: handleDownload });
         <el-icon :size="34"><Document /></el-icon>
         <h3>{{ resolved.title }}</h3>
         <audio
-          :src="resolved.url"
+          :key="activePreviewUrl"
+          :src="activePreviewUrl"
           controls
           preload="metadata"
           @loadedmetadata="completeLoading"
@@ -735,7 +820,8 @@ defineExpose({ reload: loadPreview, download: handleDownload });
         class="platform-resource-preview__image"
       >
         <img
-          :src="resolved.url"
+          :key="activePreviewUrl"
+          :src="activePreviewUrl"
           :alt="resolved.title"
           @load="completeLoading"
           @error="handleMediaError"

@@ -55,6 +55,7 @@ import {
   downloadPlatformResource,
   extractPlatformMindMapTree,
   fetchPlatformResourceBuffer,
+  resolvePlatformPreviewSource,
   type PlatformMindMapNode,
   type PlatformPreviewResource
 } from "@/components/PlatformResourcePreview";
@@ -110,7 +111,9 @@ type StudentResource = {
   resourceId?: string;
   previewUrl?: string;
   downloadUrl?: string;
+  objectKey?: string;
   contentFormat?: string;
+  mimeType?: string;
   contentBody?: string;
   summary?: string;
   recommendation?: string;
@@ -141,6 +144,7 @@ type StudentResource = {
   testCases?: Record<string, unknown>[];
   rubric?: Record<string, unknown> | string;
   runtimeStatus?: string;
+  structuredData?: unknown;
 };
 
 type TutorMessage = {
@@ -216,6 +220,7 @@ const resourceDetailLoading = ref(false);
 const markdownHtml = ref("");
 const mindMap = ref<MindMapNode | null>(null);
 const mindMapImageUrl = ref("");
+let mindMapImageObjectUrl = "";
 const previewFontScale = ref(1);
 const highlighterActive = ref(false);
 const temporaryHighlightCount = ref(0);
@@ -337,7 +342,9 @@ const courseResources = computed<StudentResource[]>(() => {
     resourceId: resource.resource_id,
     previewUrl: resource.preview_url,
     downloadUrl: resource.download_url,
+    objectKey: resource.object_key,
     contentFormat: resource.content_format,
+    mimeType: resource.mime_type,
     contentBody: resource.content_body,
     summary: resource.summary || resource.description,
     recommendation: resource.recommendation,
@@ -367,7 +374,8 @@ const courseResources = computed<StudentResource[]>(() => {
     starterCode: resource.starter_code,
     testCases: resource.test_cases,
     rubric: resource.rubric,
-    runtimeStatus: resource.runtime_status
+    runtimeStatus: resource.runtime_status,
+    structuredData: resource.structured_data
   }));
 });
 
@@ -404,36 +412,41 @@ const paginatedResources = computed(() => {
 const activePreviewKind = computed<PreviewKind>(() =>
   getPreviewKind(activeResource.value)
 );
+function toPlatformPreviewResource(
+  resource: StudentResource
+): PlatformPreviewResource {
+  const useStructuredSource = ["markdown", "text", "mindmap", "json"].includes(
+    getPreviewKind(resource)
+  );
+  const sourceUrl = useStructuredSource
+    ? resource.previewUrl || resource.downloadUrl || resource.fileUrl
+    : resource.fileUrl || resource.previewUrl || resource.downloadUrl;
+  return {
+    title: resource.title,
+    url: sourceUrl,
+    previewUrl: resource.previewUrl,
+    previewPdfUrl: useStructuredSource ? undefined : resource.previewPdfUrl,
+    downloadUrl: resource.downloadUrl || resource.fileUrl,
+    objectKey: resource.objectKey,
+    content: resource.contentBody,
+    contentFormat: resource.contentFormat,
+    mimeType: resource.mimeType,
+    resourceType: resource.resourceType,
+    description: resource.summary,
+    exerciseItems: resource.exerciseItems,
+    language: resource.language,
+    starterCode: resource.starterCode,
+    testCases: resource.testCases,
+    rubric: resource.rubric,
+    runtimeStatus: resource.runtimeStatus,
+    structuredData: resource.structuredData
+  };
+}
 const activePlatformPreviewResource = computed<PlatformPreviewResource | null>(
   () => {
     const resource = activeResource.value;
     if (!resource) return null;
-    const useStructuredSource = [
-      "markdown",
-      "text",
-      "mindmap",
-      "json"
-    ].includes(activePreviewKind.value);
-    const sourceUrl = useStructuredSource
-      ? resource.previewUrl || resource.downloadUrl || resource.fileUrl
-      : resource.fileUrl || resource.previewUrl || resource.downloadUrl;
-    return {
-      title: resource.title,
-      url: sourceUrl,
-      previewUrl: resource.previewUrl,
-      previewPdfUrl: useStructuredSource ? undefined : resource.previewPdfUrl,
-      downloadUrl: resource.downloadUrl || resource.fileUrl,
-      content: resource.contentBody,
-      contentFormat: resource.contentFormat,
-      resourceType: resource.resourceType,
-      description: resource.summary,
-      exerciseItems: resource.exerciseItems,
-      language: resource.language,
-      starterCode: resource.starterCode,
-      testCases: resource.testCases,
-      rubric: resource.rubric,
-      runtimeStatus: resource.runtimeStatus
-    };
+    return toPlatformPreviewResource(resource);
   }
 );
 const usesPlatformPreviewPane = computed(() =>
@@ -445,7 +458,9 @@ const activeResourceHasPreviewSource = computed(() => {
   const resource = activeResource.value;
   return Boolean(
     resource?.fileUrl ||
+      resource?.objectKey ||
       resource?.contentBody ||
+      resource?.structuredData !== undefined ||
       resource?.exerciseItems?.length ||
       resource?.starterCode ||
       resource?.testCases?.length ||
@@ -498,9 +513,9 @@ function getUrlExtension(url?: string) {
 }
 
 function resourceUploadUrl(resource: StudentResource) {
-  const candidates = [resource.downloadUrl, resource.fileUrl].filter(
-    Boolean
-  ) as string[];
+  const candidates = resolvePlatformPreviewSource(
+    toPlatformPreviewResource(resource)
+  ).downloadUrlCandidates;
   const supportedExtensions = new Set([
     ...Object.keys(acceptedDocumentTypes),
     "html",
@@ -1140,15 +1155,24 @@ function isTextPreview(kind: PreviewKind) {
   return kind === "markdown" || kind === "mindmap";
 }
 
-function structuredResourceUrl(resource: StudentResource) {
-  return resource.previewUrl || resource.downloadUrl || resource.fileUrl || "";
+function clearMindMapImage() {
+  if (mindMapImageObjectUrl) {
+    URL.revokeObjectURL(mindMapImageObjectUrl);
+    mindMapImageObjectUrl = "";
+  }
+  mindMapImageUrl.value = "";
+}
+
+function structuredResourceUrls(resource: StudentResource) {
+  return resolvePlatformPreviewSource(toPlatformPreviewResource(resource))
+    .urlCandidates;
 }
 
 async function loadPreview(resource?: StudentResource) {
   const requestId = ++previewRequestVersion;
   markdownHtml.value = "";
   mindMap.value = null;
-  mindMapImageUrl.value = "";
+  clearMindMapImage();
   previewError.value = "";
   if (!resource || !isTextPreview(getPreviewKind(resource))) {
     previewLoading.value = false;
@@ -1158,29 +1182,39 @@ async function loadPreview(resource?: StudentResource) {
   previewLoading.value = true;
   try {
     let content = resource.contentBody || "";
-    const previewUrl = structuredResourceUrl(resource);
-    if (
-      !content &&
-      getPreviewKind(resource) === "mindmap" &&
-      /\.(svg|png|jpe?g|webp|gif)(?:[?#]|$)/i.test(previewUrl)
-    ) {
-      mindMapImageUrl.value = previewUrl;
-      return;
-    }
+    const previewUrls = structuredResourceUrls(resource);
     if (!content) {
-      if (!previewUrl) throw new Error("资源暂无预览地址");
-      const { buffer, contentType } = await fetchPlatformResourceBuffer(
-        previewUrl,
+      if (!previewUrls.length) throw new Error("资源暂无预览地址");
+      const { buffer, contentType, url } = await fetchPlatformResourceBuffer(
+        previewUrls,
         {
           maxBytes: 8 * 1024 * 1024,
-          accept: "application/json, text/plain, text/markdown, image/*, */*"
+          accept: "application/json, text/plain, text/markdown, image/*, */*",
+          validate: result => {
+            if (!result.contentType.toLowerCase().includes("text/html")) return;
+            const prefix = decodePlatformTextBuffer(
+              result.buffer.slice(0, 2048),
+              result.contentType
+            );
+            if (/^\s*(?:<!doctype\s+html|<html\b)/i.test(prefix)) {
+              throw new Error("INVALID_RESOURCE_RESPONSE");
+            }
+          }
         }
       );
+      if (requestId !== previewRequestVersion) return;
       if (
         getPreviewKind(resource) === "mindmap" &&
-        contentType.startsWith("image/")
+        (contentType.startsWith("image/") ||
+          /\.(svg|png|jpe?g|webp|gif)(?:[?#]|$)/i.test(url))
       ) {
-        mindMapImageUrl.value = previewUrl;
+        const imageType = contentType.startsWith("image/")
+          ? contentType
+          : `image/${getUrlExtension(url).replace("jpg", "jpeg")}`;
+        mindMapImageObjectUrl = URL.createObjectURL(
+          new Blob([buffer], { type: imageType })
+        );
+        mindMapImageUrl.value = mindMapImageObjectUrl;
         return;
       }
       content = decodePlatformTextBuffer(buffer, contentType);
@@ -1704,13 +1738,16 @@ async function uploadCurrentResourceIfPossible(
   } else {
     const uploadUrl = resourceUploadUrl(resource);
     if (!uploadUrl) return "";
-    const { buffer, contentType } = await fetchPlatformResourceBuffer(
-      uploadUrl,
+    const uploadUrls = resolvePlatformPreviewSource(
+      toPlatformPreviewResource(resource)
+    ).downloadUrlCandidates;
+    const { buffer, contentType, url } = await fetchPlatformResourceBuffer(
+      [uploadUrl, ...uploadUrls],
       {
         maxBytes: 20 * 1024 * 1024
       }
     );
-    const extension = getUrlExtension(uploadUrl);
+    const extension = getUrlExtension(url);
     if (acceptedDocumentTypes[extension]) {
       const fileName = resource.title.toLowerCase().endsWith(`.${extension}`)
         ? resource.title
@@ -1983,6 +2020,7 @@ function resetTutorPanelWidthLimit() {
 onUnmounted(() => {
   cancelTutorStream?.();
   tutorPanelResizeObserver?.disconnect();
+  clearMindMapImage();
   window.removeEventListener("resize", resetTutorPanelWidthLimit);
   document.documentElement.classList.remove("student-resource-tutor-resizing");
 });
@@ -2367,7 +2405,10 @@ onUnmounted(() => {
               </el-tooltip>
             </template>
             <el-tooltip
-              v-if="activePlatformPreviewResource?.downloadUrl"
+              v-if="
+                activePlatformPreviewResource?.downloadUrl ||
+                activePlatformPreviewResource?.objectKey
+              "
               content="下载原文件"
               placement="bottom"
             >

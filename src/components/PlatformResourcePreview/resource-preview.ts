@@ -1,4 +1,9 @@
 import { formatToken, getToken } from "@/utils/auth";
+import {
+  buildPlatformObjectUrl,
+  normalizePlatformResourceUrl,
+  uniquePlatformResourceUrls
+} from "./resource-url";
 
 export type PlatformPreviewKind =
   | "html"
@@ -21,6 +26,7 @@ export interface PlatformPreviewResource {
   previewUrl?: string;
   previewPdfUrl?: string | null;
   downloadUrl?: string;
+  objectKey?: string;
   content?: string;
   contentFormat?: string;
   mimeType?: string;
@@ -44,6 +50,7 @@ export interface AssistantPreviewResourceLike {
   preview_url?: string;
   preview_pdf_url?: string | null;
   download_url?: string;
+  object_key?: string;
   content_body?: string;
   content_format?: string;
   mime_type?: string;
@@ -63,8 +70,18 @@ export interface ResolvedPlatformPreviewSource {
   kind: PlatformPreviewKind;
   url: string;
   downloadUrl: string;
+  urlCandidates: string[];
+  downloadUrlCandidates: string[];
   content: string;
   title: string;
+}
+
+export interface PlatformResourceBufferResult {
+  buffer: ArrayBuffer;
+  contentType: string;
+  contentDisposition: string;
+  url: string;
+  requestUrl: string;
 }
 
 const clean = (value?: string | null) => String(value || "").trim();
@@ -72,9 +89,17 @@ const platformFileProxyPrefix = "/mindmap-file";
 const platformFileProxyTarget = clean(
   import.meta.env.VITE_MINDMAP_FILE_PROXY_TARGET
 ).replace(/\/$/, "");
+const platformResourceUrlOptions = () => ({
+  fileBaseUrl: platformFileProxyTarget,
+  pageProtocol:
+    typeof window === "undefined" ? "https:" : window.location.protocol
+});
 
 export function normalizePlatformResourceFetchUrl(url: string) {
-  const source = clean(url);
+  const source = normalizePlatformResourceUrl(
+    url,
+    platformResourceUrlOptions()
+  );
   if (
     !source ||
     !import.meta.env.DEV ||
@@ -104,9 +129,18 @@ export function mapAssistantResourcePreview(
     /(json|markdown|\bmd\b|text|mind[_\s-]*map|mermaid|coding[_\s-]*practice|exercise[_\s-]*set|编程|练习题集|思维导图)/.test(
       descriptor
     );
-  const previewPdfUrl = usesStructuredSource
-    ? undefined
-    : resource.preview_pdf_url;
+  const hasInlineStructuredSource = Boolean(
+    clean(resource.content_body) ||
+      resource.structured_data !== undefined ||
+      resource.exercise_items?.length ||
+      clean(resource.starter_code) ||
+      resource.test_cases?.length ||
+      resource.rubric
+  );
+  const previewPdfUrl =
+    usesStructuredSource && hasInlineStructuredSource
+      ? undefined
+      : resource.preview_pdf_url;
   return {
     title: resource.title || "课程资料",
     url:
@@ -117,6 +151,7 @@ export function mapAssistantResourcePreview(
     previewUrl: resource.preview_url,
     previewPdfUrl,
     downloadUrl: resource.download_url || resource.preview_url,
+    objectKey: resource.object_key,
     content: resource.content_body,
     contentFormat: resource.content_format,
     mimeType: resource.mime_type,
@@ -141,8 +176,9 @@ export function hasPlatformResourcePreview(
         resource.previewUrl ||
         resource.previewPdfUrl ||
         resource.downloadUrl ||
+        resource.objectKey ||
         resource.content ||
-        resource.structuredData ||
+        resource.structuredData !== undefined ||
         resource.exerciseItems?.length ||
         resource.starterCode ||
         resource.testCases?.length ||
@@ -255,7 +291,8 @@ export function detectPlatformPreviewKind(
   const preferredUrl =
     clean(resource.url) ||
     clean(resource.previewUrl) ||
-    clean(resource.downloadUrl);
+    clean(resource.downloadUrl) ||
+    clean(resource.objectKey);
   const urlKind = kindFromExtension(getResourceUrlExtension(preferredUrl));
   if (urlKind) return urlKind;
 
@@ -277,20 +314,36 @@ export function detectPlatformPreviewKind(
 export function resolvePlatformPreviewSource(
   resource?: PlatformPreviewResource | null
 ): ResolvedPlatformPreviewSource {
-  const previewPdfUrl = clean(resource?.previewPdfUrl);
-  const url =
-    previewPdfUrl ||
-    clean(resource?.url) ||
-    clean(resource?.previewUrl) ||
-    clean(resource?.downloadUrl);
+  const urlOptions = platformResourceUrlOptions();
+  const previewPdfUrl = normalizePlatformResourceUrl(
+    resource?.previewPdfUrl,
+    urlOptions
+  );
+  const previewUrl = normalizePlatformResourceUrl(
+    resource?.previewUrl,
+    urlOptions
+  );
+  const directUrl = normalizePlatformResourceUrl(resource?.url, urlOptions);
+  const downloadUrl = normalizePlatformResourceUrl(
+    resource?.downloadUrl,
+    urlOptions
+  );
+  const objectUrl = buildPlatformObjectUrl(resource?.objectKey, urlOptions);
+  const urlCandidates = uniquePlatformResourceUrls(
+    [previewPdfUrl, previewUrl, directUrl, downloadUrl, objectUrl],
+    urlOptions
+  );
+  const downloadUrlCandidates = uniquePlatformResourceUrls(
+    [downloadUrl, directUrl, previewUrl, previewPdfUrl, objectUrl],
+    urlOptions
+  );
+  const url = urlCandidates[0] || "";
   return {
     kind: previewPdfUrl ? "pdf" : detectPlatformPreviewKind(resource),
     url,
-    downloadUrl:
-      clean(resource?.downloadUrl) ||
-      clean(resource?.url) ||
-      clean(resource?.previewUrl) ||
-      previewPdfUrl,
+    downloadUrl: downloadUrlCandidates[0] || "",
+    urlCandidates,
+    downloadUrlCandidates,
     content: String(resource?.content || ""),
     title: clean(resource?.title) || "课程资料"
   };
@@ -331,6 +384,12 @@ function isTrustedResourceUrl(url: string) {
       String(import.meta.env.VITE_API_URL || "/api"),
       window.location.href
     );
+    if (
+      target.origin === window.location.origin &&
+      target.pathname.startsWith(`${platformFileProxyPrefix}/`)
+    ) {
+      return false;
+    }
     return (
       target.origin === window.location.origin ||
       target.origin === apiBase.origin
@@ -363,38 +422,63 @@ export function buildPlatformResourceRequestInit(
 }
 
 export async function fetchPlatformResourceBuffer(
-  url: string,
+  url: string | readonly string[],
   options?: {
     signal?: AbortSignal;
     maxBytes?: number;
     accept?: string;
+    validate?: (result: PlatformResourceBufferResult) => void;
   }
 ) {
-  const requestUrl = normalizePlatformResourceFetchUrl(url);
-  const response = await fetch(
-    requestUrl,
-    buildPlatformResourceRequestInit(
-      requestUrl,
-      options?.signal,
-      options?.accept || "*/*"
-    )
+  const sourceUrls = uniquePlatformResourceUrls(
+    Array.isArray(url) ? [...url] : [url],
+    platformResourceUrlOptions()
   );
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  let lastError: unknown = new Error("RESOURCE_URL_MISSING");
 
-  const contentLength = Number(response.headers.get("content-length") || 0);
-  if (options?.maxBytes && contentLength > options.maxBytes) {
-    throw new Error("RESOURCE_TOO_LARGE");
+  for (const sourceUrl of sourceUrls) {
+    const requestUrl = normalizePlatformResourceFetchUrl(sourceUrl);
+    try {
+      const response = await fetch(
+        requestUrl,
+        buildPlatformResourceRequestInit(
+          requestUrl,
+          options?.signal,
+          options?.accept || "*/*"
+        )
+      );
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      const contentLength = Number(response.headers.get("content-length") || 0);
+      if (options?.maxBytes && contentLength > options.maxBytes) {
+        throw new Error("RESOURCE_TOO_LARGE");
+      }
+
+      const buffer = await response.arrayBuffer();
+      if (options?.maxBytes && buffer.byteLength > options.maxBytes) {
+        throw new Error("RESOURCE_TOO_LARGE");
+      }
+      const result: PlatformResourceBufferResult = {
+        buffer,
+        contentType: response.headers.get("content-type") || "",
+        contentDisposition: response.headers.get("content-disposition") || "",
+        url: sourceUrl,
+        requestUrl
+      };
+      options?.validate?.(result);
+      return result;
+    } catch (error) {
+      if (
+        options?.signal?.aborted ||
+        (error instanceof Error && error.message === "RESOURCE_TOO_LARGE")
+      ) {
+        throw error;
+      }
+      lastError = error;
+    }
   }
 
-  const buffer = await response.arrayBuffer();
-  if (options?.maxBytes && buffer.byteLength > options.maxBytes) {
-    throw new Error("RESOURCE_TOO_LARGE");
-  }
-  return {
-    buffer,
-    contentType: response.headers.get("content-type") || "",
-    contentDisposition: response.headers.get("content-disposition") || ""
-  };
+  throw lastError;
 }
 
 function normalizeCharset(value?: string) {
@@ -449,7 +533,7 @@ export function decodePlatformTextBuffer(
 }
 
 export async function fetchPlatformResourceText(
-  url: string,
+  url: string | readonly string[],
   options?: { signal?: AbortSignal; maxBytes?: number }
 ) {
   const result = await fetchPlatformResourceBuffer(url, {
@@ -488,24 +572,38 @@ export async function downloadPlatformResource(
   resource: PlatformPreviewResource
 ) {
   const resolved = resolvePlatformPreviewSource(resource);
-  const url = resolved.downloadUrl || resolved.url;
+  const candidates = resolved.downloadUrlCandidates.length
+    ? resolved.downloadUrlCandidates
+    : resolved.urlCandidates;
+  const url = candidates[0] || "";
   if (!url) throw new Error("RESOURCE_URL_MISSING");
   const requestUrl = normalizePlatformResourceFetchUrl(url);
 
-  const response = await fetch(
-    requestUrl,
-    buildPlatformResourceRequestInit(requestUrl, undefined, "*/*")
-  );
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  if (!isTrustedResourceUrl(requestUrl)) {
+    const anchor = document.createElement("a");
+    anchor.href = requestUrl;
+    anchor.download = suggestedFilename(resource, url);
+    anchor.target = "_blank";
+    anchor.rel = "noopener noreferrer";
+    anchor.style.display = "none";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    return;
+  }
 
-  const blob = await response.blob();
+  const result = await fetchPlatformResourceBuffer(candidates, {
+    accept: "*/*"
+  });
+  const blob = new Blob([result.buffer], {
+    type: result.contentType || "application/octet-stream"
+  });
   const objectUrl = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = objectUrl;
   anchor.download =
-    filenameFromDisposition(
-      response.headers.get("content-disposition") || ""
-    ) || suggestedFilename(resource, url);
+    filenameFromDisposition(result.contentDisposition) ||
+    suggestedFilename(resource, url);
   anchor.style.display = "none";
   document.body.appendChild(anchor);
   anchor.click();
