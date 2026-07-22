@@ -544,6 +544,10 @@ export interface AssistantChatSourceRef {
 export interface AssistantChatVideoSegment {
   segment_id: string;
   video_id?: string;
+  video_url?: string;
+  preview_url?: string;
+  file_url?: string;
+  url?: string;
   title: string;
   summary?: string;
   start_ms: number;

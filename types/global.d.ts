@@ -72,6 +72,7 @@ declare global {
     VITE_ENABLE_TENANT: string;
     VITE_COMPRESSION: ViteCompression;
     VITE_CLARITY_PROJECT_ID: string;
+    VITE_CLARITY_ALLOWED_HOSTS: string;
     VITE_PROXY_TARGET: string;
     VITE_MINDMAP_FILE_PROXY_TARGET: string;
     VITE_MOCK_SCOPE: "all" | "exam-paper-only" | string;

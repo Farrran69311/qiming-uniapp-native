@@ -57,11 +57,12 @@ import "tippy.js/themes/light.css";
 import VueTippy from "vue-tippy";
 app.use(VueTippy);
 
+initClarity();
+
 getPlatformConfig(app).then(async config => {
   setupStore(app);
   useAppStoreHook().refreshUA();
   registerPwa();
-  initClarity();
   app.use(router);
   await router.isReady();
   injectResponsiveStorage(app, config);

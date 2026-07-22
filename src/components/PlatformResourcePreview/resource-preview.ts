@@ -33,6 +33,10 @@ export interface PlatformPreviewResource {
   rubric?: Record<string, unknown> | string;
   runtimeStatus?: string;
   structuredData?: unknown;
+  initialTimeMs?: number;
+  segmentStartMs?: number;
+  segmentEndMs?: number;
+  autoPlay?: boolean;
 }
 
 export interface AssistantPreviewResourceLike {

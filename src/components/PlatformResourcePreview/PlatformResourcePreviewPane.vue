@@ -483,6 +483,37 @@ function handleMediaError() {
   failPreview(new Error("MEDIA_LOAD_FAILED"));
 }
 
+async function handleVideoMetadata(event: Event) {
+  const video = event.currentTarget as HTMLVideoElement;
+  const requestedSeconds = Math.max(
+    0,
+    Number(props.resource?.initialTimeMs || 0) / 1000
+  );
+  const duration = Number(video.duration);
+  const targetSeconds =
+    Number.isFinite(duration) && duration > 0
+      ? Math.min(requestedSeconds, Math.max(0, duration - 0.05))
+      : requestedSeconds;
+
+  if (targetSeconds > 0 && Math.abs(video.currentTime - targetSeconds) > 0.1) {
+    try {
+      video.currentTime = targetSeconds;
+    } catch {
+      // Keep the video playable from the beginning when the source cannot seek.
+    }
+  }
+  completeLoading();
+
+  if (props.resource?.autoPlay) {
+    await nextTick();
+    try {
+      await video.play();
+    } catch {
+      // Browsers may require a second user gesture for audible playback.
+    }
+  }
+}
+
 function handlePptxWheel(event: WheelEvent) {
   if (event.ctrlKey || event.metaKey || resolved.value.kind !== "pptx") return;
   const host = officeHostRef.value;
@@ -527,7 +558,11 @@ watch(
     props.resource?.starterCode,
     props.resource?.testCases,
     props.resource?.rubric,
-    props.resource?.runtimeStatus
+    props.resource?.runtimeStatus,
+    props.resource?.initialTimeMs,
+    props.resource?.segmentStartMs,
+    props.resource?.segmentEndMs,
+    props.resource?.autoPlay
   ],
   loadPreview,
   { immediate: true }
@@ -670,10 +705,12 @@ defineExpose({ reload: loadPreview, download: handleDownload });
         class="platform-resource-preview__media"
       >
         <video
+          :key="`${resolved.url}:${props.resource?.initialTimeMs || 0}`"
           :src="resolved.url"
           controls
+          playsinline
           preload="metadata"
-          @loadedmetadata="completeLoading"
+          @loadedmetadata="handleVideoMetadata"
           @error="handleMediaError"
         />
       </div>

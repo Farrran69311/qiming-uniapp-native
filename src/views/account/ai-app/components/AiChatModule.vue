@@ -470,14 +470,41 @@
               >
                 <div class="assistant-detail-title">相关视频片段</div>
                 <div class="video-segment-grid">
-                  <div
+                  <button
                     v-for="segment in msg.videoSegments"
                     :key="segment.segment_id"
+                    type="button"
                     class="video-segment-card"
+                    :class="{
+                      'is-loading':
+                        props.videoSegmentPreviewingId === segment.segment_id
+                    }"
+                    :disabled="
+                      props.videoSegmentPreviewingId === segment.segment_id
+                    "
+                    :aria-busy="
+                      props.videoSegmentPreviewingId === segment.segment_id
+                    "
+                    :aria-label="`播放视频片段：${segment.title}`"
+                    @click="emit('preview-video-segment', segment)"
                   >
                     <div class="video-segment-title">
-                      <el-icon><VideoPlay /></el-icon>
-                      {{ segment.title }}
+                      <el-icon
+                        :class="{
+                          'is-loading':
+                            props.videoSegmentPreviewingId ===
+                            segment.segment_id
+                        }"
+                      >
+                        <Loading
+                          v-if="
+                            props.videoSegmentPreviewingId ===
+                            segment.segment_id
+                          "
+                        />
+                        <VideoPlay v-else />
+                      </el-icon>
+                      <span>{{ segment.title }}</span>
                     </div>
                     <p v-if="segment.summary">
                       {{ segment.summary }}
@@ -489,7 +516,7 @@
                         · {{ formatStatusLabel(segment.source_status) }}
                       </span>
                     </div>
-                  </div>
+                  </button>
                 </div>
               </div>
 
@@ -888,7 +915,8 @@ import {
   Refresh,
   MoreFilled,
   CopyDocument,
-  CircleClose
+  CircleClose,
+  Loading
 } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import { assistantModelReasonText } from "@/api/frontend/assistant";
@@ -958,6 +986,7 @@ const props = defineProps<{
   modelReady?: boolean;
   modelDisabledReason?: string;
   loading?: boolean;
+  videoSegmentPreviewingId?: string;
 }>();
 
 const emit = defineEmits([
@@ -965,6 +994,7 @@ const emit = defineEmits([
   "switch-course",
   "exit",
   "preview",
+  "preview-video-segment",
   "regenerate",
   "stop",
   "play-speech",
@@ -2844,17 +2874,55 @@ onBeforeUnmount(() => {
 }
 
 .video-segment-card {
+  width: 100%;
   padding: 11px;
   font-size: 12px;
+  font-family: inherit;
   line-height: 1.55;
   color: #3561b7;
+  text-align: left;
+  cursor: pointer;
   background: #f4f8ff;
   border: 1px solid rgba(143, 174, 244, 0.34);
   border-radius: 12px;
+  transition:
+    color 180ms ease,
+    background-color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.video-segment-card:hover {
+  color: #2755ad;
+  background: #fff;
+  border-color: rgba(91, 131, 217, 0.58);
+  box-shadow: 0 6px 16px rgba(52, 91, 164, 0.1);
+  transform: translateY(-1px);
+}
+
+.video-segment-card:active {
+  transform: translateY(0);
+}
+
+.video-segment-card:focus-visible {
+  outline: 2px solid rgba(64, 116, 211, 0.72);
+  outline-offset: 2px;
+}
+
+.video-segment-card:disabled {
+  cursor: wait;
+  opacity: 0.72;
+  transform: none;
 }
 
 .video-segment-title {
   font-weight: 800;
+}
+
+.video-segment-title span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .video-segment-time {
@@ -3147,10 +3215,15 @@ onBeforeUnmount(() => {
   .thinking-dots span,
   .reasoning-summary__chevron,
   .stream-progress__chevron,
+  .video-segment-card,
   .process-collapse-enter-active,
   .process-collapse-leave-active {
     animation: none;
     transition: none;
+  }
+
+  .video-segment-card:hover {
+    transform: none;
   }
 
   .thinking-typewriter {

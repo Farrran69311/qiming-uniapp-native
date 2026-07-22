@@ -14,6 +14,7 @@ import {
   type AssistantSpeechVisemeCue,
   type SpeechTimelineRequest
 } from "@/api/frontend/assistant";
+import { speechSegmentErrorMessage } from "./speechErrorSemantics";
 
 export type SpeechPlaybackState =
   | "disabled"
@@ -876,9 +877,12 @@ export class SpeechPlaybackController {
         this.callbacks.renderer.setState("error");
         this.setStatus(
           control.session_id ? "finalizing" : "failed",
-          control.session_id
-            ? "实时播报中断，正在恢复完整录音"
-            : "实时语音中断，文字回答不受影响"
+          speechSegmentErrorMessage(
+            control.error_code,
+            control.session_id
+              ? "实时播报中断，正在恢复完整录音"
+              : "实时语音中断，文字回答不受影响"
+          )
         );
         void this.refreshSession(control.session_id || this.realtimeSessionId);
         break;
@@ -1241,11 +1245,12 @@ export class SpeechPlaybackController {
     ) {
       this.setStatus("finalizing", "完整录音正在等待后端恢复");
     } else if (session.archive_status === "failed") {
+      const fallback = this.liveStarted
+        ? "实时播报可用，完整录音归档失败"
+        : "语音生成失败，文字回答不受影响";
       this.setStatus(
         this.liveStarted ? "ready" : "failed",
-        this.liveStarted
-          ? "实时播报可用，完整录音归档失败"
-          : "语音生成失败，文字回答不受影响"
+        speechSegmentErrorMessage(session.error_code, fallback)
       );
       return;
     }
@@ -1341,11 +1346,12 @@ export class SpeechPlaybackController {
 
   private setTerminalSessionStatus(session: AssistantSpeechSession) {
     if (session.status === "partial") {
+      const fallback = this.liveStarted
+        ? "实时播放不完整，完整录音不可用"
+        : "语音未完整生成，文字回答不受影响";
       this.setStatus(
         this.liveStarted ? "ready" : "failed",
-        this.liveStarted
-          ? "实时播放不完整，完整录音不可用"
-          : "语音未完整生成，文字回答不受影响"
+        speechSegmentErrorMessage(session.error_code, fallback)
       );
       return;
     }
@@ -1354,7 +1360,13 @@ export class SpeechPlaybackController {
       return;
     }
     if (["failed", "unknown_outcome", "expired"].includes(session.status)) {
-      this.setStatus("failed", "语音不可用，文字回答不受影响");
+      this.setStatus(
+        "failed",
+        speechSegmentErrorMessage(
+          session.error_code,
+          "语音不可用，文字回答不受影响"
+        )
+      );
     }
   }
 

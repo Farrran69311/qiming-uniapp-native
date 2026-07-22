@@ -53,6 +53,15 @@ import { useUserStore } from "@/store/modules/user";
 import { formatAvatar } from "@/utils/avatar";
 import { type DataInfo, userKey } from "@/utils/auth";
 import {
+  getCourseDetail,
+  type CourseDetailResult
+} from "@/api/frontend/course";
+import {
+  getVideoAnalyzeTask,
+  getVideoAnalyzeResult,
+  type VideoAnalyzeFullResult
+} from "@/api/frontend/videoAnalysis";
+import {
   assistantApiErrorMessage,
   assistantModelReasonText,
   createAssistantConversation,
@@ -70,6 +79,7 @@ import {
   type AssistantChatResource,
   type AssistantChatStreamEvent,
   type AssistantChatTraceStep,
+  type AssistantChatVideoSegment,
   type AssistantConversationItem,
   type AssistantExplanationImage,
   type AssistantExplanationImageMode,
@@ -93,6 +103,12 @@ import {
   explanationImageTerminalStatuses,
   shouldApplyExplanationImageUpdate
 } from "./explanationImageState";
+import {
+  directVideoSegmentUrl,
+  findCourseVideoUrl,
+  listCourseVideoCandidates,
+  videoTaskMatchesCourseCandidate
+} from "./videoSegmentPreview";
 
 defineOptions({ name: "AiAppWorkbench" });
 
@@ -1719,7 +1735,14 @@ const handleStopSpeech = (assistantMessageId: string | number) => {
 const stackPreviewVisible = ref(false);
 const platformPreviewVisible = ref(false);
 const platformPreviewResource = ref<PlatformPreviewResource | null>(null);
+const videoSegmentPreviewingId = ref("");
 let platformPreviewRequestVersion = 0;
+let videoSegmentPreviewRequestVersion = 0;
+const courseVideoDetailRequests = new Map<
+  number,
+  Promise<CourseDetailResult>
+>();
+const videoSegmentSourceCache = new Map<string, string>();
 const stackItems = ref<{ key: number; value: string }[]>([
   { key: 1, value: "A" },
   { key: 2, value: "B" },
@@ -1812,6 +1835,149 @@ async function handlePreview(res: AssistantChatResource) {
     if (requestVersion !== platformPreviewRequestVersion) return;
     if (!hasPlatformPreviewSource(initialResource)) {
       ElMessage.error(assistantApiErrorMessage(error, "资源详情加载失败"));
+    }
+  }
+}
+
+function loadCourseVideoDetail(courseId: number) {
+  const cached = courseVideoDetailRequests.get(courseId);
+  if (cached) return cached;
+
+  const request = getCourseDetail({ courseId })
+    .then(response => response.data)
+    .catch(error => {
+      courseVideoDetailRequests.delete(courseId);
+      throw error;
+    });
+  courseVideoDetailRequests.set(courseId, request);
+  return request;
+}
+
+async function findVideoUrlByAnalysisTask(
+  courseId: number,
+  detail: CourseDetailResult,
+  analysis: VideoAnalyzeFullResult | null,
+  videoId: string
+) {
+  if (!videoId) return "";
+  const candidates = listCourseVideoCandidates(detail, analysis || {}).filter(
+    candidate => candidate.chapterId > 0 && candidate.hourId > 0
+  );
+  const batchSize = 4;
+  for (let offset = 0; offset < candidates.length; offset += batchSize) {
+    const batch = candidates.slice(offset, offset + batchSize);
+    const urls = await Promise.all(
+      batch.map(async candidate => {
+        try {
+          const response = await getVideoAnalyzeTask({
+            courseId,
+            chapterId: candidate.chapterId,
+            hourId: candidate.hourId
+          });
+          return videoTaskMatchesCourseCandidate(
+            response.data,
+            candidate,
+            videoId
+          )
+            ? candidate.fileUrl
+            : "";
+        } catch {
+          return "";
+        }
+      })
+    );
+    const matchedUrl = urls.find(Boolean);
+    if (matchedUrl) return matchedUrl;
+  }
+  return "";
+}
+
+async function resolveVideoSegmentSource(segment: AssistantChatVideoSegment) {
+  const directUrl = directVideoSegmentUrl(segment);
+  if (directUrl) {
+    return { url: directUrl, analysis: null as VideoAnalyzeFullResult | null };
+  }
+
+  const videoId = String(segment.video_id || "").trim();
+  const cachedUrl = videoSegmentSourceCache.get(videoId);
+  if (cachedUrl) {
+    return { url: cachedUrl, analysis: null as VideoAnalyzeFullResult | null };
+  }
+  let analysis: VideoAnalyzeFullResult | null = null;
+  let analysisError: unknown;
+  if (videoId) {
+    try {
+      const response = await getVideoAnalyzeResult({ taskId: videoId });
+      analysis = response.data;
+    } catch (error) {
+      analysisError = error;
+    }
+  }
+
+  const courseIds = [analysis?.courseId, selectedCourseId.value]
+    .map(Number)
+    .filter(
+      (courseId, index, list) =>
+        Number.isFinite(courseId) &&
+        courseId > 0 &&
+        list.indexOf(courseId) === index
+    );
+  for (const courseId of courseIds) {
+    try {
+      const detail = await loadCourseVideoDetail(courseId);
+      const inferredUrl = findCourseVideoUrl(detail, analysis || {}, videoId);
+      const url =
+        inferredUrl ||
+        (await findVideoUrlByAnalysisTask(courseId, detail, analysis, videoId));
+      if (url) {
+        if (videoId) videoSegmentSourceCache.set(videoId, url);
+        return { url, analysis };
+      }
+    } catch (error) {
+      analysisError ||= error;
+    }
+  }
+
+  if (analysisError) throw analysisError;
+  throw new Error("暂时未找到该片段对应的课程视频");
+}
+
+async function handleVideoSegmentPreview(segment: AssistantChatVideoSegment) {
+  if (!segment?.segment_id) return;
+  const requestVersion = ++videoSegmentPreviewRequestVersion;
+  const courseIdAtRequest = selectedCourseId.value;
+  videoSegmentPreviewingId.value = segment.segment_id;
+
+  try {
+    const { url, analysis } = await resolveVideoSegmentSource(segment);
+    if (
+      requestVersion !== videoSegmentPreviewRequestVersion ||
+      courseIdAtRequest !== selectedCourseId.value
+    ) {
+      return;
+    }
+
+    platformPreviewResource.value = {
+      title: segment.title || analysis?.fileName || "课程视频",
+      url,
+      previewUrl: url,
+      downloadUrl: url,
+      resourceType: "video",
+      description: segment.summary || segment.reason,
+      initialTimeMs: Math.max(0, Number(segment.start_ms || 0)),
+      segmentStartMs: Math.max(0, Number(segment.start_ms || 0)),
+      segmentEndMs: Math.max(0, Number(segment.end_ms || 0)),
+      autoPlay: true
+    };
+    platformPreviewVisible.value = true;
+  } catch (error) {
+    if (requestVersion !== videoSegmentPreviewRequestVersion) return;
+    ElMessage.error(
+      assistantApiErrorMessage(error, "暂时无法定位该片段对应的完整视频")
+    );
+  } finally {
+    if (requestVersion === videoSegmentPreviewRequestVersion) {
+      videoSegmentPreviewingId.value = "";
     }
   }
 }
@@ -2690,9 +2856,11 @@ onUnmounted(() => {
                   :model-ready="selectedModelReady"
                   :model-disabled-reason="selectedModelDisabledReason"
                   :loading="isChatStreaming"
+                  :video-segment-previewing-id="videoSegmentPreviewingId"
                   @send="handleSendMessage"
                   @stop="handleStopStreaming"
                   @preview="handlePreview"
+                  @preview-video-segment="handleVideoSegmentPreview"
                   @regenerate="handleRegenerateMessage"
                   @refresh-explanation-image="handleRefreshExplanationImage"
                   @play-speech="handlePlaySpeech"
