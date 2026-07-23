@@ -68,6 +68,9 @@ export function useScreenCapture() {
     });
   };
 
+  const supportsDisplayMedia = () =>
+    Boolean(navigator.mediaDevices?.getDisplayMedia);
+
   /**
    * 使用浏览器原生屏幕捕获当前标签页，绕过 html2canvas 在视频元素上的黑屏问题。
    */
@@ -301,7 +304,7 @@ export function useScreenCapture() {
       // 等待DOM更新
       await new Promise(resolve => setTimeout(resolve, 100));
 
-      if (areaContainsMedia(area)) {
+      if (areaContainsMedia(area) && supportsDisplayMedia()) {
         const base64 = await captureByDisplayMedia(area);
         screenshot.value = base64;
         status.value = "preview";

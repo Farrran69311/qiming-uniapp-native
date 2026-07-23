@@ -9,18 +9,6 @@
       <div class="flex items-center gap-2">
         <el-tag size="small" effect="plain" round>{{ activeCourse }}</el-tag>
       </div>
-      <div class="ai-chat-actions flex items-center gap-3">
-        <el-button
-          :icon="RefreshRight"
-          title="刷新"
-          class="ai-chat-action-button !rounded-lg transition-colors duration-200 hover:!border-primary/50"
-        />
-        <el-button
-          :icon="More"
-          title="更多"
-          class="ai-chat-action-button !rounded-lg transition-colors duration-200 hover:!border-primary/50"
-        />
-      </div>
     </div>
 
     <!-- 消息流：移除背景修饰文字，保持纯净 -->
@@ -235,6 +223,13 @@
                 v-for="image in msg.explanationImages"
                 :key="image.image_id"
                 :image="image"
+                @refresh="
+                  imageId =>
+                    emit('refresh-explanation-image', {
+                      imageId,
+                      messageId: msg.id
+                    })
+                "
               />
             </section>
 
@@ -463,14 +458,41 @@
               >
                 <div class="assistant-detail-title">相关视频片段</div>
                 <div class="video-segment-grid">
-                  <div
+                  <button
                     v-for="segment in msg.videoSegments"
                     :key="segment.segment_id"
+                    type="button"
                     class="video-segment-card"
+                    :class="{
+                      'is-loading':
+                        props.videoSegmentPreviewingId === segment.segment_id
+                    }"
+                    :disabled="
+                      props.videoSegmentPreviewingId === segment.segment_id
+                    "
+                    :aria-busy="
+                      props.videoSegmentPreviewingId === segment.segment_id
+                    "
+                    :aria-label="`播放视频片段：${segment.title}`"
+                    @click="emit('preview-video-segment', segment)"
                   >
                     <div class="video-segment-title">
-                      <el-icon><VideoPlay /></el-icon>
-                      {{ segment.title }}
+                      <el-icon
+                        :class="{
+                          'is-loading':
+                            props.videoSegmentPreviewingId ===
+                            segment.segment_id
+                        }"
+                      >
+                        <Loading
+                          v-if="
+                            props.videoSegmentPreviewingId ===
+                            segment.segment_id
+                          "
+                        />
+                        <VideoPlay v-else />
+                      </el-icon>
+                      <span>{{ segment.title }}</span>
                     </div>
                     <p v-if="segment.summary">
                       {{ segment.summary }}
@@ -482,7 +504,7 @@
                         · {{ formatStatusLabel(segment.source_status) }}
                       </span>
                     </div>
-                  </div>
+                  </button>
                 </div>
               </div>
 
@@ -715,6 +737,41 @@
               </span>
 
               <el-dropdown
+                v-if="explanationImageEnabled"
+                trigger="click"
+                popper-class="ai-chat-toolbar-dropdown"
+                @command="m => emit('update:explanationImageMode', m)"
+              >
+                <span
+                  class="chat-toolbar-chip chat-toolbar-chip--interactive"
+                  :title="
+                    explanationImageMode === 'off'
+                      ? '已关闭讲解图片'
+                      : '讲解图片将在文字回答完成后异步生成'
+                  "
+                >
+                  <el-icon class="chat-toolbar-chip__icon"><Picture /></el-icon>
+                  <span class="chat-toolbar-chip__text">
+                    讲解图
+                    {{ explanationImageMode === "off" ? "关闭" : "自动" }}
+                  </span>
+                  <el-icon class="chat-toolbar-chip__arrow">
+                    <ArrowDown />
+                  </el-icon>
+                </span>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="auto_wide">
+                      讲解图自动生成
+                    </el-dropdown-item>
+                    <el-dropdown-item command="off">
+                      关闭讲解图片
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+
+              <el-dropdown
                 trigger="click"
                 popper-class="ai-chat-toolbar-dropdown"
                 @command="a => emit('update:selectedAgent', a)"
@@ -836,16 +893,16 @@ import {
   VideoPlay,
   Promotion,
   Plus,
-  RefreshRight,
-  More,
   FolderOpened,
   Monitor,
+  Picture,
   ArrowDown,
   Star,
   Refresh,
   MoreFilled,
   CopyDocument,
-  CircleClose
+  CircleClose,
+  Loading
 } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import { assistantModelReasonText } from "@/api/frontend/assistant";
@@ -896,6 +953,8 @@ type AssistantOptionView = {
   reason?: string;
 };
 
+type ExplanationImageMode = "off" | "auto" | "auto_wide";
+
 const props = defineProps<{
   messages: any[];
   activeCourse: string;
@@ -908,9 +967,12 @@ const props = defineProps<{
   selectedAgent?: string;
   selectedModel?: string;
   thinkingMode?: string;
+  explanationImageEnabled?: boolean;
+  explanationImageMode?: ExplanationImageMode;
   modelReady?: boolean;
   modelDisabledReason?: string;
   loading?: boolean;
+  videoSegmentPreviewingId?: string;
 }>();
 
 const emit = defineEmits([
@@ -918,13 +980,16 @@ const emit = defineEmits([
   "switch-course",
   "exit",
   "preview",
+  "preview-video-segment",
   "regenerate",
   "stop",
   "play-speech",
   "stop-speech",
+  "refresh-explanation-image",
   "update:selectedAgent",
   "update:selectedModel",
-  "update:thinkingMode"
+  "update:thinkingMode",
+  "update:explanationImageMode"
 ]);
 const input = ref("");
 const attachmentInputRef = ref<HTMLInputElement | null>(null);
@@ -1750,12 +1815,6 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped lang="scss">
-.ai-chat-actions {
-  :deep(.el-button + .el-button) {
-    margin-left: 0;
-  }
-}
-
 :deep(.ai-input-base) {
   .el-textarea__inner {
     border: none !important;
@@ -2795,17 +2854,55 @@ onBeforeUnmount(() => {
 }
 
 .video-segment-card {
+  width: 100%;
   padding: 11px;
   font-size: 12px;
+  font-family: inherit;
   line-height: 1.55;
   color: #3561b7;
+  text-align: left;
+  cursor: pointer;
   background: #f4f8ff;
   border: 1px solid rgba(143, 174, 244, 0.34);
   border-radius: 12px;
+  transition:
+    color 180ms ease,
+    background-color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.video-segment-card:hover {
+  color: #2755ad;
+  background: #fff;
+  border-color: rgba(91, 131, 217, 0.58);
+  box-shadow: 0 6px 16px rgba(52, 91, 164, 0.1);
+  transform: translateY(-1px);
+}
+
+.video-segment-card:active {
+  transform: translateY(0);
+}
+
+.video-segment-card:focus-visible {
+  outline: 2px solid rgba(64, 116, 211, 0.72);
+  outline-offset: 2px;
+}
+
+.video-segment-card:disabled {
+  cursor: wait;
+  opacity: 0.72;
+  transform: none;
 }
 
 .video-segment-title {
   font-weight: 800;
+}
+
+.video-segment-title span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .video-segment-time {
@@ -3098,10 +3195,15 @@ onBeforeUnmount(() => {
   .thinking-dots span,
   .reasoning-summary__chevron,
   .stream-progress__chevron,
+  .video-segment-card,
   .process-collapse-enter-active,
   .process-collapse-leave-active {
     animation: none;
     transition: none;
+  }
+
+  .video-segment-card:hover {
+    transform: none;
   }
 
   .thinking-typewriter {

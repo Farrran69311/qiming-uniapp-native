@@ -42,13 +42,15 @@
         v-loading="courseLoading"
         class="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2 dark:bg-[#1d1d1d]"
       >
-        <div
+        <button
           v-for="course in courseOptions"
           :key="course.courseId"
+          type="button"
           :class="[
             'course-item',
             selectedCourseId === course.courseId ? 'active' : ''
           ]"
+          :aria-pressed="selectedCourseId === course.courseId"
           class="dark:bg-[#252525] dark:border-slate-800"
           @click="selectCourse(course)"
         >
@@ -87,7 +89,7 @@
               >
             </div>
           </div>
-        </div>
+        </button>
         <el-empty
           v-if="courseOptions.length === 0"
           description="暂无课程"
@@ -151,13 +153,17 @@
             >
               <plan-generator
                 :course-id="selectedCourseId"
+                :course-name="currentCourse?.title || ''"
                 @switch-tab="switchTab"
+                @plan-created="handlePlanCreated"
               />
             </el-tab-pane>
             <el-tab-pane label="已生成教案库" name="list" class="h-full">
               <plan-list
                 :course-id="selectedCourseId"
+                :created-plan="createdPlan"
                 @switch-tab="switchTab"
+                @created-plan-consumed="handleCreatedPlanConsumed"
               />
             </el-tab-pane>
           </el-tabs>
@@ -234,6 +240,7 @@ import PlanGenerator from "./components/PlanGenerator.vue";
 import PlanList from "./components/PlanList.vue";
 import LottieAnimation from "@/components/LottieAnimation.vue";
 import EducationAnim from "@/animation/Education.json";
+import type { TeacherPlanCreationHandoff } from "./teacherPlanState";
 import {
   Search,
   Reading,
@@ -249,6 +256,7 @@ defineOptions({
 
 // 标签页控制
 const activeTab = ref("generate");
+const createdPlan = ref<TeacherPlanCreationHandoff | null>(null);
 const appStore = useAppStoreHook();
 const isMobileLayout = computed(() => appStore.getDevice === "mobile");
 const emptyStateAnimationSize = computed(() => {
@@ -306,6 +314,7 @@ const handleCourseSearch = async () => {
 const selectCourse = (course: any) => {
   selectedCourseId.value = course.courseId;
   currentCourse.value = course;
+  createdPlan.value = null;
 };
 
 // 获取初始课程列表
@@ -330,6 +339,29 @@ const switchTab = (tabName: string) => {
   activeTab.value = tabName;
 };
 
+const handlePlanCreated = (creation: TeacherPlanCreationHandoff) => {
+  const course = courseOptions.value.find(
+    item => Number(item.courseId) === creation.courseId
+  );
+  selectedCourseId.value = creation.courseId;
+  currentCourse.value =
+    course ||
+    ({
+      courseId: creation.courseId,
+      title: creation.courseName,
+      userName: currentCourse.value?.userName || ""
+    } as any);
+  createdPlan.value = creation;
+  activeTab.value = "list";
+};
+
+const handleCreatedPlanConsumed = (identity: string) => {
+  const current = createdPlan.value;
+  if (!current) return;
+  const currentIdentity = `${current.courseId}:${current.teacherPlanId}:${current.taskId}`;
+  if (currentIdentity === identity) createdPlan.value = null;
+};
+
 onMounted(() => {
   fetchInitialCourses();
 });
@@ -339,13 +371,22 @@ onMounted(() => {
 .course-item {
   display: flex;
   align-items: center;
+  width: 100%;
   padding: 12px;
   margin-bottom: 8px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   cursor: pointer;
   background-color: #ffffff;
   border: 2px solid transparent;
   border-radius: 16px;
   transition: all 0.2s ease-out;
+
+  &:focus-visible {
+    outline: 2px solid var(--el-color-primary);
+    outline-offset: 2px;
+  }
 
   html.dark & {
     background-color: #252525;

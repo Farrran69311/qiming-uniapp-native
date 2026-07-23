@@ -1526,13 +1526,37 @@ const isLikelySameLesson = (fileName: string, hourTitle: string) => {
 };
 
 const pickPreferredLessonTask = <
-  T extends { fileName: string; status: string }
+  T extends { fileName: string; status: string; hourId?: number }
 >(
   tasks: T[]
 ) => {
+  const statusOrder = [
+    "completed",
+    "processing",
+    "submitted",
+    "pending",
+    "failed",
+    "cancelled"
+  ];
+  const pickByStatus = (candidates: T[]) => {
+    for (const status of statusOrder) {
+      const task = candidates.find(item => item.status === status);
+      if (task) return task;
+    }
+    return candidates[0] || null;
+  };
+
+  const currentHourId = Number(props.currentHourId || 0);
+  const exactHourMatches = currentHourId
+    ? tasks.filter(task => Number(task.hourId || 0) === currentHourId)
+    : [];
+  if (exactHourMatches.length) return pickByStatus(exactHourMatches);
+
+  // 带 hourId 的任务已具备明确归属，不能再通过相似文件名匹配到别的课时。
+  const legacyTasks = tasks.filter(task => Number(task.hourId || 0) <= 0);
   const currentPath = normalizeVideoPath(props.currentHourFileUrl || "");
   const tasksWithPath = currentPath
-    ? tasks.filter(task => {
+    ? legacyTasks.filter(task => {
         const candidate = normalizeVideoPath(
           String((task as T & { filePath?: string }).filePath || "")
         );
@@ -1545,25 +1569,12 @@ const pickPreferredLessonTask = <
       })
     : [];
   const titleMatches = props.currentHourTitle
-    ? tasks.filter(task =>
+    ? legacyTasks.filter(task =>
         isLikelySameLesson(task.fileName || "", props.currentHourTitle || "")
       )
-    : tasks;
+    : legacyTasks;
   const matching = tasksWithPath.length ? tasksWithPath : titleMatches;
-  const statusOrder = [
-    "completed",
-    "processing",
-    "submitted",
-    "pending",
-    "failed",
-    "cancelled"
-  ];
-
-  for (const status of statusOrder) {
-    const task = matching.find(item => item.status === status);
-    if (task) return task;
-  }
-  return matching[0] || null;
+  return pickByStatus(matching);
 };
 
 const parseArrayValue = (value: unknown): unknown[] => {
@@ -1637,6 +1648,9 @@ const mergeAnalysisResults = (
     chapterId: Number(
       moduleResult?.chapterId || full.chapterId || task.chapterId
     ),
+    hourId:
+      Number(moduleResult?.hourId || full.hourId || task.hourId || 0) ||
+      undefined,
     fileName: moduleResult?.fileName || full.fileName || task.fileName,
     createdAt: moduleResult?.createdAt || full.createdAt || task.createdAt,
     completedAt:
@@ -1701,6 +1715,7 @@ const asFrontendTask = (task: VideoAnalysisTask): VideoAnalyzeTask => ({
   message: task.message,
   courseId: Number(task.courseId),
   chapterId: Number(task.chapterId),
+  hourId: Number(task.hourId || 0) || undefined,
   filePath: task.filePath,
   fileName: task.fileName,
   createdAt: task.createdAt,

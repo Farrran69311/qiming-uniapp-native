@@ -22,12 +22,12 @@
         v-else-if="animationList.length === 0"
         class="materials-list empty-state"
       >
-        <el-empty description="暂无可展示的章节动画" />
+        <el-empty description="暂无可展示的动画" />
       </div>
       <div v-else class="materials-list album-grid">
         <div
           v-for="(item, index) in animationList"
-          :key="item.chapterId"
+          :key="item.scopeKey"
           v-motion
           class="animation-card"
           :class="{
@@ -47,12 +47,12 @@
             }
           }"
           @click="openHtmlAnimation(item)"
-          @mouseenter="hoveredChapterId = item.chapterId"
-          @mouseleave="hoveredChapterId = null"
+          @mouseenter="hoveredScopeKey = item.scopeKey"
+          @mouseleave="hoveredScopeKey = null"
         >
           <div class="card-preview">
             <template
-              v-if="item.previewVideoUrl && hoveredChapterId === item.chapterId"
+              v-if="item.previewVideoUrl && hoveredScopeKey === item.scopeKey"
             >
               <video
                 :src="item.previewVideoUrl"
@@ -84,7 +84,12 @@
           </div>
           <!-- 毛玻璃内容层：带平滑渐变 mask -->
           <div class="card-info-glass">
-            <div class="card-title">{{ item.chapterName }}</div>
+            <div v-if="item.scopeType === 'hour'" class="card-context">
+              {{ item.chapterName }} · 课时动画
+            </div>
+            <div class="card-title">
+              {{ item.scopeType === "hour" ? item.hourName : item.chapterName }}
+            </div>
             <div class="card-version">
               {{ item.version ? `Version ${item.version}` : statusText(item) }}
             </div>
@@ -147,6 +152,7 @@
 </template>
 
 <script setup lang="ts">
+import { openPlatformUrl } from "@/utils/platformCapability";
 import { ref, watch } from "vue";
 import CourseHeader from "./CourseHeader.vue";
 import VideoPlay from "~icons/ep/video-play";
@@ -154,24 +160,14 @@ import Close from "~icons/ep/close";
 import ExternalLink from "~icons/ep/link";
 import Loading from "~icons/ep/loading";
 import Camera from "~icons/ep/camera";
+import type { HtmlAnimationDisplayItem } from "./htmlAnimationDisplay";
 
 // Props
 const props = defineProps<{
   visible: boolean;
   currentTheme: string;
   loading: boolean;
-  animationList: Array<{
-    chapterId: number;
-    chapterName: string;
-    version: string;
-    url: string;
-    coverUrl?: string;
-    previewUrl?: string;
-    previewVideoUrl?: string;
-    available?: boolean;
-    message?: string;
-    status?: string;
-  }>;
+  animationList: HtmlAnimationDisplayItem[];
   userAvatar: string;
   userNickname: string;
 }>();
@@ -185,7 +181,7 @@ defineEmits<{
 }>();
 
 // 内部状态
-const hoveredChapterId = ref<number | null>(null);
+const hoveredScopeKey = ref<string | null>(null);
 const htmlAnimPreviewVisible = ref(false);
 const htmlAnimPreviewUrl = ref("");
 const iframeLoading = ref(true);
@@ -231,7 +227,7 @@ const openHtmlAnimation = (item: { url: string }) => {
 // 在新窗口打开
 const openHtmlAnimInNew = () => {
   if (htmlAnimPreviewUrl.value) {
-    window.open(htmlAnimPreviewUrl.value, "_blank");
+    openPlatformUrl(htmlAnimPreviewUrl.value);
   }
 };
 </script>
@@ -440,6 +436,16 @@ const openHtmlAnimInNew = () => {
 
 .animation-card:hover .card-info-glass {
   padding-bottom: 28px;
+}
+
+.card-context {
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--el-text-color-secondary);
+  white-space: nowrap;
 }
 
 .card-title {

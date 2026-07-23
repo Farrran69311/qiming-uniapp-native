@@ -10,9 +10,13 @@
           <!-- 课程分类标题栏 + 新建按钮 -->
           <div
             class="text-sm font-semibold text-gray-700 tracking-normal mb-2 px-3 flex items-center justify-between group/course cursor-pointer"
-            @click="toggleCourse(course)"
           >
-            <div class="flex min-w-0 flex-1 items-center gap-2">
+            <button
+              type="button"
+              class="flex min-w-0 flex-1 items-center gap-2 border-0 bg-transparent p-0 text-left"
+              :aria-expanded="!collapsedCourses.includes(course)"
+              @click="toggleCourse(course)"
+            >
               <el-icon
                 class="text-primary/70 transition-transform duration-300"
                 :class="{ '-rotate-90': collapsedCourses.includes(course) }"
@@ -21,7 +25,7 @@
               </el-icon>
               <el-icon class="text-primary/70"><Reading /></el-icon>
               <span class="min-w-0 flex-1 truncate">{{ course }}</span>
-            </div>
+            </button>
             <div class="flex items-center gap-1">
               <el-tooltip content="新建该课程的辅导会话" placement="right">
                 <el-button
@@ -37,11 +41,12 @@
           <el-collapse-transition>
             <div v-show="!collapsedCourses.includes(course)">
               <transition-group appear name="list" tag="div" class="space-y-1">
-                <div
+                <button
                   v-for="(conv, index) in groupedConversations[course] || []"
                   :key="conv.id"
+                  type="button"
                   :style="{ transitionDelay: `${index * 50}ms` }"
-                  class="relative w-full box-border overflow-hidden px-3 py-3 rounded-xl hover:bg-white cursor-pointer group transition-all duration-200 hover:shadow-sm hover:border-gray-200 border border-transparent"
+                  class="relative w-full box-border overflow-hidden px-3 py-3 rounded-xl bg-transparent text-left hover:bg-white cursor-pointer group transition-all duration-200 hover:shadow-sm hover:border-gray-200 border border-transparent"
                   @click="emit('select-chat', conv)"
                 >
                   <div
@@ -64,7 +69,7 @@
                       只读
                     </span>
                   </div>
-                </div>
+                </button>
               </transition-group>
             </div>
           </el-collapse-transition>
@@ -80,10 +85,11 @@
           <span>历史记录</span>
         </div>
         <div class="space-y-1">
-          <div
+          <button
             v-for="conv in recentHistory"
             :key="'recent-' + conv.id"
-            class="relative w-full box-border overflow-hidden px-3 py-2.5 rounded-xl hover:bg-white cursor-pointer group transition-all duration-200 border border-transparent hover:border-gray-100"
+            type="button"
+            class="relative w-full box-border overflow-hidden px-3 py-2.5 rounded-xl bg-transparent text-left hover:bg-white cursor-pointer group transition-all duration-200 border border-transparent hover:border-gray-100"
             @click="emit('select-chat', conv)"
           >
             <div class="flex items-center justify-between gap-2">
@@ -102,7 +108,7 @@
                 {{ conv.course }}
               </span>
             </div>
-          </div>
+          </button>
         </div>
       </div>
     </div>

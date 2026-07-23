@@ -10,6 +10,16 @@
           "titleNView": false
         }
       }
+    },
+    {
+      "path": "pages/resource-download/index",
+      "style": {
+        "navigationStyle": "default",
+        "navigationBarTitleText": "资源下载",
+        "navigationBarTextStyle": "black",
+        "navigationBarBackgroundColor": "#FFFFFF",
+        "backgroundColor": "#F4F6F8"
+      }
     }
   ],
   "globalStyle": {
