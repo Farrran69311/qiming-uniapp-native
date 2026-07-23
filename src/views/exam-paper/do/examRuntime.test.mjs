@@ -113,3 +113,25 @@ test("answer page keeps server-time countdown and mobile structure wired", async
     );
   });
 });
+
+test("answer page keeps a recoverable entry failure state", async () => {
+  const source = await readFile(
+    new URL("./index.vue", import.meta.url),
+    "utf8"
+  );
+
+  [
+    'const loadError = ref("")',
+    "getExamLoadErrorMessage(error)",
+    'class="exam-load-error"',
+    "retryLoadExam",
+    'router.replace("/student-exam-center/list")'
+  ].forEach(snippet => {
+    assert.equal(
+      source.includes(snippet),
+      true,
+      `missing recoverable entry failure state: ${snippet}`
+    );
+  });
+  assert.doesNotMatch(source, /router\.back\(\)/);
+});
