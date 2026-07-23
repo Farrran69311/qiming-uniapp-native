@@ -250,8 +250,13 @@
 <script lang="ts" setup>
 import { computed, ref, reactive, onMounted, watch } from "vue";
 import { ElMessage } from "element-plus";
-import { getCourseHoursList, generateTeacherPlan } from "@/api/course";
+import {
+  getCourseHoursList,
+  generateTeacherPlan,
+  type GenerateTeacherPlanResult
+} from "@/api/course";
 import { useAppStoreHook } from "@/store/modules/app";
+import type { TeacherPlanCreationHandoff } from "../teacherPlanState";
 import {
   Management,
   Cpu,
@@ -263,14 +268,21 @@ import {
   Box
 } from "@element-plus/icons-vue";
 
-const props = defineProps({
-  courseId: {
-    type: Number,
-    default: null
+const props = withDefaults(
+  defineProps<{
+    courseId?: number | null;
+    courseName?: string;
+  }>(),
+  {
+    courseId: null,
+    courseName: ""
   }
-});
+);
 
-const emit = defineEmits(["switch-tab"]);
+const emit = defineEmits<{
+  (event: "switch-tab", tab: "generate" | "list"): void;
+  (event: "plan-created", creation: TeacherPlanCreationHandoff): void;
+}>();
 const appStore = useAppStoreHook();
 const isMobileLayout = computed(() => appStore.getDevice === "mobile");
 
@@ -288,6 +300,30 @@ const chapterOptions = ref([]);
 
 // 生成成功标志
 const generateSuccess = ref(false);
+
+function hasAuthoritativeTaskIdentity(
+  result: GenerateTeacherPlanResult | null | undefined
+): result is GenerateTeacherPlanResult {
+  return Boolean(
+    result &&
+      Number.isInteger(Number(result.teacherPlanId)) &&
+      Number(result.teacherPlanId) > 0 &&
+      String(result.taskId || "").trim()
+  );
+}
+
+function getRequestErrorMessage(error: unknown, fallback: string): string {
+  const value = error as {
+    response?: { data?: { msg?: string; message?: string } };
+    message?: string;
+  };
+  return (
+    value?.response?.data?.msg ||
+    value?.response?.data?.message ||
+    value?.message ||
+    fallback
+  );
+}
 
 // 获取章节列表
 const fetchChapters = async (courseId: number) => {
@@ -321,6 +357,7 @@ watch(
   () => props.courseId,
   newId => {
     form.chapterId = null;
+    generateSuccess.value = false;
     if (newId) {
       fetchChapters(newId);
     } else {
@@ -338,21 +375,42 @@ const generatePlan = async () => {
   }
 
   loading.value = true;
+  const requestedCourseId = props.courseId;
+  const requestedCourseName = props.courseName || `课程 ${requestedCourseId}`;
+  const requestedChapterId = Number(form.chapterId);
+  const requestedChapterName =
+    chapterOptions.value.find(
+      chapter => Number(chapter.chapterId) === requestedChapterId
+    )?.name || `章节 ${requestedChapterId}`;
   try {
     const res = await generateTeacherPlan({
-      course_id: props.courseId,
-      chapter_id: form.chapterId
+      course_id: requestedCourseId,
+      chapter_id: requestedChapterId
     });
 
-    if (res && res.code === 200) {
-      generateSuccess.value = true;
-      ElMessage.success("已成功提交 AI 生成请求");
-    } else {
-      ElMessage.error(res.msg || "提交生成请求失败");
+    if (res?.code !== 200) {
+      throw new Error(res?.msg || "提交生成请求失败");
     }
+    if (!hasAuthoritativeTaskIdentity(res.data)) {
+      throw new Error("创建响应缺少有效的教案任务身份，请刷新后重试");
+    }
+
+    const creation: TeacherPlanCreationHandoff = {
+      ...res.data,
+      teacherPlanId: Number(res.data.teacherPlanId),
+      taskId: String(res.data.taskId).trim(),
+      courseId: requestedCourseId,
+      chapterId: requestedChapterId,
+      courseName: requestedCourseName,
+      chapterName: requestedChapterName,
+      createdAt: new Date().toISOString()
+    };
+    generateSuccess.value = true;
+    emit("plan-created", creation);
+    ElMessage.success("已提交教案任务，正在打开本次生成进度");
   } catch (error) {
     console.error("生成教案失败:", error);
-    ElMessage.error("网络异常，请稍后再试");
+    ElMessage.error(getRequestErrorMessage(error, "网络异常，请稍后再试"));
   } finally {
     loading.value = false;
   }

@@ -41,13 +41,43 @@
               clearable
               :disabled="!searchForm.courseId"
               class="lab-search-form__control"
-              @change="handleSearch"
+              @change="handleChapterChange"
             >
               <el-option
                 v-for="chapter in chapterList"
                 :key="chapter.chapterId"
                 :label="chapter.name"
                 :value="chapter.chapterId"
+              />
+            </el-select>
+          </el-form-item>
+
+          <el-form-item label="生成范围">
+            <el-radio-group
+              v-model="searchForm.scopeType"
+              class="lab-scope-segmented"
+              @change="handleScopeChange"
+            >
+              <el-radio-button value="chapter">整章</el-radio-button>
+              <el-radio-button value="hour">单课时</el-radio-button>
+            </el-radio-group>
+          </el-form-item>
+
+          <el-form-item v-if="searchForm.scopeType === 'hour'" label="选择课时">
+            <el-select
+              v-model="searchForm.hourId"
+              placeholder="请选择课时"
+              filterable
+              clearable
+              :disabled="!searchForm.chapterId"
+              class="lab-search-form__control"
+              @change="handleSearch"
+            >
+              <el-option
+                v-for="hour in hourList"
+                :key="hour.hourId"
+                :label="hour.title"
+                :value="hour.hourId"
               />
             </el-select>
           </el-form-item>
@@ -69,7 +99,7 @@
     <el-card v-if="hasSelection" shadow="never" class="lab-panel focus-panel">
       <div class="flex justify-between items-center mb-4">
         <span class="font-bold text-base"
-          >当前章节：{{ selectedChapterTitle || "已选择章节" }} ({{
+          >当前范围：{{ currentScopeTitle }} ({{
             selectedCourseTitle || "已选择课程"
           }})</span
         >
@@ -92,6 +122,16 @@
             {{ currentAnimationData?.chapterId ?? searchForm.chapterId }}
           </strong>
         </div>
+        <div class="focus-card">
+          <span class="focus-card__label">范围</span>
+          <strong class="focus-card__value focus-card__value--compact">
+            {{
+              searchForm.scopeType === "hour"
+                ? `课时 ${searchForm.hourId}`
+                : "整章"
+            }}
+          </strong>
+        </div>
         <div class="focus-card focus-card--wide">
           <span class="focus-card__label">任务概览</span>
           <strong class="focus-card__value focus-card__value--compact">
@@ -100,10 +140,21 @@
         </div>
       </div>
 
+      <el-alert
+        :title="readinessTitle"
+        :description="readinessDescription"
+        :type="readinessType"
+        :closable="false"
+        show-icon
+        class="scope-readiness"
+        aria-live="polite"
+      />
+
       <div class="focus-actions">
         <el-button
           type="primary"
           :loading="generateLoading"
+          :disabled="!canGenerate"
           @click="handleGenerate"
         >
           <el-icon class="mr-1"><VideoPlay /></el-icon>
@@ -239,12 +290,10 @@
               </div>
             </div>
 
-            <div
-              v-if="row.status === 'failed' && row.errorMessage"
-              class="task-error"
-            >
+            <div v-if="row.status === 'failed'" class="task-error">
               <span class="task-error__label">失败原因</span>
-              <span>{{ row.errorMessage }}</span>
+              <span>{{ row.errorMessage || row.errorCode || "生成失败" }}</span>
+              <small v-if="row.requestId">请求 {{ row.requestId }}</small>
             </div>
           </div>
 
@@ -338,11 +387,18 @@ import { Refresh, VideoPlay, Setting } from "@element-plus/icons-vue";
 import { getCourseList, getCourseHoursList } from "@/api/course";
 import { usePageResponsive } from "@/utils/pageResponsive";
 import {
+  createHtmlAnimationIdempotencyKey,
   getHtmlAnimationList,
+  getHtmlAnimationReadiness,
   generateHtmlAnimation,
+  htmlAnimationScopeKey,
+  matchesHtmlAnimationScope,
   setHtmlAnimationDisplay,
   forceSyncHtmlAnimation,
   normalizeHtmlAnimationTask,
+  type HtmlAnimationReadinessResult,
+  type HtmlAnimationScope,
+  type HtmlAnimationScopeType,
   type HtmlAnimationTask,
   type HtmlAnimationListResult
 } from "@/api/htmlAnimation";
@@ -359,6 +415,10 @@ interface CourseItem {
 interface ChapterItem {
   chapterId: number;
   name: string;
+  hourList: Array<{
+    hourId: number;
+    title: string;
+  }>;
 }
 
 const loading = ref(false);
@@ -371,6 +431,11 @@ const courseList = ref<CourseItem[]>([]);
 const chapterList = ref<ChapterItem[]>([]);
 const currentAnimationData = ref<HtmlAnimationListResult | null>(null);
 const taskList = ref<HtmlAnimationTask[]>([]);
+const readiness = ref<HtmlAnimationReadinessResult | null>(null);
+const readinessLoading = ref(false);
+const readinessError = ref("");
+const generationIntentKeys = new Map<string, string>();
+let scopeRequestSeq = 0;
 const isTaskProcessing = (task: HtmlAnimationTask) =>
   ["pending", "submitted", "processing"].includes(task.status);
 const isTaskCompleted = (task: HtmlAnimationTask) =>
@@ -395,9 +460,16 @@ const completedTasks = computed(() =>
   taskList.value.filter(t => isTaskCompleted(t) && t.version > 0)
 );
 
-const searchForm = reactive({
+const searchForm = reactive<{
+  courseId: number | null;
+  chapterId: number | null;
+  scopeType: HtmlAnimationScopeType;
+  hourId: number | null;
+}>({
   courseId: null as number | null,
-  chapterId: null as number | null
+  chapterId: null as number | null,
+  scopeType: "chapter",
+  hourId: null
 });
 
 const showSetVersionDialog = ref(false);
@@ -409,8 +481,36 @@ const setVersionForm = reactive({
 const previewDialogVisible = ref(false);
 const currentPreviewTask = ref<HtmlAnimationTask | null>(null);
 
-const hasSelection = computed(() =>
-  Boolean(searchForm.courseId && searchForm.chapterId)
+const currentScope = computed<HtmlAnimationScope | null>(() => {
+  if (!searchForm.courseId || !searchForm.chapterId) return null;
+  if (searchForm.scopeType === "hour") {
+    if (!searchForm.hourId) return null;
+    return {
+      courseId: searchForm.courseId,
+      chapterId: searchForm.chapterId,
+      scopeType: "hour",
+      hourId: searchForm.hourId
+    };
+  }
+  return {
+    courseId: searchForm.courseId,
+    chapterId: searchForm.chapterId,
+    scopeType: "chapter"
+  };
+});
+
+const currentScopeKey = computed(() =>
+  currentScope.value ? htmlAnimationScopeKey(currentScope.value) : ""
+);
+
+const hasSelection = computed(() => Boolean(currentScope.value));
+
+const selectedChapter = computed(() =>
+  chapterList.value.find(chapter => chapter.chapterId === searchForm.chapterId)
+);
+
+const hourList = computed(
+  () => selectedChapter.value?.hourList.filter(hour => hour.hourId > 0) || []
 );
 
 const selectedCourseTitle = computed(
@@ -425,6 +525,52 @@ const selectedChapterTitle = computed(
       chapter => chapter.chapterId === searchForm.chapterId
     )?.name || ""
 );
+
+const currentScopeTitle = computed(() => {
+  if (searchForm.scopeType === "chapter") {
+    return selectedChapterTitle.value || "已选择章节";
+  }
+  const hourTitle = hourList.value.find(
+    hour => hour.hourId === searchForm.hourId
+  )?.title;
+  return `${selectedChapterTitle.value} / ${hourTitle || "已选择课时"}`;
+});
+
+const canGenerate = computed(
+  () =>
+    Boolean(currentScope.value) &&
+    readiness.value?.ready === true &&
+    !readinessLoading.value &&
+    !taskList.value.some(isTaskProcessing)
+);
+
+const readinessTitle = computed(() => {
+  if (readinessLoading.value) return "正在检查内容就绪度";
+  if (readinessError.value) return "暂时无法检查内容就绪度";
+  if (readiness.value?.ready) return "当前范围可以生成动画";
+  const titles: Record<string, string> = {
+    CONTENT_NOT_CURATED: "课程内容尚未完成梳理",
+    CONTENT_MISSING: "当前范围缺少可生成内容",
+    SEARCH_UNAVAILABLE: "内容检索服务暂不可用"
+  };
+  return titles[readiness.value?.code || ""] || "当前范围暂不可生成";
+});
+
+const readinessDescription = computed(() => {
+  if (readinessLoading.value) return "";
+  if (readinessError.value) return readinessError.value;
+  if (!readiness.value) return "刷新后重试。";
+  return readiness.value.message;
+});
+
+const readinessType = computed<"success" | "warning" | "error" | "info">(() => {
+  if (readiness.value?.ready) return "success";
+  if (readiness.value?.code === "CONTENT_NOT_CURATED") return "warning";
+  if (readinessError.value || readiness.value?.code === "SEARCH_UNAVAILABLE") {
+    return "error";
+  }
+  return "info";
+});
 
 const currentDisplayVersionText = computed(() => {
   if (!currentAnimationData.value?.displayVersionResolved) {
@@ -490,12 +636,21 @@ const getRequestErrorMessage = (error: any, fallback: string) => {
       : "接口不存在(404)，请确认当前环境已部署HTML动画接口";
   }
 
-  return (
+  const message =
     error?.response?.data?.msg ||
     error?.response?.data?.message ||
     error?.message ||
-    fallback
-  );
+    fallback;
+  const responseData = error?.response?.data;
+  const requestId = String(
+    responseData?.request_id ||
+      responseData?.requestId ||
+      responseData?.data?.request_id ||
+      responseData?.data?.requestId ||
+      error?.response?.headers?.["x-request-id"] ||
+      ""
+  ).trim();
+  return requestId ? `${message}（请求 ${requestId}）` : message;
 };
 
 const isDisplayVersion = (task: HtmlAnimationTask) => {
@@ -530,9 +685,9 @@ const loadCourseList = async () => {
 
 const handleCourseChange = async (courseId: number | null) => {
   searchForm.chapterId = null;
+  searchForm.hourId = null;
   chapterList.value = [];
-  currentAnimationData.value = null;
-  taskList.value = [];
+  clearScopeData();
 
   if (!courseId) return;
 
@@ -540,7 +695,11 @@ const handleCourseChange = async (courseId: number | null) => {
     const res = await getCourseHoursList({ courseId });
     chapterList.value = res.data.courseChapters.map(c => ({
       chapterId: c.chapterId,
-      name: c.name
+      name: c.name,
+      hourList: (c.hourList || []).map(hour => ({
+        hourId: Number(hour.hourId),
+        title: hour.title || `课时 ${hour.hourId}`
+      }))
     }));
   } catch (error) {
     console.error("获取章节列表失败", error);
@@ -548,50 +707,142 @@ const handleCourseChange = async (courseId: number | null) => {
   }
 };
 
+const clearScopeData = () => {
+  scopeRequestSeq += 1;
+  currentAnimationData.value = null;
+  taskList.value = [];
+  readiness.value = null;
+  readinessError.value = "";
+  readinessLoading.value = false;
+  loading.value = false;
+};
+
+const handleChapterChange = () => {
+  searchForm.hourId = null;
+  clearScopeData();
+  if (searchForm.chapterId && searchForm.scopeType === "chapter") {
+    handleSearch();
+  }
+};
+
+const handleScopeChange = () => {
+  searchForm.hourId = null;
+  clearScopeData();
+  if (searchForm.scopeType === "chapter" && searchForm.chapterId) {
+    handleSearch();
+  }
+};
+
 const handleSearch = async () => {
-  if (!searchForm.courseId || !searchForm.chapterId) {
-    currentAnimationData.value = null;
-    taskList.value = [];
+  const scope = currentScope.value;
+  if (!scope) {
+    clearScopeData();
     return;
   }
 
+  const requestScopeKey = htmlAnimationScopeKey(scope);
+  const requestId = ++scopeRequestSeq;
   loading.value = true;
-  try {
-    const res = await getHtmlAnimationList({
-      courseId: searchForm.courseId,
-      chapterId: searchForm.chapterId
-    });
-    currentAnimationData.value = res.data;
-    taskList.value = (res.data.tasks || []).map(normalizeHtmlAnimationTask);
-  } catch (error) {
-    console.error("获取动画任务列表失败", error);
-    ElMessage.error(getRequestErrorMessage(error, "获取动画任务列表失败"));
-    currentAnimationData.value = null;
-    taskList.value = [];
-  } finally {
+  readinessLoading.value = true;
+  readiness.value = null;
+  readinessError.value = "";
+
+  await Promise.all([
+    getHtmlAnimationList(scope)
+      .then(res => {
+        if (
+          requestId !== scopeRequestSeq ||
+          requestScopeKey !== currentScopeKey.value
+        ) {
+          return;
+        }
+        if (!matchesHtmlAnimationScope(scope, res.data)) {
+          currentAnimationData.value = null;
+          taskList.value = [];
+          ElMessage.error(
+            "动画列表返回的课程、章节或课时与当前选择不一致，已停止展示"
+          );
+          return;
+        }
+        currentAnimationData.value = res.data;
+        taskList.value = (res.data.tasks || []).map(normalizeHtmlAnimationTask);
+      })
+      .catch(error => {
+        if (requestId !== scopeRequestSeq) return;
+        console.error("获取动画任务列表失败", error);
+        ElMessage.error(getRequestErrorMessage(error, "获取动画任务列表失败"));
+        currentAnimationData.value = null;
+        taskList.value = [];
+      }),
+    getHtmlAnimationReadiness(scope)
+      .then(res => {
+        if (
+          requestId !== scopeRequestSeq ||
+          requestScopeKey !== currentScopeKey.value
+        ) {
+          return;
+        }
+        if (!matchesHtmlAnimationScope(scope, res.data)) {
+          readiness.value = null;
+          readinessError.value =
+            "内容就绪度返回的课程、章节或课时与当前选择不一致，已停止生成";
+          return;
+        }
+        readiness.value = res.data;
+      })
+      .catch((error: any) => {
+        if (requestId !== scopeRequestSeq) return;
+        const code =
+          error?.response?.data?.data?.code ||
+          error?.response?.data?.code ||
+          "";
+        const message = getRequestErrorMessage(error, "内容就绪度检查失败");
+        readinessError.value = code ? `${message}（${code}）` : message;
+      })
+  ]);
+
+  if (requestId === scopeRequestSeq) {
     loading.value = false;
+    readinessLoading.value = false;
   }
 };
 
 const resetSearch = () => {
   searchForm.courseId = null;
   searchForm.chapterId = null;
+  searchForm.scopeType = "chapter";
+  searchForm.hourId = null;
   chapterList.value = [];
-  currentAnimationData.value = null;
-  taskList.value = [];
+  clearScopeData();
 };
 
 const handleGenerate = async () => {
-  if (!searchForm.courseId || !searchForm.chapterId) return;
+  const scope = currentScope.value;
+  if (!canGenerate.value || !scope) return;
+  const scopeKey = htmlAnimationScopeKey(scope);
+  const idempotencyKey =
+    generationIntentKeys.get(scopeKey) ||
+    createHtmlAnimationIdempotencyKey(scope);
+  generationIntentKeys.set(scopeKey, idempotencyKey);
 
   generateLoading.value = true;
   try {
     const res = await generateHtmlAnimation({
-      courseId: searchForm.courseId,
-      chapterId: searchForm.chapterId
+      ...scope,
+      idempotencyKey
     });
-    ElMessage.success(res.data.message || "生成任务已启动");
-    setTimeout(() => handleSearch(), 1000);
+    if (!matchesHtmlAnimationScope(scope, res.data)) {
+      throw new Error(
+        "生成接口返回的课程、章节或课时与当前选择不一致，已停止跟踪任务"
+      );
+    }
+    generationIntentKeys.delete(scopeKey);
+    ElMessage.success(
+      res.data.reused
+        ? `已继续跟踪现有生成任务（任务 ${res.data.taskId}）`
+        : `${res.data.message || "生成任务已启动"}（任务 ${res.data.taskId}）`
+    );
+    if (scopeKey === currentScopeKey.value) await handleSearch();
   } catch (error) {
     console.error("生成动画失败", error);
     ElMessage.error(getRequestErrorMessage(error, "生成动画失败"));
@@ -620,12 +871,12 @@ const handleForceSync = async () => {
 };
 
 const handleSetVersion = async (version: string) => {
-  if (!searchForm.courseId || !searchForm.chapterId) return;
+  const scope = currentScope.value;
+  if (!scope) return;
 
   try {
     await setHtmlAnimationDisplay({
-      courseId: searchForm.courseId,
-      chapterId: searchForm.chapterId,
+      ...scope,
       version
     });
     ElMessage.success("设置成功");
@@ -637,7 +888,8 @@ const handleSetVersion = async (version: string) => {
 };
 
 const confirmSetVersion = async () => {
-  if (!searchForm.courseId || !searchForm.chapterId) return;
+  const scope = currentScope.value;
+  if (!scope) return;
 
   const version =
     setVersionForm.versionType === "latest" ? "latest" : setVersionForm.version;
@@ -650,8 +902,7 @@ const confirmSetVersion = async () => {
   setVersionLoading.value = true;
   try {
     await setHtmlAnimationDisplay({
-      courseId: searchForm.courseId,
-      chapterId: searchForm.chapterId,
+      ...scope,
       version
     });
     ElMessage.success("设置成功");
@@ -1180,6 +1431,23 @@ onMounted(() => {
   margin-left: 0;
 }
 
+.lab-scope-segmented {
+  display: flex;
+  width: 100%;
+
+  :deep(.el-radio-button) {
+    flex: 1;
+  }
+
+  :deep(.el-radio-button__inner) {
+    width: 100%;
+  }
+}
+
+.scope-readiness {
+  margin-top: 14px;
+}
+
 :deep(.el-input__wrapper),
 :deep(.el-select__wrapper) {
   border-radius: 14px;
@@ -1270,7 +1538,7 @@ onMounted(() => {
     }
 
     .focus-grid {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
     }
 
     .task-grid {

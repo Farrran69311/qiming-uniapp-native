@@ -3,6 +3,8 @@ import { http } from "@/utils/http";
 export interface VideoAnalyzeParams {
   courseId: number;
   chapterId?: number;
+  /** 新任务必须绑定真实课时；仅旧章节级任务允许省略。 */
+  hourId?: number;
   filePath: string;
   fileName?: string;
 }
@@ -23,6 +25,7 @@ export interface VideoAnalysisTask {
   fileName: string;
   courseId: number;
   chapterId: number;
+  hourId?: number;
   filePath?: string;
   createdAt: string;
   completedAt: string;
@@ -41,6 +44,7 @@ export interface VideoAnalysisStatusResult {
   message: string;
   courseId: number;
   chapterId: number;
+  hourId?: number;
   fileName: string;
   transcriptionText: string;
   summary: string;

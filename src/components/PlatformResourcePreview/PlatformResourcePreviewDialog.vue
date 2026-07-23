@@ -34,6 +34,28 @@ const resolved = computed(() => resolvePlatformPreviewSource(props.resource));
 const formatLabel = computed(() =>
   platformPreviewKindLabel(resolved.value.kind)
 );
+const formatMediaTime = (value?: number) => {
+  const totalSeconds = Math.max(0, Math.floor(Number(value || 0) / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = String(totalSeconds % 60).padStart(2, "0");
+  return hours
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${seconds}`
+    : `${minutes}:${seconds}`;
+};
+const previewLabel = computed(() => {
+  const startMs = Number(props.resource?.segmentStartMs);
+  const endMs = Number(props.resource?.segmentEndMs);
+  if (
+    resolved.value.kind !== "video" ||
+    !Number.isFinite(startMs) ||
+    !Number.isFinite(endMs) ||
+    endMs <= startMs
+  ) {
+    return formatLabel.value;
+  }
+  return `${formatLabel.value} · 片段 ${formatMediaTime(startMs)} - ${formatMediaTime(endMs)} · 完整视频`;
+});
 const canDownload = computed(() => Boolean(resolved.value.downloadUrl));
 const fontScale = ref(1);
 const fontPercent = computed(() => Math.round(fontScale.value * 100));
@@ -88,7 +110,7 @@ async function downloadResource() {
             <h2 :id="titleId" :class="titleClass">
               {{ resolved.title }}
             </h2>
-            <p>{{ formatLabel }}</p>
+            <p>{{ previewLabel }}</p>
           </div>
         </div>
         <div class="platform-resource-preview-dialog__actions">
@@ -155,7 +177,9 @@ async function downloadResource() {
 
 <style>
 .platform-resource-preview-dialog.el-dialog {
+  display: flex;
   height: min(860px, 90vh);
+  flex-direction: column;
   padding: 0;
   overflow: hidden;
   border-radius: 8px;
@@ -163,12 +187,15 @@ async function downloadResource() {
 }
 
 .platform-resource-preview-dialog .el-dialog__header {
+  flex: 0 0 auto;
   padding: 0;
   margin: 0;
 }
 
 .platform-resource-preview-dialog .el-dialog__body {
-  height: calc(100% - 68px);
+  min-height: 0;
+  flex: 1 1 auto;
+  height: auto;
   padding: 0;
   overflow: hidden;
 }
@@ -208,10 +235,14 @@ async function downloadResource() {
 }
 
 .platform-resource-preview-dialog__heading p {
+  max-width: min(760px, 68vw);
   margin: 2px 0 0;
+  overflow: hidden;
   color: #8390a2;
   font-size: 12px;
   line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .platform-resource-preview-dialog__file-icon {
@@ -301,12 +332,42 @@ async function downloadResource() {
     border-radius: 0;
   }
 
-  .platform-resource-preview-dialog .el-dialog__body {
-    height: calc(100dvh - 68px);
+  .platform-resource-preview-dialog__header {
+    flex-direction: column;
+    gap: 10px;
+    align-items: stretch;
+    padding: 10px 12px 12px;
+  }
+
+  .platform-resource-preview-dialog__heading {
+    width: 100%;
   }
 
   .platform-resource-preview-dialog__heading h2 {
-    max-width: 38vw;
+    max-width: 100%;
+  }
+
+  .platform-resource-preview-dialog__heading p {
+    max-width: 100%;
+  }
+
+  .platform-resource-preview-dialog__actions {
+    width: 100%;
+    min-width: 0;
+    justify-content: flex-end;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .platform-resource-preview-dialog__actions::-webkit-scrollbar {
+    display: none;
+  }
+
+  .platform-resource-preview-dialog__tool-button,
+  .platform-resource-preview-dialog__font-reset {
+    width: 44px;
+    height: 44px;
   }
 }
 </style>

@@ -163,7 +163,7 @@ import {
   getUserCourseHomeworkList,
   getUserCourseExamList
 } from "@/api/frontend/work";
-import { getHtmlAnimationDisplay } from "@/api/htmlAnimation";
+import { loadHtmlAnimationDisplayItems } from "./course-detail/htmlAnimationDisplay";
 
 // 导入资源
 import avatarDefault from "@/assets/course-detail-images/avatar-default.png";
@@ -374,75 +374,10 @@ const fetchHtmlAnimations = async () => {
 
   try {
     const chapters = courseDetail.value.courseChapterList || [];
-    const results = await Promise.all(
-      chapters.map(async (ch: any) => {
-        try {
-          const response: any = await getHtmlAnimationDisplay({
-            courseId: courseDetail.value.courseId,
-            chapterId: ch.chapterId
-          });
-          const data = response?.data || response;
-          if (data?.url) {
-            return {
-              chapterId: ch.chapterId,
-              chapterName: ch.name || ch.chapterName,
-              version: data.version,
-              url: data.url,
-              coverUrl: data.coverUrl || data.previewUrl,
-              previewUrl: data.previewUrl || data.coverUrl,
-              previewVideoUrl: data.previewVideoUrl,
-              available: data.available !== false,
-              message: data.message,
-              status: "ready"
-            };
-          }
-          if (data?.available === false) {
-            return {
-              chapterId: ch.chapterId,
-              chapterName: ch.name || ch.chapterName,
-              version: "",
-              url: "",
-              available: false,
-              message: data.message || "暂无可用HTML动画版本",
-              status: "unavailable"
-            };
-          }
-        } catch (e) {
-          const status = e?.response?.status;
-          const message =
-            e?.response?.data?.message ||
-            e?.response?.data?.msg ||
-            e?.message ||
-            "";
-          if (status === 404) {
-            return {
-              chapterId: ch.chapterId,
-              chapterName: ch.name || ch.chapterName,
-              version: "",
-              url: "",
-              available: false,
-              message: message || "暂无可展示动画",
-              status:
-                message.includes("对象不存在") || message.includes("版本对象")
-                  ? "missing"
-                  : "unavailable"
-            };
-          }
-          return null;
-        }
-        return null;
-      })
+    htmlAnimationList.value = await loadHtmlAnimationDisplayItems(
+      courseDetail.value.courseId,
+      chapters
     );
-
-    const animationData = results.filter(item => item !== null);
-    const uniqueMap = new Map();
-    animationData.forEach(item => {
-      if (!uniqueMap.has(item.chapterId)) {
-        uniqueMap.set(item.chapterId, item);
-      }
-    });
-
-    htmlAnimationList.value = Array.from(uniqueMap.values());
   } finally {
     htmlAnimationLoading.value = false;
   }

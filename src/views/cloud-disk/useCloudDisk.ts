@@ -1,6 +1,8 @@
 import { computed, onMounted, ref } from "vue";
 import { ElMessage } from "element-plus";
 import { getFileList, uploadFile } from "@/api/user";
+import { downloadPlatformResource } from "@/components/PlatformResourcePreview/resource-preview";
+import { copyPlatformText, openPlatformUrl } from "@/utils/platformCapability";
 import {
   getCloudDiskErrorMessage,
   normalizeCloudDiskPage,
@@ -111,24 +113,27 @@ export const useCloudDisk = () => {
       ElMessage.warning("文件地址无效或使用了不受支持的协议");
       return;
     }
-    window.open(safeUrl, "_blank", "noopener,noreferrer");
+    if (!openPlatformUrl(safeUrl).opened) {
+      ElMessage.warning("当前环境无法打开该文件");
+    }
   };
 
-  const downloadCloudFile = (file: CloudDiskFile) => {
+  const downloadCloudFile = async (file: CloudDiskFile) => {
     const safeUrl = getSafeFileUrl(file);
     if (!safeUrl) {
       ElMessage.warning("下载地址无效或使用了不受支持的协议");
       return;
     }
 
-    const link = document.createElement("a");
-    link.href = safeUrl;
-    link.download = file.name;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+    try {
+      await downloadPlatformResource({
+        title: file.name,
+        url: safeUrl,
+        downloadUrl: safeUrl
+      });
+    } catch {
+      ElMessage.error("文件下载失败，请稍后重试");
+    }
   };
 
   const shareCloudFile = async (file: CloudDiskFile) => {
@@ -137,16 +142,9 @@ export const useCloudDisk = () => {
       ElMessage.warning("分享地址无效或使用了不受支持的协议");
       return;
     }
-    if (!navigator.clipboard?.writeText) {
-      ElMessage.warning("当前环境不支持复制分享链接");
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(safeUrl);
+    if (await copyPlatformText(safeUrl)) {
       ElMessage.success("分享链接已复制");
-    } catch (error) {
-      console.error("复制云盘文件链接失败", error);
+    } else {
       ElMessage.error("分享链接复制失败");
     }
   };

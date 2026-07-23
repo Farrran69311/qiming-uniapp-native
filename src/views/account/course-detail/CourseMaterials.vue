@@ -58,6 +58,8 @@
 <script setup lang="ts">
 import CourseHeader from "./CourseHeader.vue";
 import logo from "@/assets/iconss/document-add-svgrepo-com.svg?url";
+import { ElMessage } from "element-plus";
+import { openPlatformUrl } from "@/utils/platformCapability";
 
 // Props
 const props = defineProps<{
@@ -91,7 +93,9 @@ const getMaterialTypeName = (type: string) => {
 // 查看课程资料
 const viewMaterial = (material: any) => {
   if (material && material.fileUrl) {
-    window.open(material.fileUrl, "_blank");
+    if (!openPlatformUrl(material.fileUrl).opened) {
+      ElMessage.warning("当前环境无法打开该资料");
+    }
   }
 };
 </script>
