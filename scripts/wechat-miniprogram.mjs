@@ -1480,6 +1480,9 @@ async function runH5Smoke(options) {
             const text = wordmark?.textContent?.trim() || "";
             const acceptedWordmark =
               text.toLowerCase() === "intelledu" || text === "启明智教";
+            const wordmarkFits = Boolean(
+              wordmark && wordmark.scrollWidth <= wordmark.clientWidth + 1
+            );
             return {
               text,
               logoVisible: Boolean(logoRect && logoRect.width > 1 && logoRect.height > 1),
@@ -1495,7 +1498,7 @@ async function runH5Smoke(options) {
                 acceptedWordmark &&
                   wordmarkRect &&
                   wordmarkRect.width >= 96 &&
-                  style?.textOverflow !== "ellipsis"
+                  (style?.textOverflow !== "ellipsis" || wordmarkFits)
               ),
               logoRect: logoRect
                 ? {
