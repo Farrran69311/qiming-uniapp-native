@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from "vue";
+import { openPlatformUrl } from "@/utils/platformCapability";
 import {
   Refresh,
   FullScreen,
@@ -81,7 +82,7 @@ function refresh() {
 }
 
 function openFull() {
-  window.open(humanBaseUrl.value, "_blank", "noopener");
+  openPlatformUrl(humanBaseUrl.value);
 }
 
 function handleVoiceChange(event: Event) {

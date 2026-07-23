@@ -135,6 +135,56 @@ export interface ApiResponse<T = any> {
   data: T;
 }
 
+export type TeacherPlanStatus =
+  | "pending"
+  | "processing"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "timed_out"
+  | "unknown";
+
+export type TeacherPlanAvailability =
+  | "synced"
+  | "stale"
+  | "unavailable"
+  | "not_found";
+
+export interface TeacherPlanTaskState {
+  taskId: string;
+  status: TeacherPlanStatus;
+  progressPercent: number;
+  stage: string;
+  message: string;
+  errorCode: string;
+  retryable: boolean;
+  availability: TeacherPlanAvailability;
+}
+
+export interface GenerateTeacherPlanResult extends TeacherPlanTaskState {
+  teacherPlanId: number;
+  requestId: string;
+}
+
+export interface TeacherPlan extends TeacherPlanTaskState {
+  teacherPlanId: number;
+  courseId: number;
+  chapterId: number;
+  courseName: string;
+  chapterName: string;
+  downloadUrl: string;
+  updatedAt: string;
+  createdAt: string;
+}
+
+export interface TeacherPlanProgress extends TeacherPlanTaskState {
+  /** 旧版兼容枚举：0 不可用、1 非终态、2 完成、3 失败终态。 */
+  progress: number;
+  requestId: string;
+  updatedAt: string;
+  downloadUrl: string;
+}
+
 export type CourseRebuildOperationStatus =
   | "queued"
   | "running"
@@ -445,7 +495,7 @@ export const generateTeacherPlan = (data: {
   course_id: number;
   chapter_id: number;
 }) => {
-  return http.request<ApiResponse>(
+  return http.request<ApiResponse<GenerateTeacherPlanResult>>(
     "post",
     "/edu/backend/v1/course/generate/teacher/plan",
     { data }
@@ -498,17 +548,12 @@ export const getCourseStats = (params?: {
 export const getTeacherPlanList = (params: {
   pageNum: number;
   pageSize?: number;
+  courseId?: number;
 }) => {
   return http.request<
     ApiResponse<{
       total: number;
-      teacherPlanList: Array<{
-        teacherPlanId: number;
-        courseId: number;
-        chapterId: number;
-        courseName: string;
-        chapterName: string;
-      }>;
+      teacherPlanList: TeacherPlan[];
     }>
   >("get", "/edu/backend/v1/course/teacher/plan/list", { params });
 };
@@ -517,11 +562,13 @@ export const getTeacherPlanList = (params: {
  * 查看教案生成进度
  * @param params 包含教案ID的参数对象
  */
-export const getTeacherPlanProgress = (params: { teacherPlanId: number }) => {
-  return http.request<
-    ApiResponse<{
-      progress: number;
-      downloadUrl?: string;
-    }>
-  >("get", "/edu/backend/v1/course/teacher/plan/progress", { params });
+export const getTeacherPlanProgress = (
+  params: { teacherPlanId: number },
+  signal?: AbortSignal
+) => {
+  return http.request<ApiResponse<TeacherPlanProgress>>(
+    "get",
+    "/edu/backend/v1/course/teacher/plan/progress",
+    { params, signal }
+  );
 };

@@ -777,6 +777,8 @@ import CourseCard from "./components/CourseCard.vue";
 import CourseStats from "./components/CourseStats.vue";
 import BulkCourseUploadDialog from "./components/BulkCourseUploadDialog.vue";
 import { FolderOpened, Plus, Loading, Search } from "@element-plus/icons-vue";
+import { openPlatformUrl } from "@/utils/platformCapability";
+import { downloadPlatformResource } from "@/components/PlatformResourcePreview/resource-preview";
 
 const appStore = useAppStoreHook();
 const router = useRouter();
@@ -1394,13 +1396,23 @@ const viewAttrs = async course => {
 // 预览资源
 const previewResource = (url: string) => {
   if (!url) return;
-  window.open(url, "_blank");
+  if (!openPlatformUrl(url).opened) {
+    ElMessage.warning("当前环境无法打开该资源");
+  }
 };
 
 // 下载附件
-const downloadAttachment = attachment => {
+const downloadAttachment = async attachment => {
   if (attachment.fileUrl) {
-    window.open(attachment.fileUrl);
+    try {
+      await downloadPlatformResource({
+        title: attachment.fileName || attachment.name || "课程附件",
+        url: attachment.fileUrl,
+        downloadUrl: attachment.fileUrl
+      });
+    } catch {
+      ElMessage.error("附件下载失败，请稍后重试");
+    }
   } else {
     ElMessage.warning("无效的附件链接");
   }

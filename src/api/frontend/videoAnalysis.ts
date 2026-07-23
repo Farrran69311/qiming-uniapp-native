@@ -41,6 +41,7 @@ export interface VideoAnalyzeFullResult {
   status: string;
   courseId: number;
   chapterId: number;
+  hourId?: number;
   fileName: string;
   transcriptionText: string;
   summary: string;
@@ -81,6 +82,7 @@ export interface VideoAnalyzeModuleResult {
   status: string;
   courseId: number;
   chapterId: number;
+  hourId?: number;
   fileName: string;
   createdAt: string;
   completedAt?: string | null;

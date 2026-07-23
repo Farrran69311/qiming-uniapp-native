@@ -11,6 +11,7 @@ import type {
   StructuredExerciseOption,
   StructuredPreviewView
 } from "./structured-json";
+import { copyPlatformText } from "@/utils/platformCapability";
 
 defineOptions({ name: "PlatformStructuredJsonPreview" });
 
@@ -53,10 +54,9 @@ watch(
 
 async function copyText(value: string, label: string) {
   if (!value) return;
-  try {
-    await navigator.clipboard.writeText(value);
+  if (await copyPlatformText(value)) {
     ElMessage.success(`${label}已复制`);
-  } catch {
+  } else {
     ElMessage.error("复制失败，请检查浏览器剪贴板权限");
   }
 }

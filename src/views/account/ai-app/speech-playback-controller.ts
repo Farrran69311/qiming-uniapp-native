@@ -14,6 +14,7 @@ import {
   type AssistantSpeechVisemeCue,
   type SpeechTimelineRequest
 } from "@/api/frontend/assistant";
+import { speechSegmentErrorMessage } from "./speechErrorSemantics";
 
 export type SpeechPlaybackState =
   | "disabled"
@@ -40,6 +41,8 @@ export interface SpeechPlaybackDiagnostic {
   phase?: string;
   serverEvent?: string;
   clientEvent?: string;
+  clientCleanupReason?: string;
+  serverTerminalReceived?: boolean;
   eventSequence?: number;
   segmentSequence?: number;
   audioSequence?: number;
@@ -618,6 +621,8 @@ export class SpeechPlaybackController {
         phase: "reserved",
         serverEvent: undefined,
         clientEvent: "reservation.created",
+        clientCleanupReason: undefined,
+        serverTerminalReceived: false,
         eventSequence: undefined,
         segmentSequence: undefined,
         audioSequence: undefined,
@@ -729,6 +734,7 @@ export class SpeechPlaybackController {
         this.websocket = null;
         this.updateDiagnostic({
           clientEvent: "websocket.closed",
+          serverTerminalReceived: this.liveTerminalReceived,
           websocketCloseCode: event.code,
           websocketCloseReason: event.reason || undefined,
           websocketWasClean: event.wasClean
@@ -838,6 +844,7 @@ export class SpeechPlaybackController {
         break;
       case "stream.completed":
         this.liveTerminalReceived = true;
+        this.updateDiagnostic({ serverTerminalReceived: true });
         this.liveFailed ||= isIncompleteLiveDelivery(control);
         this.realtimeSessionId = control.session_id || this.realtimeSessionId;
         this.liveArchiveStatus = control.archive_status || "";
@@ -852,6 +859,7 @@ export class SpeechPlaybackController {
         break;
       case "stream.cancelled":
         this.liveTerminalReceived = true;
+        this.updateDiagnostic({ serverTerminalReceived: true });
         this.workletNode?.port.postMessage({ type: "reset" });
         this.callbacks.renderer.reset();
         this.setStatus("cancelled", "语音已停止");
@@ -859,15 +867,19 @@ export class SpeechPlaybackController {
         break;
       case "stream.error":
         this.liveTerminalReceived = true;
+        this.updateDiagnostic({ serverTerminalReceived: true });
         this.liveFailed = true;
         this.liveArchiveStatus = control.archive_status || "";
         this.workletNode?.port.postMessage({ type: "end" });
         this.callbacks.renderer.setState("error");
         this.setStatus(
           control.session_id ? "finalizing" : "failed",
-          control.session_id
-            ? "实时播报中断，正在恢复完整录音"
-            : "实时语音中断，文字回答不受影响"
+          speechSegmentErrorMessage(
+            control.error_code,
+            control.session_id
+              ? "实时播报中断，正在恢复完整录音"
+              : "实时语音中断，文字回答不受影响"
+          )
         );
         void this.refreshSession(control.session_id || this.realtimeSessionId);
         break;
@@ -1200,11 +1212,12 @@ export class SpeechPlaybackController {
     ) {
       this.setStatus("finalizing", "完整录音正在等待后端恢复");
     } else if (session.archive_status === "failed") {
+      const fallback = this.liveStarted
+        ? "实时播报可用，完整录音归档失败"
+        : "语音生成失败，文字回答不受影响";
       this.setStatus(
         this.liveStarted ? "ready" : "failed",
-        this.liveStarted
-          ? "实时播报可用，完整录音归档失败"
-          : "语音生成失败，文字回答不受影响"
+        speechSegmentErrorMessage(session.error_code, fallback)
       );
       return;
     }
@@ -1300,11 +1313,12 @@ export class SpeechPlaybackController {
 
   private setTerminalSessionStatus(session: AssistantSpeechSession) {
     if (session.status === "partial") {
+      const fallback = this.liveStarted
+        ? "实时播放不完整，完整录音不可用"
+        : "语音未完整生成，文字回答不受影响";
       this.setStatus(
         this.liveStarted ? "ready" : "failed",
-        this.liveStarted
-          ? "实时播放不完整，完整录音不可用"
-          : "语音未完整生成，文字回答不受影响"
+        speechSegmentErrorMessage(session.error_code, fallback)
       );
       return;
     }
@@ -1313,7 +1327,13 @@ export class SpeechPlaybackController {
       return;
     }
     if (["failed", "unknown_outcome", "expired"].includes(session.status)) {
-      this.setStatus("failed", "语音不可用，文字回答不受影响");
+      this.setStatus(
+        "failed",
+        speechSegmentErrorMessage(
+          session.error_code,
+          "语音不可用，文字回答不受影响"
+        )
+      );
     }
   }
 
@@ -1562,12 +1582,15 @@ export class SpeechPlaybackController {
   }
 
   private async stopLive(reason: string, cancelServer: boolean) {
+    const serverTerminalReceived = this.liveTerminalReceived;
     if (this.websocket?.readyState === WebSocket.OPEN) {
-      this.sendRealtimeControl(
-        cancelServer
-          ? { event: "stream.cancel", reason }
-          : { event: "client.goodbye", reason }
-      );
+      if (!serverTerminalReceived) {
+        this.sendRealtimeControl(
+          cancelServer
+            ? { event: "stream.cancel", reason }
+            : { event: "client.goodbye", reason }
+        );
+      }
       this.websocket.close(1000, reason.slice(0, 120));
     }
     this.websocket = null;
@@ -1592,7 +1615,9 @@ export class SpeechPlaybackController {
     this.timeline = null;
     this.currentViseme = "sil";
     this.updateDiagnostic({
-      clientEvent: "stream.closed",
+      clientEvent: "stream.cleanup",
+      clientCleanupReason: reason,
+      serverTerminalReceived,
       rebuffering: false,
       audioContextState: this.audioContext?.state
     });

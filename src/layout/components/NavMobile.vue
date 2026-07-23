@@ -87,24 +87,27 @@ const isActive = (path: string) => {
 };
 
 const handleJump = (path: string) => {
-  if (route.path === path) return;
+  if (isActive(path)) return;
   router.push(path);
 };
 </script>
 
 <template>
-  <div class="nav-mobile-container">
-    <div
+  <nav class="nav-mobile-container" aria-label="移动端主导航">
+    <button
       v-for="item in visibleNavItems"
       :key="item.path"
+      type="button"
       class="nav-mobile-item"
       :class="{ active: isActive(item.path) }"
+      :aria-current="isActive(item.path) ? 'page' : undefined"
+      :aria-label="item.title"
       @click="handleJump(item.path)"
     >
       <IconifyIconOnline :icon="item.icon" class="nav-icon" />
       <span class="nav-title">{{ item.title }}</span>
-    </div>
-  </div>
+    </button>
+  </nav>
 </template>
 
 <style lang="scss" scoped>
@@ -127,11 +130,24 @@ const handleJump = (path: string) => {
   display: flex;
   flex: 1;
   min-width: 0;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   color: var(--el-text-color-regular);
-  transition: all 0.3s;
+  transition:
+    color 0.2s ease,
+    background-color 0.2s ease,
+    opacity 0.2s ease;
+
+  &:focus-visible {
+    outline: 2px solid var(--el-color-primary);
+    outline-offset: -4px;
+  }
 
   .nav-icon {
     font-size: 20px;
