@@ -56,6 +56,17 @@
       }
     })();
   </script>
+  <script>
+    var isQimingMiniProgram =
+      location.href.indexOf("qimingMiniProgram=1") !== -1 ||
+      (/miniProgram/i.test(navigator.userAgent) &&
+        /MicroMessenger/i.test(navigator.userAgent));
+    if (isQimingMiniProgram) {
+      document.write(
+        '<script src="https://res.wx.qq.com/open/js/jweixin-1.6.0.js"><\/script>'
+      );
+    }
+  </script>
 </head>
 
 <body>

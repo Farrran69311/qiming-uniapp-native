@@ -1,11 +1,16 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
+import { Refresh } from "@element-plus/icons-vue";
 import type { AssistantExplanationImage } from "@/api/frontend/assistant";
 import AssistantProcessIcon from "./AssistantProcessIcon.vue";
 
 const props = defineProps<{
   image: AssistantExplanationImage;
 }>();
+const emit = defineEmits<{
+  (event: "refresh", imageId: string): void;
+}>();
+const imageReloadKey = ref(0);
 
 const terminalStatuses = new Set([
   "succeeded",
@@ -81,6 +86,11 @@ const errorText = computed(() => {
   };
   return map[errorCode] || errorCode.replaceAll("_", " ") || "图片生成失败";
 });
+
+const retryImageLoad = () => {
+  imageReloadKey.value += 1;
+  if (props.image.image_id) emit("refresh", props.image.image_id);
+};
 </script>
 
 <template>
@@ -88,7 +98,7 @@ const errorText = computed(() => {
     <Transition name="explanation-image-reveal" mode="out-in">
       <el-image
         v-if="hasSucceededImage"
-        key="image"
+        :key="`image-${imageReloadKey}`"
         class="explanation-image-card__image"
         :src="props.image.public_url"
         :alt="props.image.alt_text || 'AI 讲解图片'"
@@ -105,6 +115,14 @@ const errorText = computed(() => {
               <strong>讲解图片加载失败</strong>
               <p>图片地址暂时不可访问，请稍后刷新。</p>
             </div>
+            <el-tooltip content="重新加载图片" placement="top">
+              <el-button
+                :icon="Refresh"
+                circle
+                aria-label="重新加载图片"
+                @click="retryImageLoad"
+              />
+            </el-tooltip>
           </div>
         </template>
       </el-image>

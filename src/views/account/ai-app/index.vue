@@ -35,7 +35,6 @@ import AgentPdfWorkbench from "./AgentPdfWorkbench.vue";
 import AiAppEmptyState from "./components/AiAppEmptyState.vue";
 
 import AiResourceGeneration from "./components/AiResourceGeneration.vue";
-import AiDemoResourceManager from "./components/AiDemoResourceManager.vue";
 import AiStudentResourceLibrary from "./components/AiStudentResourceLibrary.vue";
 import AiLearningPath from "./components/AiLearningPath.vue";
 import AiLearningProfile from "./components/AiLearningProfile.vue";
@@ -54,6 +53,15 @@ import { useUserStore } from "@/store/modules/user";
 import { formatAvatar } from "@/utils/avatar";
 import { type DataInfo, userKey } from "@/utils/auth";
 import {
+  getCourseDetail,
+  type CourseDetailResult
+} from "@/api/frontend/course";
+import {
+  getVideoAnalyzeTask,
+  getVideoAnalyzeResult,
+  type VideoAnalyzeFullResult
+} from "@/api/frontend/videoAnalysis";
+import {
   assistantApiErrorMessage,
   assistantModelReasonText,
   createAssistantConversation,
@@ -71,8 +79,10 @@ import {
   type AssistantChatResource,
   type AssistantChatStreamEvent,
   type AssistantChatTraceStep,
+  type AssistantChatVideoSegment,
   type AssistantConversationItem,
   type AssistantExplanationImage,
+  type AssistantExplanationImageMode,
   type AssistantInteractionScope,
   type AssistantOption,
   type AssistantResourceSummary,
@@ -89,6 +99,16 @@ import {
   type SpeechPlaybackDiagnostic,
   type SpeechPlaybackState
 } from "./speech-playback-controller";
+import {
+  explanationImageTerminalStatuses,
+  shouldApplyExplanationImageUpdate
+} from "./explanationImageState";
+import {
+  directVideoSegmentUrl,
+  findCourseVideoUrl,
+  listCourseVideoCandidates,
+  videoTaskMatchesCourseCandidate
+} from "./videoSegmentPreview";
 
 defineOptions({ name: "AiAppWorkbench" });
 
@@ -194,6 +214,8 @@ const speechDiagnosticText = computed(() => {
     ["phase", diagnostic.phase],
     ["server_event", diagnostic.serverEvent],
     ["client_event", diagnostic.clientEvent],
+    ["client_cleanup_reason", diagnostic.clientCleanupReason],
+    ["server_terminal_received", diagnostic.serverTerminalReceived],
     ["event_seq", diagnostic.eventSequence],
     ["stream_id", diagnostic.streamId],
     ["session_id", diagnostic.sessionId],
@@ -271,6 +293,7 @@ const selectedAgentKey = ref("");
 const selectedModelKey = ref("");
 const thinkingModeKey = ref("");
 const selectedSkillKeys = ref<string[]>([]);
+const explanationImageMode = ref<AssistantExplanationImageMode>("auto_wide");
 
 const loginRoleType = computed(() => {
   const userInfoRoleType =
@@ -327,6 +350,11 @@ const roleMode = computed<{
 });
 const mode = computed(() => roleMode.value.mode);
 const apiMode = computed(() => roleMode.value.apiMode);
+const explanationImageEnabled = computed(
+  () =>
+    apiMode.value === "student" &&
+    featureFlags.value.explanation_image_generation === true
+);
 const currentUserRoleLabel = computed(() => roleMode.value.userLabel);
 const isStaffMode = computed(() => apiMode.value !== "student");
 const currentUserAvatar = computed(() => formatAvatar(userStore.avatar));
@@ -359,8 +387,7 @@ const resolveRailFromPath = (path: string) => {
 
 // 会话数据集
 const activeRail = ref(resolveRailFromPath(route.path));
-const resourceWorkspaceMode = ref<"demo" | "generated">("demo");
-const demoResourcePane = ref<"import" | "binding" | "publish">("import");
+const resourceWorkspaceMode = ref<"generated">("generated");
 watch(
   () => route.path,
   newPath => {
@@ -721,27 +748,15 @@ const ensureStudentContextForActiveRail = () => {
   }
   selectedStudentId.value = myStudents.value[0].id;
 };
-const isDemoResourceWorkspace = computed(
-  () =>
-    activeRail.value === "generation" &&
-    isStaffMode.value &&
-    resourceWorkspaceMode.value === "demo"
-);
-const showCourseContext = computed(
-  () =>
-    courseScopedRails.includes(activeRail.value) &&
-    !isDemoResourceWorkspace.value
+const showCourseContext = computed(() =>
+  courseScopedRails.includes(activeRail.value)
 );
 const showStudentContext = computed(
   () =>
     isStaffMode.value &&
     (studentScopedRails.includes(activeRail.value) ||
       (activeRail.value === "chat" &&
-        interactionScope.value === "student_analysis")) &&
-    !(
-      activeRail.value === "generation" &&
-      resourceWorkspaceMode.value === "demo"
-    )
+        interactionScope.value === "student_analysis"))
 );
 const supportedInteractionScopes = computed<AssistantInteractionScope[]>(() => {
   const supported =
@@ -1075,24 +1090,6 @@ const clearAllResourceTaskPolling = () => {
   [...resourceTaskTimers.keys()].forEach(clearResourceTaskPolling);
 };
 
-const explanationImageTerminalStatuses = new Set([
-  "succeeded",
-  "failed",
-  "blocked",
-  "unknown_outcome",
-  "cancelled"
-]);
-const explanationImageStatusRank: Record<string, number> = {
-  queued: 1,
-  generating: 2,
-  retrying: 3,
-  succeeded: 4,
-  failed: 4,
-  blocked: 4,
-  unknown_outcome: 4,
-  cancelled: 4
-};
-
 const clearExplanationImagePolling = (imageId: string) => {
   const timer = explanationImageTimers.get(imageId);
   if (timer) window.clearTimeout(timer);
@@ -1121,12 +1118,9 @@ const updateMessageExplanationImage = (
   if (index === -1) images.push(image);
   else {
     const current = images[index];
-    const currentRank = explanationImageStatusRank[current.status] || 0;
-    const incomingRank = explanationImageStatusRank[image.status] || 0;
-    images[index] =
-      currentRank > incomingRank
-        ? { ...image, ...current }
-        : { ...current, ...image };
+    if (shouldApplyExplanationImageUpdate(current.status, image.status)) {
+      images[index] = { ...current, ...image };
+    }
   }
   updateAssistantMessage(assistantMessageId, { explanationImages: images });
 };
@@ -1202,6 +1196,35 @@ const startExplanationImagePolling = (
   }
   if (!explanationImageTimers.has(image.image_id)) {
     void pollExplanationImage(image.image_id, assistantMessageId);
+  }
+};
+
+const handleRefreshExplanationImage = async (payload: {
+  imageId: string;
+  messageId: string | number;
+}) => {
+  const imageId = String(payload?.imageId || "").trim();
+  const message = messages.value.find(item => item.id === payload?.messageId);
+  if (
+    !imageId ||
+    !message ||
+    !message.explanationImages?.some(image => image.image_id === imageId)
+  ) {
+    return;
+  }
+
+  try {
+    const response = await getAssistantExplanationImage(imageId);
+    if (!response.image?.image_id) {
+      throw new Error("讲解图片状态响应缺少图片标识");
+    }
+    updateMessageExplanationImage(payload.messageId, response.image);
+    if (!explanationImageTerminalStatuses.has(response.image.status)) {
+      startExplanationImagePolling(response.image, payload.messageId);
+    }
+  } catch (error) {
+    console.warn("[AiApp] 讲解图片手动刷新失败:", error);
+    ElMessage.warning("讲解图片状态刷新失败，请稍后重试");
   }
 };
 
@@ -1627,12 +1650,11 @@ const handleSendMessage = async (payload: ChatSendPayload) => {
   ) {
     return;
   }
-  const explanationImageMode =
-    featureFlags.value.explanation_image_generation &&
-    apiMode.value === "student" &&
-    attachmentIds.length === 0
-      ? "auto_wide"
-      : undefined;
+  const explanationImageRequestMode = explanationImageEnabled.value
+    ? attachmentIds.length === 0
+      ? explanationImageMode.value
+      : "off"
+    : undefined;
   const conversationId = activeConversationId.value || undefined;
   const identity = conversationId
     ? {}
@@ -1650,10 +1672,11 @@ const handleSendMessage = async (payload: ChatSendPayload) => {
       attachment_ids: attachmentIds,
       enable_realtime_resource:
         selectedSkillKeys.value.includes("resource_hint"),
-      preferred_explanation_mode: selectedSkillKeys.value.includes("visual")
-        ? "visual"
-        : undefined,
-      explanation_image_mode: explanationImageMode,
+      preferred_explanation_mode:
+        explanationImageRequestMode && explanationImageRequestMode !== "off"
+          ? "visual"
+          : undefined,
+      explanation_image_mode: explanationImageRequestMode,
       speech: speechRequest,
       metadata: { ui_entry: "ai_app_workbench" }
     },
@@ -1731,7 +1754,14 @@ const handleStopSpeech = (assistantMessageId: string | number) => {
 const stackPreviewVisible = ref(false);
 const platformPreviewVisible = ref(false);
 const platformPreviewResource = ref<PlatformPreviewResource | null>(null);
+const videoSegmentPreviewingId = ref("");
 let platformPreviewRequestVersion = 0;
+let videoSegmentPreviewRequestVersion = 0;
+const courseVideoDetailRequests = new Map<
+  number,
+  Promise<CourseDetailResult>
+>();
+const videoSegmentSourceCache = new Map<string, string>();
 const stackItems = ref<{ key: number; value: string }[]>([
   { key: 1, value: "A" },
   { key: 2, value: "B" },
@@ -1824,6 +1854,149 @@ async function handlePreview(res: AssistantChatResource) {
     if (requestVersion !== platformPreviewRequestVersion) return;
     if (!hasPlatformPreviewSource(initialResource)) {
       ElMessage.error(assistantApiErrorMessage(error, "资源详情加载失败"));
+    }
+  }
+}
+
+function loadCourseVideoDetail(courseId: number) {
+  const cached = courseVideoDetailRequests.get(courseId);
+  if (cached) return cached;
+
+  const request = getCourseDetail({ courseId })
+    .then(response => response.data)
+    .catch(error => {
+      courseVideoDetailRequests.delete(courseId);
+      throw error;
+    });
+  courseVideoDetailRequests.set(courseId, request);
+  return request;
+}
+
+async function findVideoUrlByAnalysisTask(
+  courseId: number,
+  detail: CourseDetailResult,
+  analysis: VideoAnalyzeFullResult | null,
+  videoId: string
+) {
+  if (!videoId) return "";
+  const candidates = listCourseVideoCandidates(detail, analysis || {}).filter(
+    candidate => candidate.chapterId > 0 && candidate.hourId > 0
+  );
+  const batchSize = 4;
+  for (let offset = 0; offset < candidates.length; offset += batchSize) {
+    const batch = candidates.slice(offset, offset + batchSize);
+    const urls = await Promise.all(
+      batch.map(async candidate => {
+        try {
+          const response = await getVideoAnalyzeTask({
+            courseId,
+            chapterId: candidate.chapterId,
+            hourId: candidate.hourId
+          });
+          return videoTaskMatchesCourseCandidate(
+            response.data,
+            candidate,
+            videoId
+          )
+            ? candidate.fileUrl
+            : "";
+        } catch {
+          return "";
+        }
+      })
+    );
+    const matchedUrl = urls.find(Boolean);
+    if (matchedUrl) return matchedUrl;
+  }
+  return "";
+}
+
+async function resolveVideoSegmentSource(segment: AssistantChatVideoSegment) {
+  const directUrl = directVideoSegmentUrl(segment);
+  if (directUrl) {
+    return { url: directUrl, analysis: null as VideoAnalyzeFullResult | null };
+  }
+
+  const videoId = String(segment.video_id || "").trim();
+  const cachedUrl = videoSegmentSourceCache.get(videoId);
+  if (cachedUrl) {
+    return { url: cachedUrl, analysis: null as VideoAnalyzeFullResult | null };
+  }
+  let analysis: VideoAnalyzeFullResult | null = null;
+  let analysisError: unknown;
+  if (videoId) {
+    try {
+      const response = await getVideoAnalyzeResult({ taskId: videoId });
+      analysis = response.data;
+    } catch (error) {
+      analysisError = error;
+    }
+  }
+
+  const courseIds = [analysis?.courseId, selectedCourseId.value]
+    .map(Number)
+    .filter(
+      (courseId, index, list) =>
+        Number.isFinite(courseId) &&
+        courseId > 0 &&
+        list.indexOf(courseId) === index
+    );
+  for (const courseId of courseIds) {
+    try {
+      const detail = await loadCourseVideoDetail(courseId);
+      const inferredUrl = findCourseVideoUrl(detail, analysis || {}, videoId);
+      const url =
+        inferredUrl ||
+        (await findVideoUrlByAnalysisTask(courseId, detail, analysis, videoId));
+      if (url) {
+        if (videoId) videoSegmentSourceCache.set(videoId, url);
+        return { url, analysis };
+      }
+    } catch (error) {
+      analysisError ||= error;
+    }
+  }
+
+  if (analysisError) throw analysisError;
+  throw new Error("暂时未找到该片段对应的课程视频");
+}
+
+async function handleVideoSegmentPreview(segment: AssistantChatVideoSegment) {
+  if (!segment?.segment_id) return;
+  const requestVersion = ++videoSegmentPreviewRequestVersion;
+  const courseIdAtRequest = selectedCourseId.value;
+  videoSegmentPreviewingId.value = segment.segment_id;
+
+  try {
+    const { url, analysis } = await resolveVideoSegmentSource(segment);
+    if (
+      requestVersion !== videoSegmentPreviewRequestVersion ||
+      courseIdAtRequest !== selectedCourseId.value
+    ) {
+      return;
+    }
+
+    platformPreviewResource.value = {
+      title: segment.title || analysis?.fileName || "课程视频",
+      url,
+      previewUrl: url,
+      downloadUrl: url,
+      resourceType: "video",
+      description: segment.summary || segment.reason,
+      initialTimeMs: Math.max(0, Number(segment.start_ms || 0)),
+      segmentStartMs: Math.max(0, Number(segment.start_ms || 0)),
+      segmentEndMs: Math.max(0, Number(segment.end_ms || 0)),
+      autoPlay: true
+    };
+    platformPreviewVisible.value = true;
+  } catch (error) {
+    if (requestVersion !== videoSegmentPreviewRequestVersion) return;
+    ElMessage.error(
+      assistantApiErrorMessage(error, "暂时无法定位该片段对应的完整视频")
+    );
+  } finally {
+    if (requestVersion === videoSegmentPreviewRequestVersion) {
+      videoSegmentPreviewingId.value = "";
     }
   }
 }
@@ -2082,6 +2255,7 @@ const loadConversationMessages = async (conversation: ConversationView) => {
       type: item.role === "user" ? "user" : "system",
       content: item.content_text || "",
       avatar: item.role === "user" ? currentUserAvatar.value : undefined,
+      resources: item.resources || [],
       metadata: item.metadata,
       explanationImages:
         item.explanation_images || item.metadata?.explanation_images || [],
@@ -2165,8 +2339,18 @@ onMounted(() => {
 const quickMessage = ref("");
 const quickCourse = ref("");
 const quickVoiceListening = ref(false);
+const hasQuickVoiceCapability = () =>
+  typeof window !== "undefined" &&
+  Boolean(
+    (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition ||
+      (window as any).plus?.speech?.startRecognize
+  );
+const quickVoiceSupported = ref(hasQuickVoiceCapability());
 const quickUploadInputRef = ref<HTMLInputElement | null>(null);
 let quickSpeechRecognition: any = null;
+let quickNativeSpeechActive = false;
+let quickNativeSpeechStopRequested = false;
 type QuickAttachmentPreview = {
   id: string;
   file: File;
@@ -2296,9 +2480,56 @@ const handleQuickVoiceInput = () => {
   const SpeechRecognition =
     (window as any).SpeechRecognition ||
     (window as any).webkitSpeechRecognition;
+  const nativeSpeech = (window as any).plus?.speech;
+
+  if (!SpeechRecognition && nativeSpeech?.startRecognize) {
+    if (quickNativeSpeechActive) {
+      quickNativeSpeechStopRequested = true;
+      nativeSpeech.stopRecognize?.();
+      quickNativeSpeechActive = false;
+      quickVoiceListening.value = false;
+      return;
+    }
+
+    const initialText = quickMessage.value.trim();
+    quickNativeSpeechStopRequested = false;
+    quickNativeSpeechActive = true;
+    quickVoiceListening.value = true;
+    try {
+      nativeSpeech.startRecognize(
+        {
+          engine: "iFly",
+          lang: "zh-cn",
+          continue: false,
+          punctuation: true,
+          userInterface: false
+        },
+        (result: string) => {
+          const spokenText = String(result || "").trim();
+          const separator = initialText && spokenText ? " " : "";
+          quickMessage.value = `${initialText}${separator}${spokenText}`.trim();
+          quickNativeSpeechActive = false;
+          quickVoiceListening.value = false;
+        },
+        (error: { message?: string }) => {
+          quickNativeSpeechActive = false;
+          quickVoiceListening.value = false;
+          if (!quickNativeSpeechStopRequested) {
+            ElMessage.warning(error?.message || "语音输入暂时不可用");
+          }
+          quickNativeSpeechStopRequested = false;
+        }
+      );
+    } catch {
+      quickNativeSpeechActive = false;
+      quickVoiceListening.value = false;
+      ElMessage.warning("语音输入暂时不可用");
+    }
+    return;
+  }
 
   if (!SpeechRecognition) {
-    ElMessage.warning("当前浏览器暂不支持系统语音输入");
+    ElMessage.warning("当前环境暂不支持系统语音输入");
     return;
   }
 
@@ -2486,9 +2717,15 @@ const handleVisibilityChange = () => {
   syncHumanRenderState();
 };
 
+const refreshQuickVoiceCapability = () => {
+  quickVoiceSupported.value = hasQuickVoiceCapability();
+};
+
 onMounted(() => {
   document.addEventListener("visibilitychange", handleVisibilityChange);
+  document.addEventListener("plusready", refreshQuickVoiceCapability);
   window.addEventListener("resize", syncSidebarWidthLimit);
+  refreshQuickVoiceCapability();
   syncSidebarWidthLimit();
   setTimeout(() => {
     syncHumanRenderState();
@@ -2503,8 +2740,14 @@ onUnmounted(() => {
   quickSpeechRecognition?.stop?.();
   quickSpeechRecognition = null;
   if (localDigitalHumanSpeechTimer) clearTimeout(localDigitalHumanSpeechTimer);
+  if (quickNativeSpeechActive) {
+    quickNativeSpeechStopRequested = true;
+    (window as any).plus?.speech?.stopRecognize?.();
+    quickNativeSpeechActive = false;
+  }
   clearQuickAttachments();
   document.removeEventListener("visibilitychange", handleVisibilityChange);
+  document.removeEventListener("plusready", refreshQuickVoiceCapability);
   window.removeEventListener("resize", syncSidebarWidthLimit);
   document.documentElement.classList.remove("ai-app-sidebar-resizing");
 });
@@ -2700,19 +2943,25 @@ onUnmounted(() => {
                   :selectedAgent="selectedAgentLabel"
                   :selectedModel="selectedModelLabel"
                   :thinkingMode="thinkingModeLabel"
+                  :explanation-image-enabled="explanationImageEnabled"
+                  :explanation-image-mode="explanationImageMode"
                   :model-ready="selectedModelReady"
                   :model-disabled-reason="selectedModelDisabledReason"
                   :loading="isChatStreaming"
+                  :video-segment-previewing-id="videoSegmentPreviewingId"
                   @send="handleSendMessage"
                   @stop="handleStopStreaming"
                   @preview="handlePreview"
+                  @preview-video-segment="handleVideoSegmentPreview"
                   @regenerate="handleRegenerateMessage"
+                  @refresh-explanation-image="handleRefreshExplanationImage"
                   @play-speech="handlePlaySpeech"
                   @stop-speech="handleStopSpeech"
                   @switch-course="handleSwitchCourse"
                   @update:selectedAgent="selectedAgentKey = $event"
                   @update:selectedModel="handleModelSelect"
                   @update:thinkingMode="thinkingModeKey = $event"
+                  @update:explanationImageMode="explanationImageMode = $event"
                 />
               </div>
             </transition>
@@ -3017,7 +3266,14 @@ onUnmounted(() => {
                       type="button"
                       class="quick-chat-icon-button quick-chat-voice-button"
                       :class="{ 'is-listening': quickVoiceListening }"
-                      :title="quickVoiceListening ? '停止语音输入' : '语音输入'"
+                      :disabled="!quickVoiceSupported"
+                      :title="
+                        !quickVoiceSupported
+                          ? '当前环境不支持系统语音输入'
+                          : quickVoiceListening
+                            ? '停止语音输入'
+                            : '语音输入'
+                      "
                       @click="handleQuickVoiceInput"
                     >
                       <el-icon><Microphone /></el-icon>
@@ -3084,13 +3340,6 @@ onUnmounted(() => {
                 v-model="resourceWorkspaceMode"
                 class="resource-workspace-tabs h-full flex flex-col"
               >
-                <el-tab-pane label="演示导入资源" name="demo" class="h-full">
-                  <AiDemoResourceManager
-                    v-model:active-pane="demoResourcePane"
-                    :system-courses="myCourses"
-                    :can-import="apiMode === 'admin'"
-                  />
-                </el-tab-pane>
                 <el-tab-pane
                   label="AI 生成资源"
                   name="generated"
@@ -3109,6 +3358,7 @@ onUnmounted(() => {
                   <AiResourceGeneration
                     v-else
                     :course-id="selectedCourseId"
+                    :course-name="selectedCourseName"
                     :target-student-id="selectedStudentContextId"
                     :requires-target-student="isStaffMode"
                     :resource-types="assistantBootstrap?.resource_types || []"
@@ -4110,6 +4360,14 @@ onUnmounted(() => {
   color: #344054;
   background: #f1f3f7;
   border-color: rgba(213, 219, 230, 0.95);
+}
+
+.quick-chat-icon-button:disabled {
+  color: #98a2b3;
+  cursor: not-allowed;
+  background: transparent;
+  border-color: transparent;
+  opacity: 0.55;
 }
 
 .quick-chat-upload-button {

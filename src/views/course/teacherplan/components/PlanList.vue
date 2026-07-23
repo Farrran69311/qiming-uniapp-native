@@ -49,6 +49,16 @@
       </div>
     </div>
 
+    <el-alert
+      v-if="createdPlanIdentityError"
+      :title="createdPlanIdentityError"
+      type="error"
+      show-icon
+      closable
+      class="mb-4"
+      @close="createdPlanIdentityError = ''"
+    />
+
     <!-- 列表展示区 - 垂直铺满 -->
     <div class="flex-1 min-h-0 overflow-y-auto pr-1 custom-scrollbar">
       <div
@@ -71,7 +81,7 @@
               class="plan-card__header flex justify-between items-start mb-5"
             >
               <span
-                class="px-2.5 py-1 bg-[var(--el-fill-color-light)] text-[var(--el-text-color-secondary)] text-[10px] font-bold rounded-md uppercase tracking-wider border border-[var(--el-border-color-lighter)]"
+                class="px-2.5 py-1 bg-[var(--el-fill-color-light)] text-[var(--el-text-color-secondary)] text-xs font-semibold rounded-md border border-[var(--el-border-color-lighter)]"
               >
                 ID: {{ item.teacherPlanId }}
               </span>
@@ -79,7 +89,9 @@
                 <el-button
                   circle
                   size="small"
-                  class="!bg-transparent !border-transparent hover:!bg-[var(--el-fill-color-light)]"
+                  aria-label="教案操作"
+                  title="教案操作"
+                  class="plan-card__menu !bg-transparent !border-transparent hover:!bg-[var(--el-fill-color-light)]"
                 >
                   <el-icon><MoreFilled /></el-icon>
                 </el-button>
@@ -90,7 +102,8 @@
                     >
                     <el-dropdown-item
                       :icon="Download"
-                      @click="checkProgress(item)"
+                      :disabled="!canDownloadTeacherPlan(item)"
+                      @click="openDownload(item)"
                       >下载文件</el-dropdown-item
                     >
                   </el-dropdown-menu>
@@ -100,21 +113,31 @@
 
             <h4
               class="text-lg font-bold text-[var(--el-text-color-primary)] mb-3 line-clamp-1"
+              :title="item.courseName"
             >
               {{ item.courseName }}
             </h4>
             <div class="space-y-2 mb-6">
               <p
                 class="text-sm text-[var(--el-text-color-regular)] flex items-center"
+                :title="item.chapterName"
               >
                 <el-icon class="mr-2 opacity-60"><Memo /></el-icon>
                 {{ item.chapterName }}
               </p>
               <p
-                class="text-[12px] text-[var(--el-text-color-placeholder)] flex items-center"
+                class="text-[12px] text-[var(--el-text-color-secondary)] flex items-center"
               >
                 <el-icon class="mr-2 opacity-60"><Calendar /></el-icon>
-                2024-11-20 14:30
+                {{ formatPlanDate(item.updatedAt || item.createdAt) }}
+              </p>
+              <p
+                v-if="item.availability !== 'synced'"
+                class="text-[12px] flex items-center"
+                :class="getAvailabilityTextClass(item.availability)"
+              >
+                <el-icon class="mr-2 opacity-70"><WarningFilled /></el-icon>
+                {{ getAvailabilityCardLabel(item.availability) }}
               </p>
             </div>
 
@@ -123,19 +146,11 @@
             >
               <el-tag
                 size="small"
-                :type="
-                  item.status === 2 || item.status === 1 || item.status === 100
-                    ? 'success'
-                    : 'warning'
-                "
+                :type="getStatusTagType(item)"
                 effect="dark"
                 class="plan-card__status !rounded-full !px-3 font-medium"
               >
-                {{
-                  item.status === 2 || item.status === 1 || item.status === 100
-                    ? "生成完成"
-                    : "处理中"
-                }}
+                {{ getStatusLabel(item) }}
               </el-tag>
 
               <el-button
@@ -195,13 +210,17 @@
         v-model:current-page="currentPage"
         v-model:page-size="pageSize"
         :page-sizes="[8, 12, 16, 24]"
-        layout="total, prev, pager, next, sizes"
+        :layout="paginationLayout"
         :total="total"
         background
         class="custom-pagination"
         @current-change="handleCurrentChange"
         @size-change="handleSizeChange"
-      />
+      >
+        <span v-if="isCompactPagination" class="plan-list-pagination__summary">
+          第 {{ currentPage }} / {{ totalPages }} 页
+        </span>
+      </el-pagination>
     </div>
 
     <!-- 详情对话框 -->
@@ -217,13 +236,16 @@
         v-loading="progressLoading"
         class="plan-progress-content min-h-[280px] flex flex-col"
       >
+        <span class="sr-only" aria-live="polite" aria-atomic="true">
+          {{ progressAnnouncement }}
+        </span>
         <div v-if="currentProgress">
           <div
             class="plan-progress-summary bg-[var(--el-fill-color-light)] rounded-2xl p-6 mb-8 border border-[var(--el-border-color-lighter)]"
           >
             <div class="mb-4">
               <span
-                class="text-[10px] text-[var(--el-text-color-placeholder)] uppercase font-bold tracking-widest block mb-1"
+                class="text-xs text-[var(--el-text-color-secondary)] font-medium block mb-1"
                 >所属课程</span
               >
               <div
@@ -237,7 +259,7 @@
             </div>
             <div>
               <span
-                class="text-[10px] text-[var(--el-text-color-placeholder)] uppercase font-bold tracking-widest block mb-1"
+                class="text-xs text-[var(--el-text-color-secondary)] font-medium block mb-1"
                 >对应章节</span
               >
               <div
@@ -251,29 +273,159 @@
             </div>
           </div>
 
+          <el-alert
+            v-if="currentProgress.availability !== 'synced'"
+            :title="getAvailabilityLabel(currentProgress.availability)"
+            :type="getAvailabilityAlertType(currentProgress.availability)"
+            :closable="false"
+            show-icon
+            class="mb-5"
+          />
+
+          <el-alert
+            v-if="progressError"
+            :title="progressError"
+            type="warning"
+            :closable="false"
+            show-icon
+            class="mb-5"
+          />
+
           <div
-            v-if="
-              currentProgress.progress === 2 || currentProgress.progress === 100
-            "
+            v-if="isCompletedProgress"
             class="plan-progress-state text-center pb-4"
           >
             <div class="plan-progress-icon w-20 h-20 mx-auto mb-2">
               <lottie-animation
+                v-if="!prefersReducedMotion"
                 :animation-data="SuccessAnim"
                 :width="80"
                 :height="80"
               />
+              <div
+                v-else
+                class="w-16 h-16 mx-auto rounded-full bg-[var(--el-color-success-light-9)] text-[var(--el-color-success)] flex items-center justify-center"
+              >
+                <el-icon class="text-4xl"><CircleCheckFilled /></el-icon>
+              </div>
             </div>
             <h4 class="plan-progress-title text-lg font-bold mb-2">生成成功</h4>
+            <p class="text-sm text-[var(--el-text-color-secondary)] mb-2">
+              {{ currentProgress.message || "教案已完成，可下载文件" }}
+            </p>
+            <p
+              v-if="!canDownloadTeacherPlan(currentProgress)"
+              class="text-sm text-[var(--el-color-warning)]"
+            >
+              文件地址尚未确认，请刷新状态后再试
+            </p>
             <div class="plan-progress-actions flex gap-4 mt-8">
               <el-button
+                v-if="canDownloadTeacherPlan(currentProgress)"
                 type="primary"
                 size="large"
                 class="plan-progress-button flex-1 !rounded-xl !h-12 shadow-md"
-                @click="downloadPlan(currentProgress.downloadUrl)"
+                @click="downloadPlan(currentProgress)"
               >
                 <el-icon class="mr-2"><Download /></el-icon>
                 下载教案
+              </el-button>
+              <el-button
+                v-else
+                type="primary"
+                size="large"
+                :loading="progressLoading"
+                class="plan-progress-button flex-1 !rounded-xl !h-12 shadow-md"
+                @click="refreshProgressManually"
+              >
+                <el-icon v-if="!progressLoading" class="mr-2"
+                  ><Refresh
+                /></el-icon>
+                刷新状态
+              </el-button>
+              <el-button
+                size="large"
+                class="plan-progress-button !rounded-xl !h-12 !px-6"
+                @click="progressDialogVisible = false"
+              >
+                关闭
+              </el-button>
+            </div>
+          </div>
+
+          <div
+            v-else-if="isFailedProgress"
+            class="plan-progress-state text-center pb-4"
+          >
+            <div
+              class="plan-progress-icon w-16 h-16 bg-[var(--el-color-danger-light-9)] text-[var(--el-color-danger)] rounded-full flex items-center justify-center mx-auto mb-4"
+            >
+              <el-icon class="text-3xl"><CircleCloseFilled /></el-icon>
+            </div>
+            <h4 class="plan-progress-title text-lg font-bold mb-2">生成失败</h4>
+            <p class="text-sm text-[var(--el-text-color-secondary)] mb-2">
+              {{ currentProgress.message || "教案生成未完成" }}
+            </p>
+            <el-tag
+              v-if="currentProgress.errorCode"
+              type="danger"
+              effect="plain"
+              class="!rounded-full"
+            >
+              错误码：{{ currentProgress.errorCode }}
+            </el-tag>
+            <div class="plan-progress-actions flex gap-4 mt-8">
+              <el-button
+                v-if="currentProgress.retryable"
+                type="primary"
+                size="large"
+                :loading="retryLoading"
+                class="plan-progress-button flex-1 !rounded-xl !h-12 shadow-md"
+                @click="retryPlan"
+              >
+                <el-icon v-if="!retryLoading" class="mr-2"><Refresh /></el-icon>
+                重新生成
+              </el-button>
+              <el-button
+                size="large"
+                class="plan-progress-button !rounded-xl !h-12 !px-6"
+                @click="progressDialogVisible = false"
+              >
+                关闭
+              </el-button>
+            </div>
+          </div>
+
+          <div
+            v-else-if="isCancelledProgress"
+            class="plan-progress-state text-center pb-4"
+          >
+            <div
+              class="plan-progress-icon w-16 h-16 bg-[var(--el-fill-color-light)] text-[var(--el-text-color-secondary)] rounded-full flex items-center justify-center mx-auto mb-4"
+            >
+              <el-icon class="text-3xl"><WarningFilled /></el-icon>
+            </div>
+            <h4 class="plan-progress-title text-lg font-bold mb-2">
+              {{
+                currentProgress.status === "timed_out"
+                  ? "生成超时"
+                  : "任务已取消"
+              }}
+            </h4>
+            <p class="text-sm text-[var(--el-text-color-secondary)] mb-2">
+              {{ currentProgress.message || "任务没有产出可用教案" }}
+            </p>
+            <div class="plan-progress-actions flex gap-4 mt-8">
+              <el-button
+                v-if="currentProgress.retryable"
+                type="primary"
+                size="large"
+                :loading="retryLoading"
+                class="plan-progress-button flex-1 !rounded-xl !h-12 shadow-md"
+                @click="retryPlan"
+              >
+                <el-icon v-if="!retryLoading" class="mr-2"><Refresh /></el-icon>
+                重新生成
               </el-button>
               <el-button
                 size="large"
@@ -287,21 +439,52 @@
 
           <div v-else class="plan-progress-state text-center pb-4">
             <div
-              class="plan-progress-icon w-16 h-16 bg-[var(--el-color-primary-light-9)] text-[var(--el-color-primary)] rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse"
+              class="plan-progress-icon w-16 h-16 bg-[var(--el-color-primary-light-9)] text-[var(--el-color-primary)] rounded-full flex items-center justify-center mx-auto mb-4"
+              :class="{ 'animate-pulse': isActiveProgress }"
             >
               <el-icon class="text-3xl"><Cpu /></el-icon>
             </div>
             <h4 class="plan-progress-title text-lg font-bold mb-2">
-              AI 智能撰写中...
+              {{ getProgressStatusLabel(currentProgress) }}
             </h4>
+            <p class="text-sm text-[var(--el-text-color-secondary)] mb-2">
+              {{ currentProgress.message || "正在等待任务状态" }}
+            </p>
             <el-progress
-              :percentage="75"
+              :percentage="currentProgress.progressPercent"
               :stroke-width="15"
-              striped
-              striped-flow
+              :striped="isActiveProgress"
+              :striped-flow="isActiveProgress"
+              aria-label="教案生成进度"
               class="plan-progress-bar mb-4 px-4 mt-8"
               :color="'var(--el-color-primary)'"
             />
+            <div
+              v-if="currentProgress.stage"
+              class="text-xs text-[var(--el-text-color-placeholder)] mb-5"
+            >
+              当前阶段：{{ getProgressStageLabel(currentProgress.stage) }}
+            </div>
+            <div class="plan-progress-actions flex gap-4 mt-8">
+              <el-button
+                size="large"
+                :loading="progressLoading"
+                class="plan-progress-button flex-1 !rounded-xl !h-12"
+                @click="refreshProgressManually"
+              >
+                <el-icon v-if="!progressLoading" class="mr-2"
+                  ><Refresh
+                /></el-icon>
+                刷新状态
+              </el-button>
+              <el-button
+                size="large"
+                class="plan-progress-button !rounded-xl !h-12 !px-6"
+                @click="progressDialogVisible = false"
+              >
+                关闭
+              </el-button>
+            </div>
           </div>
         </div>
       </div>
@@ -310,10 +493,26 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, ref, onMounted, watch } from "vue";
+import {
+  computed,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+  type PropType
+} from "vue";
+import { useMediaQuery } from "@vueuse/core";
 import { ElMessage } from "element-plus";
-import { getTeacherPlanList, getTeacherPlanProgress } from "@/api/course";
+import {
+  generateTeacherPlan,
+  getTeacherPlanList,
+  getTeacherPlanProgress,
+  type TeacherPlan,
+  type TeacherPlanAvailability,
+  type TeacherPlanProgress
+} from "@/api/course";
 import { useAppStoreHook } from "@/store/modules/app";
+import { downloadPlatformResource } from "@/components/PlatformResourcePreview/resource-preview";
 import {
   Refresh,
   Collection,
@@ -321,135 +520,713 @@ import {
   Memo,
   View,
   CircleCheckFilled,
+  CircleCloseFilled,
   Download,
   Cpu,
   MoreFilled,
   Box,
-  Calendar
+  Calendar,
+  WarningFilled
 } from "@element-plus/icons-vue";
 import LottieAnimation from "@/components/LottieAnimation.vue";
 import SuccessAnim from "@/lottie/Free Success Alert icon Animation.json";
+import {
+  canDownloadTeacherPlan,
+  canPollTeacherPlan,
+  getTeacherPlanPollDelay,
+  claimTeacherPlanPoller,
+  isTeacherPlanStateChanged,
+  isValidTeacherPlanCreation,
+  mergeTeacherPlanProgress,
+  normalizeTeacherPlan,
+  normalizeTeacherPlanProgress,
+  teacherPlanFromCreation,
+  teacherPlanMatchesCreation,
+  teacherPlanProgressFromPlan,
+  teacherPlanStateSignature,
+  type TeacherPlanCreationHandoff
+} from "../teacherPlanState";
 
 const props = defineProps({
   courseId: {
     type: Number,
     default: null
+  },
+  createdPlan: {
+    type: Object as PropType<TeacherPlanCreationHandoff | null>,
+    default: null
   }
 });
 
-const emit = defineEmits(["switch-tab"]);
+const emit = defineEmits<{
+  (event: "switch-tab", tab: "generate" | "list"): void;
+  (event: "created-plan-consumed", identity: string): void;
+}>();
 const appStore = useAppStoreHook();
 const isMobileLayout = computed(() => appStore.getDevice === "mobile");
+const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
+const isNarrowViewport = useMediaQuery("(max-width: 640px)");
 
-const planList = ref([]);
+const planList = ref<TeacherPlan[]>([]);
 const total = ref(0);
 const currentPage = ref(1);
 const pageSize = ref(12);
 const loading = ref(false);
+const isCompactPagination = computed(
+  () => isMobileLayout.value || isNarrowViewport.value
+);
+const paginationLayout = computed(() =>
+  isCompactPagination.value
+    ? "prev, slot, next"
+    : "total, prev, pager, next, sizes"
+);
+const totalPages = computed(() =>
+  Math.max(1, Math.ceil(total.value / pageSize.value))
+);
 
 const progressDialogVisible = ref(false);
 const progressLoading = ref(false);
-const currentPlan = ref(null);
-const currentProgress = ref(null);
+const retryLoading = ref(false);
+const progressError = ref("");
+const createdPlanIdentityError = ref("");
+const currentPlan = ref<TeacherPlan | null>(null);
+const currentProgress = ref<TeacherPlanProgress | null>(null);
+
+let listRequestVersion = 0;
+let pollTimer: ReturnType<typeof setTimeout> | null = null;
+let pollAbortController: AbortController | null = null;
+let pollGeneration = 0;
+let pollInFlight = false;
+let unchangedPolls = 0;
+let networkErrors = 0;
+let previousProgressSignature = "";
+let pollStartedAt = 0;
+let releasePollOwnership: (() => void) | null = null;
+let handledCreationIdentity = "";
+
+const MAX_POLL_DURATION_MS = 15 * 60 * 1000;
+const MAX_NETWORK_ERRORS = 5;
+
+const isCompletedProgress = computed(
+  () => currentProgress.value?.status === "completed"
+);
+const isFailedProgress = computed(
+  () => currentProgress.value?.status === "failed"
+);
+const isCancelledProgress = computed(() =>
+  ["cancelled", "timed_out"].includes(currentProgress.value?.status || "")
+);
+const isActiveProgress = computed(() => {
+  const progress = currentProgress.value;
+  return Boolean(
+    progress &&
+      ["pending", "processing"].includes(progress.status) &&
+      progress.availability === "synced" &&
+      !prefersReducedMotion.value
+  );
+});
+const progressAnnouncement = computed(() => {
+  const progress = currentProgress.value;
+  if (!progress) return progressError.value;
+  const status = getProgressStatusLabel(progress);
+  const percentage = `${Math.round(progress.progressPercent)}%`;
+  return [status, percentage, progress.message, progressError.value]
+    .filter(Boolean)
+    .join("，");
+});
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  const value = error as {
+    response?: { data?: { msg?: string; message?: string } };
+    message?: string;
+  };
+  return (
+    value?.response?.data?.msg ||
+    value?.response?.data?.message ||
+    value?.message ||
+    fallback
+  );
+}
+
+function isAbortError(error: unknown): boolean {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      ((error as { code?: string }).code === "ERR_CANCELED" ||
+        (error as { name?: string }).name === "CanceledError" ||
+        (error as { name?: string }).name === "AbortError")
+  );
+}
+
+function formatPlanDate(value: string): string {
+  if (!value) return "时间待确认";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function getStatusLabel(plan: TeacherPlan): string {
+  switch (plan.status) {
+    case "pending":
+      return "排队中";
+    case "processing":
+      return `生成中 ${Math.round(plan.progressPercent)}%`;
+    case "completed":
+      return "生成完成";
+    case "failed":
+      return "生成失败";
+    case "cancelled":
+      return "已取消";
+    case "timed_out":
+      return "已超时";
+    default:
+      return "状态待确认";
+  }
+}
+
+function getStatusTagType(
+  plan: TeacherPlan
+): "primary" | "success" | "warning" | "danger" | "info" {
+  if (["unavailable", "not_found"].includes(plan.availability)) return "info";
+  switch (plan.status) {
+    case "completed":
+      return "success";
+    case "failed":
+    case "timed_out":
+      return "danger";
+    case "cancelled":
+      return "warning";
+    case "pending":
+    case "processing":
+      return "primary";
+    default:
+      return "info";
+  }
+}
+
+function getProgressStatusLabel(progress: TeacherPlanProgress): string {
+  if (progress.availability === "unavailable") return "状态暂不可用";
+  if (progress.availability === "not_found") return "任务状态异常";
+  switch (progress.status) {
+    case "pending":
+      return "等待任务开始";
+    case "processing":
+      return "AI 智能撰写中";
+    case "completed":
+      return "生成成功";
+    case "failed":
+      return "生成失败";
+    case "cancelled":
+      return "任务已取消";
+    case "timed_out":
+      return "生成超时";
+    default:
+      return "状态待确认";
+  }
+}
+
+function getProgressStageLabel(stage: string): string {
+  const labels: Record<string, string> = {
+    queued: "等待调度",
+    pending: "等待任务开始",
+    content_loading: "加载课程内容",
+    model_generation: "生成教案内容",
+    document_generation: "整理教案文档",
+    processing: "生成处理中",
+    completed: "生成完成",
+    cancelled: "任务已取消",
+    timed_out: "生成超时",
+    legacy: "历史任务"
+  };
+  return labels[stage] || stage.replace(/[_-]+/g, " ");
+}
+
+function getAvailabilityLabel(availability: TeacherPlanAvailability): string {
+  switch (availability) {
+    case "stale":
+      return "状态待确认，保留最近一次结果";
+    case "unavailable":
+      return "暂时无法确认任务状态，请手动刷新";
+    case "not_found":
+      return "上游任务不存在，请刷新或联系支持排查";
+    default:
+      return "状态已同步";
+  }
+}
+
+function getAvailabilityCardLabel(
+  availability: TeacherPlanAvailability
+): string {
+  switch (availability) {
+    case "stale":
+      return "状态待确认";
+    case "unavailable":
+      return "状态暂不可用";
+    case "not_found":
+      return "任务状态异常";
+    default:
+      return "状态已同步";
+  }
+}
+
+function getAvailabilityTextClass(
+  availability: TeacherPlanAvailability
+): string {
+  return availability === "stale"
+    ? "text-[var(--el-color-warning)]"
+    : "text-[var(--el-color-danger)]";
+}
+
+function getAvailabilityAlertType(
+  availability: TeacherPlanAvailability
+): "warning" | "error" | "info" | "success" {
+  if (availability === "stale") return "warning";
+  if (availability === "unavailable" || availability === "not_found") {
+    return "error";
+  }
+  return "info";
+}
+
+function clearPollTimer() {
+  if (pollTimer) {
+    clearTimeout(pollTimer);
+    pollTimer = null;
+  }
+}
+
+function stopProgressPolling() {
+  pollGeneration += 1;
+  clearPollTimer();
+  pollAbortController?.abort();
+  pollAbortController = null;
+  pollInFlight = false;
+  const release = releasePollOwnership;
+  releasePollOwnership = null;
+  release?.();
+}
+
+function isDocumentVisible(): boolean {
+  return (
+    typeof document === "undefined" || document.visibilityState === "visible"
+  );
+}
+
+function mergePlanIntoList(plan: TeacherPlan) {
+  const index = planList.value.findIndex(
+    item => item.teacherPlanId === plan.teacherPlanId
+  );
+  if (index >= 0) {
+    planList.value.splice(index, 1, plan);
+  }
+}
+
+function replacePlanInList(previousId: number, plan: TeacherPlan) {
+  const index = planList.value.findIndex(
+    item =>
+      item.teacherPlanId === previousId ||
+      item.teacherPlanId === plan.teacherPlanId
+  );
+  if (index >= 0) {
+    planList.value.splice(index, 1, plan);
+  } else {
+    planList.value.unshift(plan);
+    total.value += 1;
+  }
+}
 
 const fetchPlanList = async () => {
+  const requestVersion = ++listRequestVersion;
   loading.value = true;
   try {
-    const params: any = {
+    const params: { pageNum: number; pageSize: number; courseId?: number } = {
       pageNum: currentPage.value,
       pageSize: pageSize.value
     };
-    if (props.courseId) {
-      params.courseId = props.courseId;
-    }
+    if (props.courseId) params.courseId = props.courseId;
 
     const res = await getTeacherPlanList(params);
+    if (requestVersion !== listRequestVersion) return;
 
-    if (res && res.code === 200 && res.data) {
-      const originalList = res.data.teacherPlanList || [];
-      // 并发请求每个教案的进度，因为列表接口没给状态
-      const listWithStatus = await Promise.all(
-        originalList.map(async item => {
-          try {
-            const progressRes = await getTeacherPlanProgress({
-              teacherPlanId: item.teacherPlanId
-            });
-            return {
-              ...item,
-              status: progressRes?.data?.progress ?? 0 // 将进度的 1 或 2 赋值给 status
-            };
-          } catch (e) {
-            return { ...item, status: 0 };
-          }
-        })
+    if (res?.code === 200 && res.data) {
+      planList.value = (res.data.teacherPlanList || []).map(
+        normalizeTeacherPlan
       );
-      planList.value = listWithStatus;
       total.value = res.data.total || 0;
     } else {
       planList.value = [];
       total.value = 0;
+      ElMessage.warning(res?.msg || "获取教案列表失败");
     }
   } catch (error) {
-    console.error("获取教案列表失败:", error);
-    ElMessage.error("获取教案列表失败");
+    if (requestVersion === listRequestVersion) {
+      console.error("获取教案列表失败:", error);
+      ElMessage.error(getErrorMessage(error, "获取教案列表失败"));
+    }
   } finally {
-    loading.value = false;
+    if (requestVersion === listRequestVersion) loading.value = false;
+  }
+};
+
+function scheduleProgressPoll(generation: number, changed: boolean) {
+  clearPollTimer();
+  if (
+    generation !== pollGeneration ||
+    !progressDialogVisible.value ||
+    !currentProgress.value ||
+    !canPollTeacherPlan(currentProgress.value) ||
+    !isDocumentVisible()
+  ) {
+    return;
+  }
+
+  if (Date.now() - pollStartedAt >= MAX_POLL_DURATION_MS) {
+    progressError.value =
+      "等待时间较长，已暂停自动刷新。您可以稍后手动刷新状态。";
+    return;
+  }
+
+  if (changed) unchangedPolls = 0;
+  const delay = getTeacherPlanPollDelay(
+    Math.max(unchangedPolls - 1, 0),
+    networkErrors
+  );
+  pollTimer = setTimeout(() => {
+    pollTimer = null;
+    void requestProgress(generation, false);
+  }, delay);
+}
+
+async function requestProgress(generation: number, showLoading: boolean) {
+  const plan = currentPlan.value;
+  if (
+    !plan ||
+    generation !== pollGeneration ||
+    !progressDialogVisible.value ||
+    !isDocumentVisible() ||
+    pollInFlight
+  ) {
+    return;
+  }
+
+  pollInFlight = true;
+  if (showLoading) progressLoading.value = true;
+  const controller = new AbortController();
+  pollAbortController = controller;
+  const previousSignature = previousProgressSignature;
+
+  try {
+    const res = await getTeacherPlanProgress(
+      { teacherPlanId: plan.teacherPlanId },
+      controller.signal
+    );
+    if (generation !== pollGeneration || !currentPlan.value) return;
+    if (res?.code !== 200 || !res.data) {
+      throw new Error(res?.msg || "获取生成进度失败");
+    }
+
+    const nextProgress = normalizeTeacherPlanProgress(
+      res.data,
+      currentProgress.value || teacherPlanProgressFromPlan(plan)
+    );
+    if (plan.taskId && nextProgress.taskId !== plan.taskId) {
+      progressError.value =
+        "进度接口返回的任务身份与当前教案不一致，已停止自动轮询";
+      clearPollTimer();
+      return;
+    }
+    const changed = isTeacherPlanStateChanged(previousSignature, nextProgress);
+    currentProgress.value = nextProgress;
+    currentPlan.value = mergeTeacherPlanProgress(plan, nextProgress);
+    mergePlanIntoList(currentPlan.value);
+    previousProgressSignature = teacherPlanStateSignature(nextProgress);
+    progressError.value = "";
+    networkErrors = 0;
+    unchangedPolls = changed ? 0 : unchangedPolls + 1;
+
+    if (!canPollTeacherPlan(nextProgress)) {
+      clearPollTimer();
+      return;
+    }
+    scheduleProgressPoll(generation, changed);
+  } catch (error) {
+    if (
+      generation !== pollGeneration ||
+      isAbortError(error) ||
+      controller.signal.aborted
+    ) {
+      return;
+    }
+    progressError.value = getErrorMessage(
+      error,
+      "获取生成进度失败，请稍后重试"
+    );
+    networkErrors += 1;
+    if (networkErrors >= MAX_NETWORK_ERRORS) {
+      progressError.value =
+        "连续获取状态失败，已暂停自动刷新。请检查网络后手动刷新。";
+      clearPollTimer();
+      return;
+    }
+    if (currentProgress.value && canPollTeacherPlan(currentProgress.value)) {
+      scheduleProgressPoll(generation, false);
+    } else {
+      clearPollTimer();
+    }
+  } finally {
+    if (generation === pollGeneration) {
+      pollInFlight = false;
+      pollAbortController = null;
+      progressLoading.value = false;
+    }
+  }
+}
+
+function startProgressPolling(showLoading = true) {
+  stopProgressPolling();
+  unchangedPolls = 0;
+  networkErrors = 0;
+  previousProgressSignature = currentProgress.value
+    ? teacherPlanStateSignature(currentProgress.value)
+    : "";
+  pollStartedAt = Date.now();
+  if (currentPlan.value) {
+    releasePollOwnership = claimTeacherPlanPoller(
+      currentPlan.value.teacherPlanId,
+      stopProgressPolling
+    );
+  }
+  const generation = pollGeneration;
+  void requestProgress(generation, showLoading);
+}
+
+const checkProgress = (plan: TeacherPlan) => {
+  stopProgressPolling();
+  const normalizedPlan = normalizeTeacherPlan(plan);
+  currentPlan.value = normalizedPlan;
+  currentProgress.value = teacherPlanProgressFromPlan(normalizedPlan);
+  progressError.value = "";
+  progressDialogVisible.value = true;
+  startProgressPolling(true);
+};
+
+function getCreationIdentity(creation: TeacherPlanCreationHandoff): string {
+  return `${creation.courseId}:${creation.teacherPlanId}:${creation.taskId}`;
+}
+
+function rejectCreatedPlan(
+  creation: TeacherPlanCreationHandoff,
+  message: string
+) {
+  createdPlanIdentityError.value = message;
+  stopProgressPolling();
+  progressDialogVisible.value = false;
+  currentPlan.value = null;
+  currentProgress.value = null;
+  ElMessage.error(message);
+  emit("created-plan-consumed", getCreationIdentity(creation));
+}
+
+async function focusCreatedPlan(creation: TeacherPlanCreationHandoff) {
+  if (props.courseId !== creation.courseId) return;
+
+  const identity = getCreationIdentity(creation);
+  if (identity === handledCreationIdentity) return;
+  handledCreationIdentity = identity;
+  createdPlanIdentityError.value = "";
+
+  if (!isValidTeacherPlanCreation(creation)) {
+    rejectCreatedPlan(
+      creation,
+      "创建响应缺少有效的教案任务身份，已停止自动轮询"
+    );
+    return;
+  }
+
+  currentPage.value = 1;
+  await fetchPlanList();
+
+  if (props.courseId !== creation.courseId) return;
+
+  const identityCandidate = planList.value.find(
+    item =>
+      item.teacherPlanId === creation.teacherPlanId ||
+      item.taskId === creation.taskId
+  );
+  if (
+    identityCandidate &&
+    !teacherPlanMatchesCreation(identityCandidate, creation)
+  ) {
+    rejectCreatedPlan(
+      creation,
+      "新建教案与列表返回的课程、章节或任务身份不一致，已停止自动轮询"
+    );
+    return;
+  }
+
+  const plan = identityCandidate || teacherPlanFromCreation(creation);
+  if (!teacherPlanMatchesCreation(plan, creation)) {
+    rejectCreatedPlan(
+      creation,
+      "无法确认本次新建教案的任务身份，已停止自动轮询"
+    );
+    return;
+  }
+
+  if (!identityCandidate) {
+    planList.value.unshift(plan);
+    total.value = Math.max(total.value, planList.value.length);
+  }
+  checkProgress(plan);
+  emit("created-plan-consumed", identity);
+}
+
+const refreshProgressManually = () => {
+  if (!currentPlan.value) return;
+  progressError.value = "";
+  startProgressPolling(true);
+};
+
+const openDownload = (plan: TeacherPlan) => {
+  if (canDownloadTeacherPlan(plan)) {
+    downloadPlan(plan);
+  } else {
+    checkProgress(plan);
+  }
+};
+
+const downloadPlan = async (state: {
+  status: TeacherPlanProgress["status"];
+  downloadUrl?: string;
+}) => {
+  if (!canDownloadTeacherPlan(state) || !state.downloadUrl) {
+    ElMessage.warning("当前教案尚无可用下载文件");
+    return;
+  }
+  try {
+    await downloadPlatformResource({
+      title: "AI 教案.md",
+      url: state.downloadUrl,
+      downloadUrl: state.downloadUrl,
+      mimeType: "text/markdown",
+      contentFormat: "markdown",
+      resourceType: "teacher_plan"
+    });
+  } catch {
+    ElMessage.warning("教案下载未能启动，请刷新状态后重试");
+  }
+};
+
+const retryPlan = async () => {
+  const plan = currentPlan.value;
+  if (!plan || retryLoading.value) return;
+  retryLoading.value = true;
+  stopProgressPolling();
+  try {
+    const res = await generateTeacherPlan({
+      course_id: plan.courseId,
+      chapter_id: plan.chapterId
+    });
+    if (res?.code !== 200 || !res.data) {
+      throw new Error(res?.msg || "重新生成失败");
+    }
+
+    const retryCreation: TeacherPlanCreationHandoff = {
+      ...res.data,
+      teacherPlanId: Number(res.data.teacherPlanId),
+      taskId: String(res.data.taskId || "").trim(),
+      courseId: plan.courseId,
+      chapterId: plan.chapterId,
+      courseName: plan.courseName,
+      chapterName: plan.chapterName,
+      createdAt: new Date().toISOString()
+    };
+    if (!isValidTeacherPlanCreation(retryCreation)) {
+      throw new Error("重新生成响应缺少有效的教案任务身份");
+    }
+
+    const nextPlan = teacherPlanFromCreation(retryCreation);
+    currentPlan.value = nextPlan;
+    currentProgress.value = teacherPlanProgressFromPlan(nextPlan);
+    progressError.value = "";
+    replacePlanInList(plan.teacherPlanId, nextPlan);
+    ElMessage.success("已重新提交教案生成任务");
+    startProgressPolling(false);
+  } catch (error) {
+    progressError.value = getErrorMessage(error, "重新生成失败，请稍后重试");
+    ElMessage.error(progressError.value);
+  } finally {
+    retryLoading.value = false;
   }
 };
 
 watch(
   () => props.courseId,
   () => {
+    stopProgressPolling();
+    progressDialogVisible.value = false;
+    currentPlan.value = null;
+    currentProgress.value = null;
+    createdPlanIdentityError.value = "";
     currentPage.value = 1;
-    fetchPlanList();
+    void fetchPlanList();
   }
 );
 
+watch(
+  [() => props.createdPlan, () => props.courseId],
+  ([creation, courseId]) => {
+    if (!creation || courseId !== creation.courseId) return;
+    void focusCreatedPlan(creation);
+  },
+  { immediate: true }
+);
+
+watch(progressDialogVisible, visible => {
+  if (!visible) {
+    stopProgressPolling();
+  } else if (currentProgress.value && !pollInFlight) {
+    startProgressPolling(false);
+  }
+});
+
 const handleSizeChange = (val: number) => {
   pageSize.value = val;
-  fetchPlanList();
+  void fetchPlanList();
 };
 
 const handleCurrentChange = (val: number) => {
   currentPage.value = val;
-  fetchPlanList();
+  void fetchPlanList();
 };
 
-const checkProgress = async (plan: any) => {
-  currentPlan.value = plan;
-  progressDialogVisible.value = true;
-  progressLoading.value = true;
-
-  try {
-    const res = await getTeacherPlanProgress({
-      teacherPlanId: plan.teacherPlanId
-    });
-
-    if (res && res.code === 200 && res.data) {
-      currentProgress.value = res.data;
-    } else {
-      currentProgress.value = null;
-      ElMessage.warning("获取生成进度失败");
-    }
-  } catch (error) {
-    console.error("获取生成进度失败:", error);
-    ElMessage.error("获取生成进度失败");
-  } finally {
-    progressLoading.value = false;
-  }
-};
-
-const downloadPlan = (url: string) => {
-  if (!url) {
-    ElMessage.warning("下载链接不存在");
+const handleVisibilityChange = () => {
+  if (!isDocumentVisible()) {
+    stopProgressPolling();
     return;
   }
-  window.open(url, "_blank");
-  ElMessage.success("开始下载 Markdown 教案");
+  if (
+    progressDialogVisible.value &&
+    currentProgress.value &&
+    canPollTeacherPlan(currentProgress.value)
+  ) {
+    startProgressPolling(false);
+  }
 };
 
 onMounted(() => {
-  fetchPlanList();
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+  void fetchPlanList();
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener("visibilitychange", handleVisibilityChange);
+  stopProgressPolling();
 });
 </script>
 
@@ -553,7 +1330,7 @@ onMounted(() => {
 
 .list-container.is-mobile-layout .plan-list-toolbar__actions :deep(.el-button) {
   width: 100%;
-  height: 40px;
+  height: 44px;
   margin-left: 0;
 }
 
@@ -569,6 +1346,13 @@ onMounted(() => {
 
 .list-container.is-mobile-layout .plan-card__header {
   margin-bottom: 14px;
+}
+
+.list-container.is-mobile-layout .plan-card__menu {
+  width: 44px;
+  height: 44px;
+  margin-top: -10px;
+  margin-right: -10px;
 }
 
 .list-container.is-mobile-layout .plan-card h4 {
@@ -601,7 +1385,7 @@ onMounted(() => {
 
 .list-container.is-mobile-layout .plan-card__action {
   min-width: 88px;
-  height: 32px;
+  height: 44px;
   margin-left: auto;
   padding-inline: 14px !important;
 }
@@ -614,6 +1398,27 @@ onMounted(() => {
 .list-container.is-mobile-layout .plan-list-pagination :deep(.el-pagination) {
   justify-content: center;
   row-gap: 8px;
+}
+
+.plan-list-pagination__summary {
+  min-width: 104px;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.list-container.is-mobile-layout .plan-list-pagination :deep(button),
+.list-container.is-mobile-layout .plan-list-pagination :deep(.el-pager li) {
+  min-width: 44px;
+  height: 44px;
+  line-height: 44px;
+}
+
+.list-container.is-mobile-layout
+  .plan-list-pagination
+  :deep(.el-select__wrapper) {
+  min-height: 44px;
 }
 
 .list-container.is-mobile-layout
@@ -667,7 +1472,7 @@ onMounted(() => {
 .list-container.is-mobile-layout :deep(.rounded-dialog) {
   width: calc(100vw - 32px);
   max-width: 420px;
-  max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
   margin: 0 auto;
   border-radius: 18px;
   align-self: center;
@@ -678,7 +1483,7 @@ onMounted(() => {
 }
 
 .list-container.is-mobile-layout :deep(.rounded-dialog .el-dialog__body) {
-  max-height: calc(100vh - 160px);
+  max-height: calc(100dvh - 160px);
   padding: 12px 16px 18px;
   overflow-y: auto;
 }
@@ -717,7 +1522,7 @@ onMounted(() => {
 
   .plan-list-toolbar__actions :deep(.el-button) {
     width: 100%;
-    height: 40px;
+    height: 44px;
     margin-left: 0;
   }
 
@@ -733,6 +1538,13 @@ onMounted(() => {
 
   .plan-card__header {
     margin-bottom: 14px;
+  }
+
+  .plan-card__menu {
+    width: 44px;
+    height: 44px;
+    margin-top: -10px;
+    margin-right: -10px;
   }
 
   .plan-card h4 {
@@ -765,7 +1577,7 @@ onMounted(() => {
 
   .plan-card__action {
     min-width: 88px;
-    height: 32px;
+    height: 44px;
     margin-left: auto;
     padding-inline: 14px !important;
   }
@@ -778,6 +1590,17 @@ onMounted(() => {
   .plan-list-pagination :deep(.el-pagination) {
     justify-content: center;
     row-gap: 8px;
+  }
+
+  .plan-list-pagination :deep(button),
+  .plan-list-pagination :deep(.el-pager li) {
+    min-width: 44px;
+    height: 44px;
+    line-height: 44px;
+  }
+
+  .plan-list-pagination :deep(.el-select__wrapper) {
+    min-height: 44px;
   }
 
   .plan-list-pagination :deep(.el-pagination__sizes) {
@@ -829,7 +1652,7 @@ onMounted(() => {
   :deep(.rounded-dialog) {
     width: calc(100vw - 32px);
     max-width: 420px;
-    max-height: calc(100vh - 48px);
+    max-height: calc(100dvh - 48px);
     margin: 0 auto;
     border-radius: 18px;
     align-self: center;
@@ -840,9 +1663,20 @@ onMounted(() => {
   }
 
   :deep(.rounded-dialog .el-dialog__body) {
-    max-height: calc(100vh - 160px);
+    max-height: calc(100dvh - 160px);
     padding: 12px 16px 18px;
     overflow-y: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .list-container {
+    animation: none;
+  }
+
+  .plan-card,
+  .plan-card :deep(*) {
+    transition: none !important;
   }
 }
 </style>

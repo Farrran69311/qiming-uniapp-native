@@ -103,7 +103,7 @@ function normalizeNativeInitialHash() {
 function normalizeNativeStatusbarTop(value: string, clearance = 0) {
   const statusTop = Number(value);
   if (!Number.isFinite(statusTop) || statusTop <= 0) return 0;
-  return Math.min(Math.max(statusTop, 22), 28) + clearance;
+  return Math.min(Math.max(statusTop, 22) + clearance, 64);
 }
 
 function readCurrentHashRouteInfo() {

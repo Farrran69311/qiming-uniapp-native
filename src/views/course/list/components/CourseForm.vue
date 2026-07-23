@@ -699,6 +699,7 @@ import COS from "cos-js-sdk-v5";
 import { completeStsUpload, initStsUpload } from "@/api/user";
 import { getCategoryList } from "@/api/category";
 import { Plus, Loading } from "@element-plus/icons-vue";
+import { openPlatformUrl } from "@/utils/platformCapability";
 
 const props = defineProps({
   modelValue: {
@@ -1225,7 +1226,9 @@ const getFileName = url => {
 // 预览资源
 const previewResource = url => {
   if (url) {
-    window.open(url);
+    if (!openPlatformUrl(url).opened) {
+      ElMessage.warning("当前环境无法打开该资源");
+    }
   } else {
     ElMessage.warning("无效的资源链接");
   }

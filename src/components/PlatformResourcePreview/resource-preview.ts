@@ -1,4 +1,9 @@
 import { formatToken, getToken } from "@/utils/auth";
+import {
+  buildPlatformObjectUrl,
+  normalizePlatformResourceUrl,
+  uniquePlatformResourceUrls
+} from "./resource-url";
 
 export type PlatformPreviewKind =
   | "html"
@@ -21,6 +26,7 @@ export interface PlatformPreviewResource {
   previewUrl?: string;
   previewPdfUrl?: string | null;
   downloadUrl?: string;
+  objectKey?: string;
   content?: string;
   contentFormat?: string;
   mimeType?: string;
@@ -33,6 +39,10 @@ export interface PlatformPreviewResource {
   rubric?: Record<string, unknown> | string;
   runtimeStatus?: string;
   structuredData?: unknown;
+  initialTimeMs?: number;
+  segmentStartMs?: number;
+  segmentEndMs?: number;
+  autoPlay?: boolean;
 }
 
 export interface AssistantPreviewResourceLike {
@@ -40,6 +50,7 @@ export interface AssistantPreviewResourceLike {
   preview_url?: string;
   preview_pdf_url?: string | null;
   download_url?: string;
+  object_key?: string;
   content_body?: string;
   content_format?: string;
   mime_type?: string;
@@ -59,21 +70,62 @@ export interface ResolvedPlatformPreviewSource {
   kind: PlatformPreviewKind;
   url: string;
   downloadUrl: string;
+  urlCandidates: string[];
+  downloadUrlCandidates: string[];
   content: string;
   title: string;
 }
 
+export interface PlatformResourceBufferResult {
+  buffer: ArrayBuffer;
+  contentType: string;
+  contentDisposition: string;
+  url: string;
+  requestUrl: string;
+}
+
+interface PlatformUniNavigationOptions {
+  url: string;
+}
+
+interface PlatformUniMessageOptions {
+  data: Record<string, unknown>;
+}
+
+interface PlatformUniBridge {
+  navigateTo?: (options: PlatformUniNavigationOptions) => unknown;
+  redirectTo?: (options: PlatformUniNavigationOptions) => unknown;
+  postMessage?: (options: PlatformUniMessageOptions) => unknown;
+}
+
+type PlatformBridgeWindow = Window & {
+  uni?: PlatformUniBridge;
+  wx?: {
+    miniProgram?: PlatformUniBridge;
+  };
+};
+
 const clean = (value?: string | null) => String(value || "").trim();
 const platformFileProxyPrefix = "/mindmap-file";
+const platformNativeDownloadPayloadPrefix = "qiming.resource-download.payload.";
+const platformNativeDownloadAckPrefix = "qiming.resource-download.ack.";
 const platformFileProxyTarget = clean(
   import.meta.env.VITE_MINDMAP_FILE_PROXY_TARGET
 ).replace(/\/$/, "");
 const platformFileProxyOrigin = clean(
   import.meta.env.VITE_PLATFORM_FILE_PROXY_ORIGIN
 ).replace(/\/$/, "");
+const platformResourceUrlOptions = () => ({
+  fileBaseUrl: platformFileProxyTarget,
+  pageProtocol:
+    typeof window === "undefined" ? "https:" : window.location.protocol
+});
 
 export function normalizePlatformResourceFetchUrl(url: string) {
-  const source = clean(url);
+  const source = normalizePlatformResourceUrl(
+    url,
+    platformResourceUrlOptions()
+  );
   if (!source || !platformFileProxyTarget || !/^https?:\/\//i.test(source)) {
     return source;
   }
@@ -102,9 +154,18 @@ export function mapAssistantResourcePreview(
     /(json|markdown|\bmd\b|text|mind[_\s-]*map|mermaid|coding[_\s-]*practice|exercise[_\s-]*set|编程|练习题集|思维导图)/.test(
       descriptor
     );
-  const previewPdfUrl = usesStructuredSource
-    ? undefined
-    : resource.preview_pdf_url;
+  const hasInlineStructuredSource = Boolean(
+    clean(resource.content_body) ||
+      resource.structured_data !== undefined ||
+      resource.exercise_items?.length ||
+      clean(resource.starter_code) ||
+      resource.test_cases?.length ||
+      resource.rubric
+  );
+  const previewPdfUrl =
+    usesStructuredSource && hasInlineStructuredSource
+      ? undefined
+      : resource.preview_pdf_url;
   return {
     title: resource.title || "课程资料",
     url:
@@ -115,6 +176,7 @@ export function mapAssistantResourcePreview(
     previewUrl: resource.preview_url,
     previewPdfUrl,
     downloadUrl: resource.download_url || resource.preview_url,
+    objectKey: resource.object_key,
     content: resource.content_body,
     contentFormat: resource.content_format,
     mimeType: resource.mime_type,
@@ -139,8 +201,9 @@ export function hasPlatformResourcePreview(
         resource.previewUrl ||
         resource.previewPdfUrl ||
         resource.downloadUrl ||
+        resource.objectKey ||
         resource.content ||
-        resource.structuredData ||
+        resource.structuredData !== undefined ||
         resource.exerciseItems?.length ||
         resource.starterCode ||
         resource.testCases?.length ||
@@ -253,7 +316,8 @@ export function detectPlatformPreviewKind(
   const preferredUrl =
     clean(resource.url) ||
     clean(resource.previewUrl) ||
-    clean(resource.downloadUrl);
+    clean(resource.downloadUrl) ||
+    clean(resource.objectKey);
   const urlKind = kindFromExtension(getResourceUrlExtension(preferredUrl));
   if (urlKind) return urlKind;
 
@@ -275,20 +339,36 @@ export function detectPlatformPreviewKind(
 export function resolvePlatformPreviewSource(
   resource?: PlatformPreviewResource | null
 ): ResolvedPlatformPreviewSource {
-  const previewPdfUrl = clean(resource?.previewPdfUrl);
-  const url =
-    previewPdfUrl ||
-    clean(resource?.url) ||
-    clean(resource?.previewUrl) ||
-    clean(resource?.downloadUrl);
+  const urlOptions = platformResourceUrlOptions();
+  const previewPdfUrl = normalizePlatformResourceUrl(
+    resource?.previewPdfUrl,
+    urlOptions
+  );
+  const previewUrl = normalizePlatformResourceUrl(
+    resource?.previewUrl,
+    urlOptions
+  );
+  const directUrl = normalizePlatformResourceUrl(resource?.url, urlOptions);
+  const downloadUrl = normalizePlatformResourceUrl(
+    resource?.downloadUrl,
+    urlOptions
+  );
+  const objectUrl = buildPlatformObjectUrl(resource?.objectKey, urlOptions);
+  const urlCandidates = uniquePlatformResourceUrls(
+    [previewPdfUrl, previewUrl, directUrl, downloadUrl, objectUrl],
+    urlOptions
+  );
+  const downloadUrlCandidates = uniquePlatformResourceUrls(
+    [downloadUrl, directUrl, previewUrl, previewPdfUrl, objectUrl],
+    urlOptions
+  );
+  const url = urlCandidates[0] || "";
   return {
     kind: previewPdfUrl ? "pdf" : detectPlatformPreviewKind(resource),
     url,
-    downloadUrl:
-      clean(resource?.downloadUrl) ||
-      clean(resource?.url) ||
-      clean(resource?.previewUrl) ||
-      previewPdfUrl,
+    downloadUrl: downloadUrlCandidates[0] || "",
+    urlCandidates,
+    downloadUrlCandidates,
     content: String(resource?.content || ""),
     title: clean(resource?.title) || "课程资料"
   };
@@ -321,6 +401,290 @@ export function isTextPreviewKind(kind: PlatformPreviewKind) {
   return ["markdown", "text", "mindmap", "json"].includes(kind);
 }
 
+export function isPlatformNativeResourceRuntime() {
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return false;
+  }
+
+  const root = document.documentElement;
+  if (
+    root.classList.contains("qiming-native-webview") ||
+    root.classList.contains("qiming-mini-program-webview") ||
+    root.dataset.qimingNative === "true" ||
+    root.dataset.qimingMiniProgram === "true"
+  ) {
+    return true;
+  }
+
+  const hashQuery = window.location.hash.includes("?")
+    ? window.location.hash.slice(window.location.hash.indexOf("?") + 1)
+    : "";
+  const searchParams = new URLSearchParams(window.location.search);
+  const hashParams = new URLSearchParams(hashQuery);
+  if (
+    searchParams.get("qimingNative") === "1" ||
+    searchParams.get("qimingMiniProgram") === "1" ||
+    hashParams.get("qimingNative") === "1" ||
+    hashParams.get("qimingMiniProgram") === "1"
+  ) {
+    return true;
+  }
+
+  try {
+    return (
+      localStorage.getItem("qimingNativeWebView") === "1" ||
+      localStorage.getItem("qimingMiniProgramWebView") === "1" ||
+      sessionStorage.getItem("qimingNativeWebView") === "1" ||
+      sessionStorage.getItem("qimingMiniProgramWebView") === "1"
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function isPlatformMiniProgramResourceRuntime() {
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return false;
+  }
+  const root = document.documentElement;
+  if (
+    root.classList.contains("qiming-mini-program-webview") ||
+    root.dataset.qimingMiniProgram === "true"
+  ) {
+    return true;
+  }
+
+  const hashQuery = window.location.hash.includes("?")
+    ? window.location.hash.slice(window.location.hash.indexOf("?") + 1)
+    : "";
+  const searchParams = new URLSearchParams(window.location.search);
+  const hashParams = new URLSearchParams(hashQuery);
+  if (
+    searchParams.get("qimingMiniProgram") === "1" ||
+    hashParams.get("qimingMiniProgram") === "1"
+  ) {
+    return true;
+  }
+
+  try {
+    return (
+      localStorage.getItem("qimingMiniProgramWebView") === "1" ||
+      sessionStorage.getItem("qimingMiniProgramWebView") === "1"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function getPlatformPlusStorage() {
+  if (
+    !isPlatformNativeResourceRuntime() ||
+    isPlatformMiniProgramResourceRuntime()
+  ) {
+    return undefined;
+  }
+  const storage = (window as any).plus?.storage;
+  return storage?.setItem && storage?.getItem && storage?.removeItem
+    ? storage
+    : undefined;
+}
+
+function getPlatformUniBridge() {
+  if (!getPlatformPlusStorage()) return undefined;
+  const bridge = (window as PlatformBridgeWindow).uni;
+  return typeof bridge?.navigateTo === "function" ? bridge : undefined;
+}
+
+function getPlatformMiniProgramBridge() {
+  if (!isPlatformMiniProgramResourceRuntime()) return undefined;
+  const bridgeWindow = window as PlatformBridgeWindow;
+  const bridge = bridgeWindow.wx?.miniProgram || bridgeWindow.uni;
+  return typeof bridge?.redirectTo === "function" &&
+    typeof bridge?.postMessage === "function"
+    ? bridge
+    : undefined;
+}
+
+function createPlatformDownloadKey() {
+  const bytes = new Uint8Array(12);
+  if (globalThis.crypto?.getRandomValues) {
+    globalThis.crypto.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+  return `${Date.now().toString(36)}-${Array.from(bytes, byte =>
+    byte.toString(16).padStart(2, "0")
+  ).join("")}`;
+}
+
+export function buildPlatformNativeDownloadRoute(key: string) {
+  const params = new URLSearchParams();
+  params.set("key", key);
+  return `/pages/resource-download/index?${params.toString()}`;
+}
+
+function getPlatformDownloadReturnRoute() {
+  const hashRoute = clean(window.location.hash.replace(/^#/, ""));
+  if (!hashRoute.startsWith("/") || hashRoute.includes("://")) return "/home";
+  const queryIndex = hashRoute.indexOf("?");
+  if (queryIndex < 0) return hashRoute.slice(0, 1024);
+
+  const path = hashRoute.slice(0, queryIndex);
+  const params = new URLSearchParams(hashRoute.slice(queryIndex + 1));
+  params.delete("qimingNative");
+  params.delete("qimingMiniProgram");
+  params.delete("nativeStatusTop");
+  const query = params.toString();
+  return `${path}${query ? `?${query}` : ""}`.slice(0, 1024);
+}
+
+async function redirectToPlatformMiniProgramDownload(
+  resource: PlatformPreviewResource,
+  url: string
+) {
+  const bridge = getPlatformMiniProgramBridge();
+  if (!bridge?.redirectTo || !bridge.postMessage) return false;
+
+  let absoluteUrl = "";
+  try {
+    const target = new URL(url, window.location.href);
+    absoluteUrl = /^https?:$/.test(target.protocol) ? target.href : "";
+  } catch {
+    return false;
+  }
+  if (!absoluteUrl) return false;
+
+  const key = createPlatformDownloadKey();
+  const route = buildPlatformNativeDownloadRoute(key);
+  const returnRoute = getPlatformDownloadReturnRoute();
+
+  return new Promise<boolean>(resolve => {
+    let settled = false;
+    let fallbackTimer = 0;
+    const finish = (result: boolean) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(fallbackTimer);
+      window.removeEventListener("pagehide", handlePageHide);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      resolve(result);
+    };
+    const handlePageHide = () => finish(true);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") finish(true);
+    };
+
+    window.addEventListener("pagehide", handlePageHide, { once: true });
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    try {
+      bridge.postMessage({
+        data: {
+          source: "qiming-h5",
+          type: "resource-download",
+          resource: {
+            key,
+            url: absoluteUrl,
+            title: suggestedFilename(resource, absoluteUrl),
+            kind: detectPlatformPreviewKind(resource),
+            mime: clean(resource.mimeType),
+            createdAt: Date.now(),
+            returnRoute
+          }
+        }
+      });
+      bridge.redirectTo({ url: route });
+    } catch (error) {
+      console.warn(
+        "[PlatformResourcePreview] mini-program download handoff failed",
+        error
+      );
+      finish(false);
+      return;
+    }
+
+    fallbackTimer = window.setTimeout(() => finish(false), 3000);
+  });
+}
+
+async function navigateToPlatformNativeDownload(
+  resource: PlatformPreviewResource,
+  url: string
+) {
+  const bridge = getPlatformUniBridge();
+  const storage = getPlatformPlusStorage();
+  if (!bridge?.navigateTo || !storage) return false;
+
+  let absoluteUrl = "";
+  try {
+    const target = new URL(url, window.location.href);
+    absoluteUrl = /^https?:$/.test(target.protocol) ? target.href : "";
+  } catch {
+    return false;
+  }
+  if (!absoluteUrl) return false;
+
+  const key = createPlatformDownloadKey();
+  const payloadStorageKey = `${platformNativeDownloadPayloadPrefix}${key}`;
+  const ackStorageKey = `${platformNativeDownloadAckPrefix}${key}`;
+  const route = buildPlatformNativeDownloadRoute(key);
+  try {
+    storage.setItem(
+      payloadStorageKey,
+      JSON.stringify({
+        url: absoluteUrl,
+        title: suggestedFilename(resource, absoluteUrl),
+        kind: detectPlatformPreviewKind(resource),
+        mime: clean(resource.mimeType),
+        createdAt: Date.now()
+      })
+    );
+  } catch {
+    return false;
+  }
+
+  return new Promise<boolean>(resolve => {
+    let settled = false;
+    let pollTimer = 0;
+    const finish = (result: boolean) => {
+      if (settled) return;
+      settled = true;
+      window.clearInterval(pollTimer);
+      storage.removeItem(ackStorageKey);
+      if (!result) storage.removeItem(payloadStorageKey);
+      resolve(result);
+    };
+
+    try {
+      bridge.navigateTo({ url: route });
+    } catch (error) {
+      console.warn(
+        "[PlatformResourcePreview] native download navigation failed",
+        error
+      );
+      finish(false);
+      return;
+    }
+
+    const startedAt = Date.now();
+    pollTimer = window.setInterval(() => {
+      let ack = "";
+      try {
+        ack = storage.getItem(ackStorageKey) || "";
+      } catch {
+        finish(false);
+        return;
+      }
+      if (ack === "started") {
+        finish(true);
+      } else if (ack === "error" || Date.now() - startedAt >= 3000) {
+        finish(false);
+      }
+    }, 50);
+  });
+}
+
 function isTrustedResourceUrl(url: string) {
   if (typeof window === "undefined") return false;
   try {
@@ -329,6 +693,12 @@ function isTrustedResourceUrl(url: string) {
       String(import.meta.env.VITE_API_URL || "/api"),
       window.location.href
     );
+    if (
+      target.origin === window.location.origin &&
+      target.pathname.startsWith(`${platformFileProxyPrefix}/`)
+    ) {
+      return false;
+    }
     return (
       target.origin === window.location.origin ||
       target.origin === apiBase.origin
@@ -360,39 +730,116 @@ export function buildPlatformResourceRequestInit(
   };
 }
 
+function mobileOfficePreviewLimit(options?: {
+  maxBytes?: number;
+  accept?: string;
+}) {
+  const requestedLimit = options?.maxBytes;
+  const isOfficeRequest = /(?:openxmlformats|ms-excel|application\/pdf)/i.test(
+    options?.accept || ""
+  );
+  if (!isPlatformNativeResourceRuntime() || !isOfficeRequest) {
+    return requestedLimit;
+  }
+  return Math.min(requestedLimit || Number.POSITIVE_INFINITY, 16 * 1024 * 1024);
+}
+
+async function readPlatformResponseBuffer(
+  response: Response,
+  maxBytes?: number
+) {
+  const reader = maxBytes ? response.body?.getReader() : undefined;
+  if (!reader) {
+    const buffer = await response.arrayBuffer();
+    if (maxBytes && buffer.byteLength > maxBytes) {
+      throw new Error("RESOURCE_TOO_LARGE");
+    }
+    return buffer;
+  }
+
+  const chunks: Uint8Array[] = [];
+  let receivedBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value?.byteLength) continue;
+      receivedBytes += value.byteLength;
+      if (receivedBytes > maxBytes) {
+        await reader.cancel("RESOURCE_TOO_LARGE");
+        throw new Error("RESOURCE_TOO_LARGE");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const output = new Uint8Array(receivedBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    output.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return output.buffer;
+}
+
 export async function fetchPlatformResourceBuffer(
-  url: string,
+  url: string | readonly string[],
   options?: {
     signal?: AbortSignal;
     maxBytes?: number;
     accept?: string;
+    validate?: (result: PlatformResourceBufferResult) => void;
   }
 ) {
-  const requestUrl = normalizePlatformResourceFetchUrl(url);
-  const response = await fetch(
-    requestUrl,
-    buildPlatformResourceRequestInit(
-      requestUrl,
-      options?.signal,
-      options?.accept || "*/*"
-    )
+  const maxBytes = mobileOfficePreviewLimit(options);
+  const sourceUrls = uniquePlatformResourceUrls(
+    Array.isArray(url) ? [...url] : [url],
+    platformResourceUrlOptions()
   );
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  let lastError: unknown = new Error("RESOURCE_URL_MISSING");
 
-  const contentLength = Number(response.headers.get("content-length") || 0);
-  if (options?.maxBytes && contentLength > options.maxBytes) {
-    throw new Error("RESOURCE_TOO_LARGE");
+  for (const sourceUrl of sourceUrls) {
+    const requestUrl = normalizePlatformResourceFetchUrl(sourceUrl);
+    try {
+      const response = await fetch(
+        requestUrl,
+        buildPlatformResourceRequestInit(
+          requestUrl,
+          options?.signal,
+          options?.accept || "*/*"
+        )
+      );
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      const contentLength = Number(response.headers.get("content-length") || 0);
+      if (maxBytes && contentLength > maxBytes) {
+        throw new Error("RESOURCE_TOO_LARGE");
+      }
+
+      const buffer = await readPlatformResponseBuffer(response, maxBytes);
+      const result: PlatformResourceBufferResult = {
+        buffer,
+        contentType: response.headers.get("content-type") || "",
+        contentDisposition: response.headers.get("content-disposition") || "",
+        url: sourceUrl,
+        requestUrl
+      };
+      options?.validate?.(result);
+      return result;
+    } catch (error) {
+      if (
+        options?.signal?.aborted ||
+        (error instanceof Error && error.message === "RESOURCE_TOO_LARGE")
+      ) {
+        throw error;
+      }
+      lastError = error;
+    }
   }
 
-  const buffer = await response.arrayBuffer();
-  if (options?.maxBytes && buffer.byteLength > options.maxBytes) {
-    throw new Error("RESOURCE_TOO_LARGE");
-  }
-  return {
-    buffer,
-    contentType: response.headers.get("content-type") || "",
-    contentDisposition: response.headers.get("content-disposition") || ""
-  };
+  throw lastError;
 }
 
 function normalizeCharset(value?: string) {
@@ -447,7 +894,7 @@ export function decodePlatformTextBuffer(
 }
 
 export async function fetchPlatformResourceText(
-  url: string,
+  url: string | readonly string[],
   options?: { signal?: AbortSignal; maxBytes?: number }
 ) {
   const result = await fetchPlatformResourceBuffer(url, {
@@ -486,24 +933,61 @@ export async function downloadPlatformResource(
   resource: PlatformPreviewResource
 ) {
   const resolved = resolvePlatformPreviewSource(resource);
-  const url = resolved.downloadUrl || resolved.url;
+  const candidates = resolved.downloadUrlCandidates.length
+    ? resolved.downloadUrlCandidates
+    : resolved.urlCandidates;
+  const url = candidates[0] || "";
   if (!url) throw new Error("RESOURCE_URL_MISSING");
   const requestUrl = normalizePlatformResourceFetchUrl(url);
-
-  const response = await fetch(
-    requestUrl,
-    buildPlatformResourceRequestInit(requestUrl, undefined, "*/*")
+  const publicDownloadUrl = candidates.find(
+    candidate =>
+      !isTrustedResourceUrl(normalizePlatformResourceFetchUrl(candidate))
   );
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-  const blob = await response.blob();
+  if (isPlatformMiniProgramResourceRuntime() && publicDownloadUrl) {
+    if (
+      await redirectToPlatformMiniProgramDownload(resource, publicDownloadUrl)
+    ) {
+      return;
+    }
+    throw new Error("MINI_PROGRAM_DOWNLOAD_HANDOFF_FAILED");
+  }
+
+  // Native utility pages cannot receive the authenticated H5 session without
+  // exposing credentials. Keep protected API downloads in the existing
+  // authenticated fetch path; use the native page for signed/public files.
+  if (
+    publicDownloadUrl &&
+    (await navigateToPlatformNativeDownload(resource, publicDownloadUrl))
+  ) {
+    return;
+  }
+
+  if (!isTrustedResourceUrl(requestUrl)) {
+    const anchor = document.createElement("a");
+    anchor.href = requestUrl;
+    anchor.download = suggestedFilename(resource, url);
+    anchor.target = "_blank";
+    anchor.rel = "noopener noreferrer";
+    anchor.style.display = "none";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    return;
+  }
+
+  const result = await fetchPlatformResourceBuffer(candidates, {
+    accept: "*/*"
+  });
+  const blob = new Blob([result.buffer], {
+    type: result.contentType || "application/octet-stream"
+  });
   const objectUrl = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = objectUrl;
   anchor.download =
-    filenameFromDisposition(
-      response.headers.get("content-disposition") || ""
-    ) || suggestedFilename(resource, url);
+    filenameFromDisposition(result.contentDisposition) ||
+    suggestedFilename(resource, url);
   anchor.style.display = "none";
   document.body.appendChild(anchor);
   anchor.click();

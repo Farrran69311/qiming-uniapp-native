@@ -57,7 +57,7 @@
 
     <!-- #ifdef MP-WEIXIN -->
     <web-view
-      v-if="miniProgramWebviewSrc"
+      v-if="miniProgramWebviewSrc && !loadError"
       id="qiming-wechat-webview"
       class="qiming-webview"
       :src="miniProgramWebviewSrc"
@@ -65,7 +65,7 @@
       @error="handleError"
       @message="handleMessage"
     />
-    <view v-else class="wechat-shell">
+    <view v-else-if="!loadError" class="wechat-shell">
       <view class="brand-mark">
         <text class="brand-mark__text">启</text>
       </view>
@@ -96,7 +96,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { onBackPress, onLoad, onShow } from "@dcloudio/uni-app";
+import { onBackPress, onHide, onLoad, onShow } from "@dcloudio/uni-app";
 
 type WebMessage = {
   source?: string;
@@ -105,10 +105,20 @@ type WebMessage = {
   title?: string;
   online?: boolean;
   timestamp?: number;
+  resource?: {
+    key?: string;
+    url?: string;
+    title?: string;
+    kind?: string;
+    mime?: string;
+    createdAt?: number;
+    returnRoute?: string;
+  };
 };
 
 const defaultEntryRoute = "/home";
 const defaultMiniProgramOrigin = "https://aiedu-mp.intelledu.cn";
+const miniProgramDownloadPayloadPrefix = "qiming.resource-download.payload.";
 let isH5DevPreview = false;
 // #ifdef H5
 isH5DevPreview = import.meta.env.DEV;
@@ -283,7 +293,9 @@ const defaultMiniProgramEntry = resolveEntryForRole(
 const appEntryRoute = ref(
   isMiniProgramRuntime ? defaultMiniProgramEntry : defaultEntryRoute
 );
-const appDevServer = ref(isMiniProgramRuntime ? defaultMiniProgramDevServer : "");
+const appDevServer = ref(
+  isMiniProgramRuntime ? defaultMiniProgramDevServer : ""
+);
 const appDemoRole = ref<PreviewRole | "">(
   isMiniProgramRuntime ? defaultMiniProgramRole : ""
 );
@@ -394,8 +406,7 @@ const isPhonePreview = computed(
 const showShellState = computed(
   () =>
     !isH5DevPreview &&
-    !isMiniProgramRuntime &&
-    (!loaded.value || loadError.value)
+    (loadError.value || (!isMiniProgramRuntime && !loaded.value))
 );
 
 const webviewStyles = {
@@ -405,7 +416,11 @@ const webviewStyles = {
 };
 
 const stateText = computed(() => {
-  if (loadError.value) return "页面加载失败，请检查离线资源或网络连接。";
+  if (loadError.value) {
+    return isMiniProgramRuntime
+      ? "页面加载失败，请检查网络连接或小程序业务域名配置。"
+      : "页面加载失败，请检查离线资源或网络连接。";
+  }
   if (lastMessage.value?.type === "offline") {
     return "当前网络不可用，已保留本地页面。";
   }
@@ -417,6 +432,37 @@ function extractMessages(event: any): WebMessage[] {
   if (Array.isArray(data)) return data;
   if (data) return [data];
   return [];
+}
+
+function persistMiniProgramDownload(message: WebMessage) {
+  if (!isMiniProgramRuntime || message.type !== "resource-download") return;
+  const resource = message.resource;
+  const key = String(resource?.key || "").trim();
+  const url = String(resource?.url || "").trim();
+  const createdAt = Number(resource?.createdAt || 0);
+  if (
+    !/^[a-z0-9-]{16,80}$/i.test(key) ||
+    !/^https?:\/\//i.test(url) ||
+    !createdAt ||
+    Math.abs(Date.now() - createdAt) > 30_000
+  ) {
+    return;
+  }
+
+  try {
+    const parsedUrl = new URL(url);
+    if (!["http:", "https:"].includes(parsedUrl.protocol)) return;
+    uni.setStorageSync(`${miniProgramDownloadPayloadPrefix}${key}`, {
+      url: parsedUrl.href,
+      title: String(resource?.title || "课程资料").slice(0, 180),
+      kind: String(resource?.kind || "unsupported").slice(0, 32),
+      mime: String(resource?.mime || "").slice(0, 128),
+      createdAt,
+      returnRoute: normalizeEntryRoute(resource?.returnRoute)
+    });
+  } catch {
+    // Invalid or unavailable payloads stay inside the H5 page error state.
+  }
 }
 
 function handleLoad() {
@@ -434,8 +480,9 @@ function handleError(event: any) {
 
 function handleMessage(event: any) {
   const messages = extractMessages(event);
-  const message = messages.find(item => item?.source === "qiming-h5");
-  if (message) {
+  for (const message of messages) {
+    if (message?.source !== "qiming-h5") continue;
+    persistMiniProgramDownload(message);
     lastMessage.value = message;
     if (message.type === "loaded" || message.type === "bridge-ready") {
       loaded.value = true;
@@ -525,15 +572,16 @@ function dispatchBackToInnerWebview() {
         }
         try {
           if (window.__qimingNativeBack) {
-            window.__qimingNativeBack();
+            var result = window.__qimingNativeBack();
+            if (result === "handled") return;
           } else if (window.history && window.history.length > 1) {
             window.history.back();
+            return;
           }
+          forceFallbackRoot();
         } catch (error) {
           forceFallbackRoot();
         }
-        window.setTimeout(forceFallbackRoot, 220);
-        window.setTimeout(forceFallbackRoot, 640);
       })();
     `);
     return true;
@@ -629,6 +677,10 @@ onLoad(options => {
 onShow(() => {
   detectNativeStatusTop();
   uni.setKeepScreenOn({ keepScreenOn: true });
+});
+
+onHide(() => {
+  uni.setKeepScreenOn({ keepScreenOn: false });
 });
 
 onBackPress(() => {
