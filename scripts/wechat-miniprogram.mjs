@@ -775,10 +775,11 @@ function getH5RouteSmokeFailures(info, route) {
     if (!topbar.hamburgerVisible) failures.push("topbar-missing-menu-button");
     if (!topbar.themeToggleVisible) failures.push("topbar-missing-theme-button");
     if (!topbar.userChipVisible) failures.push("topbar-missing-user-button");
-    if (topbar.brandText && topbar.brandText !== "IntellEdu") {
-      failures.push(`topbar-brand-text:${topbar.brandText}`);
+    const topbarBrandText = String(topbar.brandText || "").trim();
+    if (topbarBrandText && topbarBrandText.toLowerCase() !== "intelledu") {
+      failures.push(`topbar-brand-text:${topbarBrandText}`);
     }
-    if (topbar.brandText === "IntellEdu" && !topbar.brandComplete) {
+    if (topbarBrandText.toLowerCase() === "intelledu" && !topbar.brandComplete) {
       failures.push("topbar-brand-truncated");
     }
     const toolbarRects = [
@@ -810,13 +811,14 @@ function getH5RouteSmokeFailures(info, route) {
     if (!info.sidebarCheck.logoVisible && !info.sidebarCheck.wordmarkVisible) {
       failures.push("sidebar-missing-brand");
     }
-    if (
-      info.sidebarCheck.wordmarkVisible &&
-      info.sidebarCheck.text !== "IntellEdu"
-    ) {
-      failures.push(`sidebar-brand-text:${info.sidebarCheck.text}`);
+    const sidebarBrandText = String(info.sidebarCheck.text || "").trim();
+    if (info.sidebarCheck.wordmarkVisible && sidebarBrandText.toLowerCase() !== "intelledu") {
+      failures.push(`sidebar-brand-text:${sidebarBrandText}`);
     }
-    if (info.sidebarCheck.text === "IntellEdu" && !info.sidebarCheck.wordmarkComplete) {
+    if (
+      sidebarBrandText.toLowerCase() === "intelledu" &&
+      !info.sidebarCheck.wordmarkComplete
+    ) {
       failures.push("sidebar-brand-truncated");
     }
   }

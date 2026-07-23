@@ -40,6 +40,7 @@ const paperId = computed(() => Number(route.params.id));
 
 // 加载状态
 const loading = ref(true);
+const loadError = ref("");
 const submitting = ref(false);
 const activeSaveCount = ref(0);
 const pendingSaveCount = ref(0);
@@ -1019,9 +1020,17 @@ const resolveInitialQuestionIndex = (
   return firstUnanswered >= 0 ? firstUnanswered : 0;
 };
 
+const getExamLoadErrorMessage = (error: unknown) => {
+  if (error instanceof Error && error.message === "试卷 ID 无效") {
+    return error.message;
+  }
+  return "当前试卷暂不可进入，请返回试卷中心后重试";
+};
+
 // start 保留为权威入口，随后用 session 恢复服务端答案，再叠加尚未补存的本地答案。
 const loadExamData = async () => {
   loading.value = true;
+  loadError.value = "";
   const storedState = readStoredRuntimeState();
   try {
     if (!Number.isInteger(paperId.value) || paperId.value <= 0) {
@@ -1072,11 +1081,18 @@ const loadExamData = async () => {
     }
   } catch (error) {
     console.error("加载考试失败:", error);
-    ElMessage.error(error instanceof Error ? error.message : "加载考试失败");
-    router.back();
+    loadError.value = getExamLoadErrorMessage(error);
   } finally {
     loading.value = false;
   }
+};
+
+const retryLoadExam = () => {
+  void loadExamData();
+};
+
+const returnToExamCenter = () => {
+  void router.replace("/student-exam-center/list");
 };
 
 const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -1119,8 +1135,26 @@ onBeforeUnmount(() => {
     class="exam-do-container"
     :class="{ 'is-dark': isDark }"
   >
+    <section
+      v-if="loadError && !loading"
+      class="exam-load-error"
+      role="alert"
+      aria-live="assertive"
+    >
+      <el-empty :image-size="96">
+        <template #description>
+          <p class="exam-load-error-title">无法进入本次考试</p>
+          <p class="exam-load-error-message">{{ loadError }}</p>
+        </template>
+        <div class="exam-load-error-actions">
+          <el-button @click="returnToExamCenter">返回试卷中心</el-button>
+          <el-button type="primary" @click="retryLoadExam">重新加载</el-button>
+        </div>
+      </el-empty>
+    </section>
+
     <!-- 顶部信息栏 -->
-    <div class="exam-header">
+    <div v-show="!loadError || loading" class="exam-header">
       <div class="header-left">
         <h2 class="paper-title">{{ examData.paper?.title || "加载中..." }}</h2>
         <span class="paper-info">
@@ -1157,7 +1191,7 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- 主内容区 -->
-    <div class="exam-main">
+    <div v-show="!loadError || loading" class="exam-main">
       <!-- 左侧题目导航 -->
       <div class="question-nav">
         <div class="nav-header">
@@ -1659,6 +1693,14 @@ onBeforeUnmount(() => {
       background: rgba(30, 41, 59, 0.8);
     }
 
+    .exam-load-error-title {
+      color: #f1f5f9;
+    }
+
+    .exam-load-error-message {
+      color: #94a3b8;
+    }
+
     .question-stem {
       color: #f1f5f9;
     }
@@ -1677,6 +1719,52 @@ onBeforeUnmount(() => {
       &.is-warning {
         color: #fdba74;
       }
+    }
+  }
+}
+
+.exam-load-error {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  min-height: calc(100dvh - 64px);
+  padding: 24px;
+  text-align: center;
+
+  :deep(.el-empty) {
+    width: min(100%, 420px);
+  }
+
+  :deep(.el-empty__description) {
+    margin-top: 8px;
+  }
+
+  .exam-load-error-title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #1f2937;
+  }
+
+  .exam-load-error-message {
+    max-width: 320px;
+    margin: 8px auto 0;
+    color: #64748b;
+    font-size: 14px;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+  }
+
+  .exam-load-error-actions {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 8px;
+
+    :deep(.el-button) {
+      min-height: 44px;
+      margin: 0;
     }
   }
 }
