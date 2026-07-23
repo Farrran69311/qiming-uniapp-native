@@ -749,6 +749,11 @@ function hasValidRouteContent(info, route) {
     : true;
 }
 
+function isAcceptedProductWordmark(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "intelledu" || normalized === "启明智教";
+}
+
 function getH5RouteSmokeFailures(info, route) {
   const failures = [];
   const textLength = Number(info?.textLength);
@@ -776,10 +781,10 @@ function getH5RouteSmokeFailures(info, route) {
     if (!topbar.themeToggleVisible) failures.push("topbar-missing-theme-button");
     if (!topbar.userChipVisible) failures.push("topbar-missing-user-button");
     const topbarBrandText = String(topbar.brandText || "").trim();
-    if (topbarBrandText && topbarBrandText.toLowerCase() !== "intelledu") {
+    if (topbarBrandText && !isAcceptedProductWordmark(topbarBrandText)) {
       failures.push(`topbar-brand-text:${topbarBrandText}`);
     }
-    if (topbarBrandText.toLowerCase() === "intelledu" && !topbar.brandComplete) {
+    if (isAcceptedProductWordmark(topbarBrandText) && !topbar.brandComplete) {
       failures.push("topbar-brand-truncated");
     }
     const toolbarRects = [
@@ -812,11 +817,14 @@ function getH5RouteSmokeFailures(info, route) {
       failures.push("sidebar-missing-brand");
     }
     const sidebarBrandText = String(info.sidebarCheck.text || "").trim();
-    if (info.sidebarCheck.wordmarkVisible && sidebarBrandText.toLowerCase() !== "intelledu") {
+    if (
+      info.sidebarCheck.wordmarkVisible &&
+      !isAcceptedProductWordmark(sidebarBrandText)
+    ) {
       failures.push(`sidebar-brand-text:${sidebarBrandText}`);
     }
     if (
-      sidebarBrandText.toLowerCase() === "intelledu" &&
+      isAcceptedProductWordmark(sidebarBrandText) &&
       !info.sidebarCheck.wordmarkComplete
     ) {
       failures.push("sidebar-brand-truncated");
