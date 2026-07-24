@@ -48,7 +48,7 @@ export interface WrongExerciseHistoryResponse {
   page: number;
   page_size: number;
   total_pages: number;
-  records: WrongExerciseHistoryRecord[];
+  records: WrongExerciseHistoryRecord[] | null;
 }
 
 export interface ApiResp<T = any> {

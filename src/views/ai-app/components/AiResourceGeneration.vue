@@ -25,13 +25,21 @@ import {
   reportAssistantResourceUsage,
   reviewAssistantResource,
   updateAssistantResource,
+  type AssistantCreateResourceTaskResp,
+  type AssistantListResourceTaskLogsResp,
+  type AssistantListResourceTasksResp,
+  type AssistantListResourcesResp,
+  type AssistantReportResourceUsageResp,
+  type AssistantResourceMutationResp,
   type AssistantResourceSummary,
   type AssistantResourceTaskItem,
   type AssistantResourceTaskLogItem,
   type AssistantResourceUsageEventType,
   type AssistantResourceVersionItem,
-  type AssistantChatTraceStep
+  type AssistantChatTraceStep,
+  type AssistantTaskTraceResp
 } from "@/api/frontend/assistant";
+import { unwrapAssistantResponseData } from "@/api/frontend/assistantResponse";
 import {
   PlatformResourcePreviewDialog,
   downloadPlatformResource,
@@ -57,6 +65,9 @@ const hasRequiredContext = computed(() => !contextWarning.value);
 
 const loading = ref(false);
 const creating = ref(false);
+const taskLoadError = ref("");
+const resourceLoadError = ref("");
+const taskActivityLoadError = ref("");
 const searchQuery = ref("");
 const resourceType = ref("");
 const tasks = ref<AssistantResourceTaskItem[]>([]);
@@ -267,21 +278,36 @@ const showAsIncomplete = (value?: string) =>
     "missing"
   ].includes(String(value || ""));
 
+const submitResourceUsage = async (
+  resource: AssistantResourceSummary,
+  eventType: AssistantResourceUsageEventType,
+  extra: Record<string, any> = {}
+) => {
+  const response = await reportAssistantResourceUsage({
+    resource_id: resource.resource_id,
+    course_id: props.courseId,
+    target_student_id: props.targetStudentId,
+    event_type: eventType,
+    ...extra
+  });
+  return unwrapAssistantResponseData<AssistantReportResourceUsageResp>(
+    response,
+    "记录资源使用",
+    { requireAccepted: true }
+  );
+};
+
 const reportResourceUsage = async (
   resource: AssistantResourceSummary,
   eventType: AssistantResourceUsageEventType,
   extra: Record<string, any> = {}
 ) => {
   try {
-    await reportAssistantResourceUsage({
-      resource_id: resource.resource_id,
-      course_id: props.courseId,
-      target_student_id: props.targetStudentId,
-      event_type: eventType,
-      ...extra
-    });
+    await submitResourceUsage(resource, eventType, extra);
+    return true;
   } catch (error) {
     console.warn("[AiResourceGeneration] 资源使用事件上报失败:", error);
+    return false;
   }
 };
 
@@ -293,25 +319,49 @@ const loadResources = async () => {
     return;
   }
   loading.value = true;
+  taskLoadError.value = "";
+  resourceLoadError.value = "";
   try {
     const [taskResult, resourceResult] = await Promise.allSettled([
       listAssistantResourceTasks({
         course_id: props.courseId,
         target_student_id: props.targetStudentId
-      }),
+      }).then(response =>
+        unwrapAssistantResponseData<AssistantListResourceTasksResp>(
+          response,
+          "加载任务列表",
+          { requireList: true }
+        )
+      ),
       listAssistantResources({
         course_id: props.courseId,
         target_student_id: props.targetStudentId
-      })
+      }).then(response =>
+        unwrapAssistantResponseData<AssistantListResourcesResp>(
+          response,
+          "加载资源列表",
+          { requireList: true }
+        )
+      )
     ]);
     tasks.value =
-      taskResult.status === "fulfilled"
-        ? taskResult.value?.data?.list || []
-        : [];
+      taskResult.status === "fulfilled" ? taskResult.value.list || [] : [];
     resources.value =
       resourceResult.status === "fulfilled"
-        ? resourceResult.value?.data?.list || []
+        ? resourceResult.value.list || []
         : [];
+    if (taskResult.status === "rejected") {
+      taskLoadError.value = assistantApiErrorMessage(
+        taskResult.reason,
+        "任务列表加载失败，请重试"
+      );
+    }
+    if (resourceResult.status === "rejected") {
+      resourceLoadError.value = assistantApiErrorMessage(
+        resourceResult.reason,
+        "资源列表加载失败，请重试"
+      );
+    }
     if (
       taskResult.status === "rejected" ||
       resourceResult.status === "rejected"
@@ -335,19 +385,40 @@ const loadResources = async () => {
 
 const loadTaskLogs = async (taskId: string) => {
   selectedTaskId.value = taskId;
+  taskActivityLoadError.value = "";
   try {
     const [logsResult, traceResult] = await Promise.allSettled([
-      listAssistantResourceTaskLogs(taskId),
-      getAssistantTaskTrace(taskId)
+      listAssistantResourceTaskLogs(taskId).then(response =>
+        unwrapAssistantResponseData<AssistantListResourceTaskLogsResp>(
+          response,
+          "加载任务日志",
+          { requireList: true }
+        )
+      ),
+      getAssistantTaskTrace(taskId).then(response =>
+        unwrapAssistantResponseData<AssistantTaskTraceResp>(
+          response,
+          "加载任务轨迹",
+          { requireTrace: true }
+        )
+      )
     ]);
     taskLogs.value =
-      logsResult.status === "fulfilled"
-        ? logsResult.value?.data?.list || []
-        : [];
+      logsResult.status === "fulfilled" ? logsResult.value.list || [] : [];
     taskTrace.value =
-      traceResult.status === "fulfilled"
-        ? traceResult.value?.data?.trace || []
-        : [];
+      traceResult.status === "fulfilled" ? traceResult.value.trace || [] : [];
+    if (logsResult.status === "rejected" || traceResult.status === "rejected") {
+      const reason =
+        logsResult.status === "rejected"
+          ? logsResult.reason
+          : traceResult.status === "rejected"
+            ? traceResult.reason
+            : undefined;
+      taskActivityLoadError.value = assistantApiErrorMessage(
+        reason,
+        "任务日志加载失败，请重试"
+      );
+    }
   } catch (error: any) {
     console.error("[AiResourceGeneration] 任务日志加载失败:", error);
     ElMessage.error(assistantApiErrorMessage(error, "任务日志加载失败"));
@@ -355,10 +426,10 @@ const loadTaskLogs = async (taskId: string) => {
 };
 
 const handleCreateTask = async () => {
-  if (!ensureCourseContext()) return;
+  if (creating.value || !ensureCourseContext()) return;
   creating.value = true;
   try {
-    const { data } = await createAssistantResourceTask({
+    const response = await createAssistantResourceTask({
       course_id: props.courseId,
       target_student_id: props.targetStudentId,
       resource_types: [
@@ -372,9 +443,14 @@ const handleCreateTask = async () => {
       ],
       prompt: "请围绕当前课程薄弱点生成一组个性化学习资源"
     });
+    const data = unwrapAssistantResponseData<AssistantCreateResourceTaskResp>(
+      response,
+      "创建资源任务",
+      { requireAccepted: true, requireTask: true }
+    );
     ElMessage.success(data.message || "资源生成任务已创建");
     await loadResources();
-    if (data.task?.task_id) await loadTaskLogs(data.task.task_id);
+    await loadTaskLogs(data.task!.task_id);
   } catch (error: any) {
     console.error("[AiResourceGeneration] 创建资源任务失败:", error);
     ElMessage.error(assistantApiErrorMessage(error, "创建资源任务失败"));
@@ -489,14 +565,19 @@ const loadResourceVersions = async (resourceId: string) => {
 
 const handleCompleteResource = async () => {
   if (!selectedResource.value) return;
-  if (!ensureCourseContext()) return;
+  if (completeSubmitting.value || !ensureCourseContext()) return;
   completeSubmitting.value = true;
   try {
-    await reportResourceUsage(selectedResource.value, "complete", {
+    await submitResourceUsage(selectedResource.value, "complete", {
       completed: true,
       progress_percent: 100
     });
     ElMessage.success("已记录资源完成状态");
+  } catch (error) {
+    console.error("[AiResourceGeneration] 完成状态上报失败:", error);
+    ElMessage.error(
+      assistantApiErrorMessage(error, "完成状态记录失败，请重试")
+    );
   } finally {
     completeSubmitting.value = false;
   }
@@ -504,15 +585,20 @@ const handleCompleteResource = async () => {
 
 const handleSubmitFeedback = async () => {
   if (!selectedResource.value) return;
-  if (!ensureCourseContext()) return;
+  if (feedbackSubmitting.value || !ensureCourseContext()) return;
   feedbackSubmitting.value = true;
   try {
-    await reportResourceUsage(selectedResource.value, "feedback", {
+    await submitResourceUsage(selectedResource.value, "feedback", {
       feedback_score: resourceFeedbackScore.value,
       feedback_text: resourceFeedbackText.value.trim()
     });
     ElMessage.success("资源反馈已提交");
     resourceFeedbackText.value = "";
+  } catch (error) {
+    console.error("[AiResourceGeneration] 资源反馈上报失败:", error);
+    ElMessage.error(
+      assistantApiErrorMessage(error, "资源反馈提交失败，请重试")
+    );
   } finally {
     feedbackSubmitting.value = false;
   }
@@ -529,15 +615,20 @@ const syncSelectedResource = (resource?: AssistantResourceSummary) => {
 
 const handleSaveResource = async () => {
   if (!selectedResource.value) return;
-  if (!ensureCourseContext()) return;
+  if (governanceSubmitting.value || !ensureCourseContext()) return;
   governanceSubmitting.value = true;
   try {
-    const { data } = await updateAssistantResource(
+    const response = await updateAssistantResource(
       selectedResource.value.resource_id,
       {
         ...editForm.value,
         knowledge_relevance: Number(editForm.value.knowledge_relevance || 0)
       }
+    );
+    const data = unwrapAssistantResponseData<AssistantResourceMutationResp>(
+      response,
+      "保存资源",
+      { requireResource: true }
     );
     syncSelectedResource(data.resource);
     editMode.value = false;
@@ -553,10 +644,10 @@ const handleSaveResource = async () => {
 
 const handleReviewResource = async (reviewStatus: string) => {
   if (!selectedResource.value) return;
-  if (!ensureCourseContext()) return;
+  if (governanceSubmitting.value || !ensureCourseContext()) return;
   governanceSubmitting.value = true;
   try {
-    const { data } = await reviewAssistantResource(
+    const response = await reviewAssistantResource(
       selectedResource.value.resource_id,
       {
         review_status: reviewStatus,
@@ -565,6 +656,11 @@ const handleReviewResource = async (reviewStatus: string) => {
             ? "内容准确，可以发布"
             : "请根据教师意见调整"
       }
+    );
+    const data = unwrapAssistantResponseData<AssistantResourceMutationResp>(
+      response,
+      "审核资源",
+      { requireResource: true }
     );
     syncSelectedResource(data.resource);
     ElMessage.success(data.message || "资源审核状态已更新");
@@ -579,11 +675,16 @@ const handleReviewResource = async (reviewStatus: string) => {
 
 const handlePublishResource = async () => {
   if (!selectedResource.value) return;
-  if (!ensureCourseContext()) return;
+  if (governanceSubmitting.value || !ensureCourseContext()) return;
   governanceSubmitting.value = true;
   try {
-    const { data } = await publishAssistantResource(
+    const response = await publishAssistantResource(
       selectedResource.value.resource_id
+    );
+    const data = unwrapAssistantResponseData<AssistantResourceMutationResp>(
+      response,
+      "发布资源",
+      { requireResource: true }
     );
     syncSelectedResource(data.resource);
     const status = data.resource?.status || data.status;
@@ -603,11 +704,15 @@ const handlePublishResource = async () => {
 
 const handleDeleteResource = async () => {
   if (!selectedResource.value) return;
-  if (!ensureCourseContext()) return;
+  if (governanceSubmitting.value || !ensureCourseContext()) return;
   governanceSubmitting.value = true;
   try {
-    const { data } = await deleteAssistantResource(
+    const response = await deleteAssistantResource(
       selectedResource.value.resource_id
+    );
+    const data = unwrapAssistantResponseData<AssistantResourceMutationResp>(
+      response,
+      "删除资源"
     );
     ElMessage.success(data.message || "资源已删除");
     detailVisible.value = false;
@@ -688,6 +793,18 @@ watch(
             >
           </div>
           <div class="flex-1 overflow-y-auto p-4 space-y-3">
+            <div v-if="taskLoadError" class="space-y-3">
+              <el-alert
+                title="任务列表加载失败"
+                :description="taskLoadError"
+                type="warning"
+                :closable="false"
+                show-icon
+              />
+              <el-button size="small" :icon="Refresh" @click="loadResources">
+                重新加载
+              </el-button>
+            </div>
             <div
               v-for="task in tasks"
               :key="task.task_id"
@@ -731,7 +848,10 @@ watch(
                 </el-tag>
               </div>
             </div>
-            <el-empty v-if="!tasks.length" description="暂无生成任务" />
+            <el-empty
+              v-if="!tasks.length && !taskLoadError"
+              description="暂无生成任务"
+            />
           </div>
           <div
             v-if="selectedTaskId"
@@ -739,7 +859,23 @@ watch(
           >
             <el-collapse v-model="taskActivePanels">
               <el-collapse-item title="任务日志" name="logs">
-                <el-timeline v-if="taskLogs.length">
+                <div v-if="taskActivityLoadError" class="space-y-3">
+                  <el-alert
+                    title="任务日志加载失败"
+                    :description="taskActivityLoadError"
+                    type="warning"
+                    :closable="false"
+                    show-icon
+                  />
+                  <el-button
+                    size="small"
+                    :icon="Refresh"
+                    @click="loadTaskLogs(selectedTaskId)"
+                  >
+                    重新加载
+                  </el-button>
+                </div>
+                <el-timeline v-else-if="taskLogs.length">
                   <el-timeline-item
                     v-for="log in taskLogs"
                     :key="`${log.occurred_at}-${log.stage}`"
@@ -794,8 +930,20 @@ watch(
         </div>
 
         <div class="min-h-0 overflow-y-auto">
+          <div v-if="resourceLoadError" class="space-y-3">
+            <el-alert
+              title="资源列表加载失败"
+              :description="resourceLoadError"
+              type="warning"
+              :closable="false"
+              show-icon
+            />
+            <el-button size="small" :icon="Refresh" @click="loadResources">
+              重新加载
+            </el-button>
+          </div>
           <div
-            v-if="filteredResources.length"
+            v-else-if="filteredResources.length"
             class="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4 auto-rows-max"
           >
             <article

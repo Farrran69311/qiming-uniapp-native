@@ -86,56 +86,63 @@ const resetGradesState = () => {
 const fetchGradesList = async (
   courseId: number
 ): Promise<CourseGradeItem[]> => {
-  try {
-    const res = await getCourseGradesList({ courseId });
-    return res?.code === 200 && Array.isArray(res?.data?.list)
-      ? res.data.list
-      : [];
-  } catch (error) {
-    console.error("获取成绩列表失败:", error);
-    return [];
+  const res = await getCourseGradesList({ courseId });
+  if (res?.code !== 200 || !Array.isArray(res?.data?.list)) {
+    throw new Error(res?.msg || "成绩详情返回异常");
   }
+  return res.data.list;
 };
 
 const fetchStatistics = async (
   courseId: number
 ): Promise<CourseGradesStatisticsResult> => {
-  try {
-    const res = await getCourseGradesStatistics({ courseId });
-    return res?.code === 200 && res?.data ? res.data : createEmptyStatistics();
-  } catch (error) {
-    console.error("获取成绩统计失败:", error);
-    return createEmptyStatistics();
+  const res = await getCourseGradesStatistics({ courseId });
+  if (res?.code !== 200 || !res?.data) {
+    throw new Error(res?.msg || "成绩统计返回异常");
   }
+  return res.data;
 };
 
 const fetchClassComparison = async (
   courseId: number
 ): Promise<CourseGradesClassComparisonResult> => {
-  try {
-    const res = await getCourseGradesClassComparison({ courseId });
-    return res?.code === 200 && res?.data
-      ? res.data
-      : createEmptyClassComparison();
-  } catch (error) {
-    console.error("获取班级对比数据失败:", error);
-    return createEmptyClassComparison();
+  const res = await getCourseGradesClassComparison({ courseId });
+  if (res?.code !== 200 || !res?.data) {
+    throw new Error(res?.msg || "班级成绩对比返回异常");
   }
+  return res.data;
 };
 
 let latestLoadRequestId = 0;
 
 // 加载状态
 const loading = ref(false);
+const loadError = ref("");
+
+const getLoadErrorMessage = (error: unknown) => {
+  const source = error as any;
+  return (
+    source?.response?.data?.msg ||
+    source?.message ||
+    "成绩数据加载失败，请稍后重试"
+  );
+};
+
+const formatScore = (score: number | null | undefined) =>
+  typeof score === "number" && Number.isFinite(score) ? score : "--";
 
 // 加载所有数据
 const loadAllData = async () => {
   if (!props.courseId) {
+    latestLoadRequestId++;
     resetGradesState();
+    loadError.value = "课程信息不完整，暂时无法加载成绩";
+    loading.value = false;
     return;
   }
 
   const requestId = ++latestLoadRequestId;
+  loadError.value = "";
   loading.value = true;
   try {
     const [list, stats, comparison] = await Promise.all([
@@ -152,6 +159,12 @@ const loadAllData = async () => {
 
     await nextTick();
     initAllCharts();
+  } catch (error) {
+    if (requestId !== latestLoadRequestId) return;
+
+    resetGradesState();
+    loadError.value = getLoadErrorMessage(error);
+    console.error("加载课程成绩失败:", error);
   } finally {
     if (requestId === latestLoadRequestId) {
       loading.value = false;
@@ -553,7 +566,10 @@ watch(
     if (newId && props.visible) {
       await loadAllData();
     } else if (!newId) {
+      latestLoadRequestId++;
       resetGradesState();
+      loadError.value = "课程信息不完整，暂时无法加载成绩";
+      loading.value = false;
     }
   }
 );
@@ -579,6 +595,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  latestLoadRequestId++;
   window.removeEventListener("resize", handleResize);
   gradeChartInstance?.dispose();
   trendChartInstance?.dispose();
@@ -602,7 +619,21 @@ onUnmounted(() => {
     />
 
     <div class="course-grades-container" :class="currentTheme">
-      <div class="grades-content">
+      <div v-if="loading" class="grades-loading-state">
+        <el-skeleton :rows="8" animated />
+      </div>
+
+      <div v-else-if="loadError" class="grades-error-state">
+        <el-result icon="error" title="成绩加载失败" :sub-title="loadError">
+          <template v-if="courseId" #extra>
+            <el-button type="primary" @click="loadAllData">
+              重新加载
+            </el-button>
+          </template>
+        </el-result>
+      </div>
+
+      <div v-else class="grades-content">
         <!-- 核心成绩指标卡片 -->
         <div class="grades-cards reveal-up" style="--reveal-delay: 0.05s">
           <div class="grades-card" :class="currentTheme">
@@ -612,9 +643,9 @@ onUnmounted(() => {
             </div>
             <div class="grades-card-content">
               <div v-if="courseScores" class="grades-score">
-                {{ courseScores.courseScore || 0 }}
+                {{ formatScore(courseScores.courseScore) }}
               </div>
-              <el-skeleton v-else :rows="1" />
+              <div v-else class="grades-score is-unavailable">--</div>
             </div>
           </div>
 
@@ -625,9 +656,9 @@ onUnmounted(() => {
             </div>
             <div class="grades-card-content">
               <div v-if="courseScores" class="grades-score">
-                {{ courseScores.workScore || 0 }}
+                {{ formatScore(courseScores.workScore) }}
               </div>
-              <el-skeleton v-else :rows="1" />
+              <div v-else class="grades-score is-unavailable">--</div>
             </div>
           </div>
 
@@ -638,9 +669,9 @@ onUnmounted(() => {
             </div>
             <div class="grades-card-content">
               <div v-if="courseScores" class="grades-score">
-                {{ courseScores.examScore || 0 }}
+                {{ formatScore(courseScores.examScore) }}
               </div>
-              <el-skeleton v-else :rows="1" />
+              <div v-else class="grades-score is-unavailable">--</div>
             </div>
           </div>
         </div>
@@ -898,6 +929,21 @@ onUnmounted(() => {
   padding: 0;
 }
 
+.grades-loading-state,
+.grades-error-state {
+  box-sizing: border-box;
+  width: min(100%, 760px);
+  padding: 28px;
+  margin: auto;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 12px;
+}
+
+.grades-error-state :deep(.el-result) {
+  padding: 12px 0;
+}
+
 .grades-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -953,6 +999,10 @@ onUnmounted(() => {
     font-weight: 800;
     color: #5f5be3;
     text-align: center;
+
+    &.is-unavailable {
+      color: #909399;
+    }
   }
 }
 
@@ -1360,6 +1410,13 @@ onUnmounted(() => {
     padding: var(--course-mobile-top-offset, 156px) 14px
       calc(24px + env(safe-area-inset-bottom));
     overflow: visible;
+  }
+
+  .grades-loading-state,
+  .grades-error-state {
+    width: 100%;
+    padding: 18px 14px;
+    border-radius: 16px;
   }
 
   .grades-cards,

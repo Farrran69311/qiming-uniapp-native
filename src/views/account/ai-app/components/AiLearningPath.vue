@@ -628,6 +628,10 @@ watch(() => [props.courseId, props.targetStudentId], loadPath);
   color: #303847;
 }
 
+.learning-path-page > * {
+  flex-shrink: 0;
+}
+
 .path-toolbar,
 .path-summary-panel,
 .path-notice-panel,
@@ -702,6 +706,24 @@ watch(() => [props.courseId, props.targetStudentId], loadPath);
   font-weight: 700;
   line-height: 1.35;
   color: #273142;
+}
+
+.course-block {
+  min-width: 0;
+}
+
+.course-title-row :deep(.el-tag),
+.course-title-row :deep(.el-tag__content) {
+  max-width: 100%;
+  height: auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.course-title-row :deep(.el-tag) {
+  min-height: 24px;
+  padding-block: 3px;
+  line-height: 1.45;
 }
 
 .course-summary,
@@ -1002,6 +1024,11 @@ watch(() => [props.courseId, props.targetStudentId], loadPath);
   }
 
   .path-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .course-title-row {
     align-items: flex-start;
     flex-direction: column;
   }

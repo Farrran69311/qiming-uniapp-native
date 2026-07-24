@@ -36,12 +36,58 @@ const allowedHttpFailures = [
     pathname: "/edu/v1/html-animation/display",
     routes: new Set(["student-course-animations"]),
     reason: "HTML animation display version is not configured",
-    matches: issue =>
-      Number(issue.responseJson?.code) === 404 &&
-      typeof issue.responseJson?.message === "string" &&
-      issue.responseJson.message.includes("尚未配置展示版本")
+    matches: issue => {
+      const message =
+        issue.responseJson?.msg ?? issue.responseJson?.message ?? "";
+      return (
+        Number(issue.responseJson?.code) === 404 &&
+        typeof message === "string" &&
+        message.includes("尚未配置展示版本")
+      );
+    }
   }
 ];
+
+const unavailableCapabilityRoutePrefixes = [
+  "teacher-exam-paper-",
+  "admin-exam-paper-",
+  "teacher-competition-",
+  "admin-competition-"
+];
+const unavailableCapabilityPathPrefixes = [
+  "/edu/backend/v1/paper/",
+  "/edu/backend/v1/question-bank",
+  "/edu/backend/v1/knowledge-points",
+  "/edu/backend/v1/oj/",
+  "/edu/backend/v1/competition/",
+  "/edu/backend/v1/essay/"
+];
+
+function normalizeObservedApiPath(value) {
+  let pathname = String(value || "");
+  try {
+    pathname = new URL(pathname).pathname;
+  } catch {}
+  return pathname.startsWith("/api/edu/") ? pathname.slice(4) : pathname;
+}
+
+function knownUnavailableCapability(issue, route, pathname) {
+  if (
+    issue.status !== 404 ||
+    !unavailableCapabilityRoutePrefixes.some(prefix =>
+      route.name.startsWith(prefix)
+    ) ||
+    !unavailableCapabilityPathPrefixes.some(prefix =>
+      pathname.startsWith(prefix)
+    )
+  ) {
+    return null;
+  }
+
+  return {
+    reason: `production capability unavailable: ${pathname}`
+  };
+}
 
 function inspectBusinessEnvelope(body) {
   let parsed;
@@ -87,7 +133,7 @@ const routes = [
     name: "student-account-home",
     entry: "/account?menu=home",
     accountMenuText: "首页",
-    readyExpect: ["课程信息", "AI总结"],
+    readyExpect: ["学习总结服务尚未接入"],
     action: { selector: ".quick-access-card.course-access" },
     expect: ["我的课程"],
     afterActionAccountMenuText: "课程",
@@ -118,7 +164,7 @@ const routes = [
     name: "student-account-classroom",
     entry: "/account?menu=classroom",
     accountMenuText: "虚拟校园",
-    expect: ["启明智教 · 2D 校园导览"]
+    expect: ["启明智教 · 2D 校园导览", "欢迎来到启明智教"]
   },
   {
     role: "student",
@@ -181,7 +227,7 @@ const routes = [
     name: "student-account-competition",
     entry: "/account?menu=competition",
     accountMenuText: "赛事场",
-    expect: ["赛事"]
+    expect: ["赛事服务暂不可用"]
   },
   {
     role: "student",
@@ -206,8 +252,7 @@ const routes = [
     role: "student",
     name: "student-wrong-exercise-page",
     entry: "/account/wrong-exercise",
-    expect: ["暂无错题记录", "道错题"],
-    requiredRequestPath: "/edu/frontend/v1/ai/wrong-exercise/history"
+    expect: ["请从具体课程进入随练后使用 AI 分析", "暂无错题记录", "道错题"]
   },
   {
     role: "student",
@@ -337,7 +382,9 @@ const routes = [
     role: "student",
     name: "student-ai-generation",
     entry: "/ai-app/generation",
-    expect: ["教学资源"]
+    readyExpect: ["教学资源"],
+    expect: ["项资源", "暂未发布学习资源", "资源加载失败", "课程加载失败"],
+    postActionWaitMs: 1500
   },
   {
     role: "student",
@@ -373,7 +420,7 @@ const routes = [
     role: "student",
     name: "student-ai-automation",
     entry: "/ai-app/automation",
-    expect: ["常规任务"]
+    expect: ["常规任务暂未接入"]
   },
   {
     role: "student",
@@ -507,7 +554,7 @@ const routes = [
     role: "teacher",
     name: "teacher-ai-automation",
     entry: "/ai-app/automation",
-    expect: ["常规任务"]
+    expect: ["常规任务暂未接入"]
   },
   {
     role: "teacher",
@@ -610,6 +657,53 @@ const routes = [
     name: "teacher-account-settings",
     entry: "/account-settings",
     expect: ["个人信息", "偏好设置"]
+  },
+  {
+    role: "teacher",
+    name: "teacher-account-settings-preferences",
+    entry: "/account-settings",
+    readyExpect: ["个人信息"],
+    action: [
+      { selector: ".account-settings-menu-toggle", text: "" },
+      {
+        selector: ".pure-account-settings-menu .el-menu-item",
+        text: "偏好设置"
+      }
+    ],
+    expect: ["通知偏好服务尚未接入"]
+  },
+  {
+    role: "teacher",
+    name: "teacher-account-settings-security",
+    entry: "/account-settings",
+    readyExpect: ["个人信息"],
+    action: [
+      { selector: ".account-settings-menu-toggle", text: "" },
+      {
+        selector: ".pure-account-settings-menu .el-menu-item",
+        text: "安全日志"
+      }
+    ],
+    expect: ["安全日志服务尚未接入"]
+  },
+  {
+    role: "teacher",
+    name: "teacher-account-settings-password",
+    entry: "/account-settings",
+    readyExpect: ["个人信息"],
+    action: [
+      { selector: ".account-settings-menu-toggle", text: "" },
+      {
+        selector: ".pure-account-settings-menu .el-menu-item",
+        text: "账户管理"
+      },
+      {
+        selector: ".account-settings-main .el-button",
+        text: "修改",
+        waitMs: 500
+      }
+    ],
+    expect: ["修改账户密码", "立即更新密码"]
   },
   {
     role: "teacher",
@@ -894,7 +988,7 @@ const routes = [
     role: "admin",
     name: "admin-ai-automation",
     entry: "/ai-app/automation",
-    expect: ["常规任务"]
+    expect: ["常规任务暂未接入"]
   },
   {
     role: "admin",
@@ -1306,8 +1400,10 @@ const isVisibleElementSource = `function isVisibleElement(el) {
 const inspectExpression = `(() => {
   ${isVisibleElementSource}
   let storedUserInfo = {};
+  let auditRole = '';
   try {
     storedUserInfo = JSON.parse(localStorage.getItem('user-info') || '{}');
+    auditRole = localStorage.getItem('qimingRealAuditRole') || '';
   } catch {}
   const rectInfo = el => {
     if (!el) return null;
@@ -1347,12 +1443,47 @@ const inspectExpression = `(() => {
     };
   };
   const text = (document.body?.innerText || '').replace(/\\s+/g, ' ').trim();
-  const loadingEls = Array.from(document.querySelectorAll('.el-loading-mask, .pure-loading, [class*=loading], [class*=Loading]')).filter(isVisibleElement);
+  const loadingEls = Array.from(document.querySelectorAll('.el-loading-mask, .el-skeleton__item, .pure-loading, [class*=loading], [class*=Loading]')).filter(el => {
+    if (!isVisibleElement(el)) return false;
+    if (
+      el.matches(
+        '.el-icon, .el-button, button, [role="button"], .el-loading-parent--relative, .el-loading-spinner, .el-loading-fade-leave-active, .el-loading-fade-leave-to'
+      )
+    ) {
+      return false;
+    }
+    return true;
+  });
+  const loadingElements = loadingEls.slice(0, 12).map(el => ({
+    tag: el.tagName.toLowerCase(),
+    className: typeof el.className === 'string' ? el.className.slice(0, 180) : '',
+    text: String(el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 160),
+    rect: rectInfo(el)
+  }));
   const brokenImages = Array.from(document.images)
     .filter(img => isVisibleElement(img) && img.complete && img.naturalWidth === 0)
     .slice(0, 20)
     .map(img => img.currentSrc || img.src || img.getAttribute('src') || '');
   const visibleImages = Array.from(document.images).filter(img => isVisibleElement(img));
+  const floatingDigitalHumanVideo = document.querySelector('.floating-human-2d video');
+  const videoInfo = video => {
+    if (!video) return null;
+    return {
+      ...rectInfo(video),
+      currentSrc: String(video.currentSrc || video.src || '').slice(0, 500),
+      playbackFormat: video.dataset.playbackFormat || '',
+      readyState: Number(video.readyState || 0),
+      networkState: Number(video.networkState || 0),
+      paused: Boolean(video.paused),
+      ended: Boolean(video.ended),
+      currentTime: Number(Number(video.currentTime || 0).toFixed(3)),
+      duration: Number.isFinite(video.duration) ? Number(video.duration.toFixed(3)) : null,
+      videoWidth: Number(video.videoWidth || 0),
+      videoHeight: Number(video.videoHeight || 0),
+      errorCode: video.error?.code || 0,
+      errorMessage: String(video.error?.message || '').slice(0, 200)
+    };
+  };
   const app = document.querySelector('#app');
   const mainCandidates = [
     '.app-main',
@@ -1396,10 +1527,62 @@ const inspectExpression = `(() => {
   const aiLeftRail = document.querySelector('.ai-app-left-rail');
   const sidebarLogo = document.querySelector('.sidebar-logo-container');
   const sidebarWordmark = document.querySelector('.sidebar-logo-container .sidebar-title');
-  const scrollHeight = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-  const viewportHeight = document.documentElement.clientHeight;
-  const viewportWidth = document.documentElement.clientWidth;
-  const maxScrollWidth = Math.max(document.body.scrollWidth, document.documentElement.scrollWidth);
+  const scrollHeight = Math.max(
+    document.body?.scrollHeight || 0,
+    document.documentElement?.scrollHeight || 0
+  );
+  const viewportHeight = document.documentElement?.clientHeight || window.innerHeight || 0;
+  const viewportWidth = document.documentElement?.clientWidth || window.innerWidth || 0;
+  const maxScrollWidth = Math.max(
+    document.body?.scrollWidth || 0,
+    document.documentElement?.scrollWidth || 0
+  );
+  const widthAuditRoot = main || app;
+  const narrowContentTransitions = Array.from(
+    widthAuditRoot?.querySelectorAll('*') || []
+  )
+    .map(el => {
+      const parent = el.parentElement;
+      if (!parent || !isVisibleElement(el) || !isVisibleElement(parent)) return null;
+      const rect = el.getBoundingClientRect();
+      const parentRect = parent.getBoundingClientRect();
+      const style = getComputedStyle(el);
+      const contentText = String(el.innerText || el.textContent || '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const className = typeof el.className === 'string' ? el.className : '';
+      const isExcludedSurface = Boolean(
+        el.closest('.el-dialog, .el-drawer, .el-popover, .el-empty, [class*="empty-state"], [class*="EmptyState"]')
+      );
+      const widthLoss = Math.round(parentRect.width - rect.width);
+      if (
+        isExcludedSurface ||
+        style.position === 'fixed' ||
+        style.position === 'absolute' ||
+        rect.width < 140 ||
+        rect.height < 120 ||
+        contentText.length < 80 ||
+        parentRect.width < viewportWidth * 0.82 ||
+        rect.width > viewportWidth * 0.88 ||
+        widthLoss < 40
+      ) {
+        return null;
+      }
+      return {
+        tag: el.tagName.toLowerCase(),
+        id: el.id || '',
+        className: className.slice(0, 180),
+        x: Math.round(rect.x),
+        width: Math.round(rect.width),
+        parentWidth: Math.round(parentRect.width),
+        widthLoss,
+        viewportRatio: Number((rect.width / viewportWidth).toFixed(3)),
+        textLength: contentText.length
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => right.widthLoss - left.widthLoss || right.textLength - left.textLength)
+    .slice(0, 12);
   const courseContentSelectors = [
     ['study', '.course-study-root'],
     ['mastery', '.mastery-page-content'],
@@ -1420,6 +1603,30 @@ const inspectExpression = `(() => {
   );
   const activeCourseMenu = document.querySelector('#layout-sidebar [data-menu].active');
   const activeCourseTab = Array.from(document.querySelectorAll('.homework-tabs .el-tabs__item.is-active')).find(isVisibleElement);
+  const criticalFlowSelectors = [
+    '.profile-summary',
+    '.profile-primary-grid',
+    '.path-toolbar',
+    '.path-summary-panel',
+    '.video-analysis-container .sidebar-card'
+  ];
+  const criticalFlow = criticalFlowSelectors
+    .map(selector => {
+      const el = Array.from(document.querySelectorAll(selector)).find(isVisibleElement);
+      if (!el) return null;
+      const style = getComputedStyle(el);
+      return {
+        selector,
+        ...rectInfo(el),
+        clientHeight: Math.round(el.clientHeight),
+        scrollHeight: Math.round(el.scrollHeight),
+        overflowY: style.overflowY,
+        clientWidth: Math.round(el.clientWidth),
+        scrollWidth: Math.round(el.scrollWidth),
+        overflowX: style.overflowX
+      };
+    })
+    .filter(Boolean);
   const hashQuery = location.hash.includes('?') ? location.hash.slice(location.hash.indexOf('?') + 1) : '';
   return {
     href: location.href,
@@ -1435,8 +1642,10 @@ const inspectExpression = `(() => {
     appChildren: app?.children?.length || 0,
     blank: Boolean(app) && text.length < 20,
     loadingCount: loadingEls.length,
+    loadingElements,
     brokenImages,
     visibleImageCount: visibleImages.length,
+    floatingDigitalHuman: videoInfo(floatingDigitalHumanVideo),
     overflowX: Math.max(0, Math.round(maxScrollWidth - viewportWidth)),
     scrollHeight,
     viewportHeight,
@@ -1445,7 +1654,7 @@ const inspectExpression = `(() => {
       username: String(storedUserInfo.username || ''),
       roleType: Number(storedUserInfo.roleType || 0),
       roles: Array.isArray(storedUserInfo.roles) ? storedUserInfo.roles : [],
-      auditRole: localStorage.getItem('qimingRealAuditRole') || ''
+      auditRole
     },
     account: {
       activeMenuText: textWithoutSvg(activeAccountMenu),
@@ -1471,17 +1680,18 @@ const inspectExpression = `(() => {
       sidebarLogo: rectInfo(sidebarLogo),
       sidebarWordmark: rectInfo(sidebarWordmark),
       sidebarText: sidebarWordmark?.textContent?.trim() || ''
-    }
+    },
+    widthAudit: {
+      viewportWidth,
+      narrowContentTransitions
+    },
+    criticalFlow
   };
 })()`;
 
 function allowedHttpFailure(issue, route) {
-  let pathname = "";
-  try {
-    pathname = new URL(issue.url).pathname;
-  } catch {
-    return null;
-  }
+  const pathname = normalizeObservedApiPath(issue.url);
+  if (!pathname.startsWith("/")) return null;
   return (
     allowedHttpFailures.find(
       item =>
@@ -1489,7 +1699,7 @@ function allowedHttpFailure(issue, route) {
         item.pathname === pathname &&
         item.routes.has(route.name) &&
         (!item.matches || item.matches(issue))
-    ) || null
+    ) || knownUnavailableCapability(issue, route, pathname)
   );
 }
 
@@ -1553,6 +1763,49 @@ function analyze(
   }
   if (info.brokenImages?.length)
     failures.push(`broken-images:${info.brokenImages.length}`);
+  for (const item of info.criticalFlow || []) {
+    const clippedY =
+      item.scrollHeight > item.clientHeight + 4 &&
+      !["auto", "scroll"].includes(item.overflowY);
+    const clippedX =
+      item.scrollWidth > item.clientWidth + 4 &&
+      !["auto", "scroll"].includes(item.overflowX);
+    if (clippedY || clippedX) {
+      failures.push(
+        `critical-content-clipped:${item.selector}:${item.clientWidth}x${item.clientHeight}->${item.scrollWidth}x${item.scrollHeight}`
+      );
+    }
+  }
+  const expectsFloatingDigitalHuman =
+    route.entry.startsWith("/ai-app/") ||
+    route.entry.startsWith("/account/ai-app");
+  if (expectsFloatingDigitalHuman) {
+    const video = info.floatingDigitalHuman;
+    if (!video) {
+      failures.push("floating-digital-human-missing");
+    } else {
+      if (
+        video.readyState < 2 ||
+        video.videoWidth < 1 ||
+        video.videoHeight < 1 ||
+        video.errorCode
+      ) {
+        failures.push(
+          `floating-digital-human-not-ready:${video.readyState}:${video.videoWidth}x${video.videoHeight}:${video.errorCode}`
+        );
+      }
+      if (video.paused || video.ended) {
+        failures.push(
+          `floating-digital-human-not-playing:${video.currentTime}`
+        );
+      }
+      if (video.playbackFormat !== "mp4") {
+        failures.push(
+          `floating-digital-human-format:${video.playbackFormat || "unknown"}`
+        );
+      }
+    }
+  }
   const forbiddenPage =
     info.routePath === "/error/403" ||
     info.textSample.includes("抱歉，你无权访问该页面");
@@ -1617,11 +1870,7 @@ function analyze(
     failures.push(`route-action-failed:${actionResult.reason}`);
   if (route.requiredRequestPath) {
     const requiredRequestObserved = requestedUrls.some(url => {
-      try {
-        return new URL(url).pathname === route.requiredRequestPath;
-      } catch {
-        return false;
-      }
+      return normalizeObservedApiPath(url) === route.requiredRequestPath;
     });
     if (!requiredRequestObserved) {
       failures.push(`required-request-missing:${route.requiredRequestPath}`);
@@ -1669,11 +1918,7 @@ function analyze(
     const sample = unexpectedNetwork
       .slice(0, 3)
       .map(item => {
-        try {
-          return `${item.status}:${new URL(item.url).pathname}`;
-        } catch {
-          return `${item.status}:${item.url}`;
-        }
+        return `${item.status}:${normalizeObservedApiPath(item.url)}`;
       })
       .join("|");
     failures.push(`http-errors:${unexpectedNetwork.length}:${sample}`);
@@ -1703,6 +1948,13 @@ async function inspectPage(client) {
     awaitPromise: true,
     expression: inspectExpression
   });
+  if (evaluated.exceptionDetails) {
+    const description =
+      evaluated.exceptionDetails.exception?.description ||
+      evaluated.exceptionDetails.text ||
+      "unknown page inspection error";
+    throw new Error(description);
+  }
   return evaluated.result?.value || {};
 }
 
@@ -1741,85 +1993,102 @@ async function waitForExpectedPage(
 
 async function performRouteAction(client, action) {
   if (!action) return null;
-  const actionStartedAt = Date.now();
-  const actionWaitMs = Number(action.waitMs || 6000);
-  let actionResult = { ok: false, reason: "target-not-found" };
-  do {
-    const evaluated = await client.send("Runtime.evaluate", {
-      returnByValue: true,
-      awaitPromise: true,
-      expression: `(() => {
-        ${isVisibleElementSource}
-        const selector = ${JSON.stringify(action.selector)};
-        const expectedText = ${JSON.stringify(action.text || "")};
-        const target = Array.from(document.querySelectorAll(selector)).find(el =>
-          isVisibleElement(el) && String(el.textContent || '').replace(/\\s+/g, ' ').trim().includes(expectedText)
-        );
-        if (!target) return { ok: false, reason: 'target-not-found', selector, expectedText };
-        target.click();
-        return { ok: true, selector, expectedText, clickedText: String(target.textContent || '').replace(/\\s+/g, ' ').trim() };
-      })()`
-    });
-    actionResult = evaluated.result?.value || {
-      ok: false,
-      reason: "no-action-result"
-    };
-    if (actionResult.ok || actionResult.reason !== "target-not-found") break;
-    await wait(200);
-  } while (Date.now() - actionStartedAt < actionWaitMs);
+  const steps = Array.isArray(action) ? action : [action];
+  const results = [];
 
-  if (!actionResult.ok || !action.afterSelector) return actionResult;
+  for (const [stepIndex, step] of steps.entries()) {
+    const actionStartedAt = Date.now();
+    const actionTimeoutMs = Number(step.timeoutMs || 6000);
+    let stepResult = { ok: false, reason: "target-not-found" };
 
-  const startedAt = Date.now();
-  let lastAfterResult = { visible: false, text: "" };
-  do {
-    await wait(200);
-    const afterEvaluation = await client.send("Runtime.evaluate", {
-      returnByValue: true,
-      expression: `(() => {
-        ${isVisibleElementSource}
-        const selector = ${JSON.stringify(action.afterSelector)};
-        const element = Array.from(document.querySelectorAll(selector)).find(isVisibleElement);
-        return {
-          visible: Boolean(element),
-          text: String(element?.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 1000)
-        };
-      })()`
-    });
-    lastAfterResult = afterEvaluation.result?.value || lastAfterResult;
-    const afterTextFound =
-      !action.afterText || lastAfterResult.text.includes(action.afterText);
-    if (lastAfterResult.visible && afterTextFound) {
-      return {
-        ...actionResult,
-        afterSelector: action.afterSelector,
-        afterSelectorVisible: true,
-        afterSelectorText: lastAfterResult.text,
-        afterText: action.afterText || null,
-        afterTextFound
+    do {
+      const evaluated = await client.send("Runtime.evaluate", {
+        returnByValue: true,
+        awaitPromise: true,
+        expression: `(() => {
+          ${isVisibleElementSource}
+          const selector = ${JSON.stringify(step.selector)};
+          const expectedText = ${JSON.stringify(step.text || "")};
+          const target = Array.from(document.querySelectorAll(selector)).find(el =>
+            isVisibleElement(el) && String(el.textContent || '').replace(/\\s+/g, ' ').trim().includes(expectedText)
+          );
+          if (!target) return { ok: false, reason: 'target-not-found', selector, expectedText };
+          target.click();
+          return { ok: true, selector, expectedText, clickedText: String(target.textContent || '').replace(/\\s+/g, ' ').trim() };
+        })()`
+      });
+      stepResult = evaluated.result?.value || {
+        ok: false,
+        reason: "no-action-result"
       };
-    }
-  } while (Date.now() - startedAt < 4000);
+      if (stepResult.ok || stepResult.reason !== "target-not-found") break;
+      await wait(200);
+    } while (Date.now() - actionStartedAt < actionTimeoutMs);
 
-  return {
-    ...actionResult,
-    ok: false,
-    reason: lastAfterResult.visible
-      ? "after-text-not-found"
-      : "after-selector-not-visible",
-    afterSelector: action.afterSelector,
-    afterSelectorVisible: lastAfterResult.visible,
-    afterSelectorText: lastAfterResult.text,
-    afterText: action.afterText || null,
-    afterTextFound: false
-  };
+    if (stepResult.ok && step.afterSelector) {
+      const afterStartedAt = Date.now();
+      let lastAfterResult = { visible: false, text: "" };
+      do {
+        await wait(200);
+        const afterEvaluation = await client.send("Runtime.evaluate", {
+          returnByValue: true,
+          expression: `(() => {
+            ${isVisibleElementSource}
+            const selector = ${JSON.stringify(step.afterSelector)};
+            const element = Array.from(document.querySelectorAll(selector)).find(isVisibleElement);
+            return {
+              visible: Boolean(element),
+              text: String(element?.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 1000)
+            };
+          })()`
+        });
+        lastAfterResult = afterEvaluation.result?.value || lastAfterResult;
+        const afterTextFound =
+          !step.afterText || lastAfterResult.text.includes(step.afterText);
+        if (lastAfterResult.visible && afterTextFound) {
+          stepResult = {
+            ...stepResult,
+            afterSelector: step.afterSelector,
+            afterSelectorVisible: true,
+            afterSelectorText: lastAfterResult.text,
+            afterText: step.afterText || null,
+            afterTextFound
+          };
+          break;
+        }
+      } while (Date.now() - afterStartedAt < 4000);
+
+      if (!stepResult.afterSelectorVisible) {
+        stepResult = {
+          ...stepResult,
+          ok: false,
+          reason: lastAfterResult.visible
+            ? "after-text-not-found"
+            : "after-selector-not-visible",
+          afterSelector: step.afterSelector,
+          afterSelectorVisible: lastAfterResult.visible,
+          afterSelectorText: lastAfterResult.text,
+          afterText: step.afterText || null,
+          afterTextFound: false
+        };
+      }
+    }
+
+    results.push(stepResult);
+    if (!stepResult.ok) {
+      return { ...stepResult, stepIndex, steps: results };
+    }
+    await wait(Number(step.waitMs ?? 250));
+  }
+
+  return { ok: true, steps: results };
 }
 
 async function captureBottom(client) {
   await client.send("Runtime.evaluate", {
     awaitPromise: true,
     expression: `(() => {
-      const candidates = ['.main-container .el-scrollbar__wrap', '.app-main', '.account-container', document.scrollingElement ? '__doc__' : ''];
+      const candidates = ['.profile-page', '.learning-path-page', '.assessment-page', '.ai-profile-workspace', '.governance-dashboard-frame', '.sidebar-card', '.main-container .el-scrollbar__wrap', '.app-main', '.account-container', document.scrollingElement ? '__doc__' : ''];
       for (const selector of candidates) {
         const el = selector === '__doc__' ? document.scrollingElement : selector ? document.querySelector(selector) : null;
         if (!el) continue;
@@ -1878,34 +2147,45 @@ function runSelfTest() {
     }
   }
   const interactionRoutes = routes.filter(route => route.action);
-  if (interactionRoutes.length !== 13) {
+  if (interactionRoutes.length !== 16) {
     failures.push(
-      `expected 13 interaction routes, got ${interactionRoutes.length}`
+      `expected 16 interaction routes, got ${interactionRoutes.length}`
     );
   }
   for (const route of interactionRoutes) {
-    if (!route.action.selector || !Array.isArray(route.readyExpect)) {
+    const actionSteps = Array.isArray(route.action)
+      ? route.action
+      : [route.action];
+    if (!actionSteps.length || !Array.isArray(route.readyExpect)) {
       failures.push(`invalid interaction contract: ${route.name}`);
     }
-    if (
-      route.action.afterSelector !== undefined &&
-      !String(route.action.afterSelector).trim()
-    ) {
-      failures.push(`invalid post-action selector: ${route.name}`);
-    }
-    if (
-      route.action.afterText !== undefined &&
-      (!route.action.afterSelector || !String(route.action.afterText).trim())
-    ) {
-      failures.push(`invalid post-action text: ${route.name}`);
-    }
-    if (
-      route.action.waitMs !== undefined &&
-      (!Number.isFinite(Number(route.action.waitMs)) ||
-        Number(route.action.waitMs) < 0 ||
-        Number(route.action.waitMs) > 30_000)
-    ) {
-      failures.push(`invalid action wait: ${route.name}`);
+    for (const [stepIndex, step] of actionSteps.entries()) {
+      const stepName = `${route.name}[${stepIndex}]`;
+      if (!step?.selector || !String(step.selector).trim()) {
+        failures.push(`invalid interaction step: ${stepName}`);
+      }
+      if (
+        step.afterSelector !== undefined &&
+        !String(step.afterSelector).trim()
+      ) {
+        failures.push(`invalid post-action selector: ${stepName}`);
+      }
+      if (
+        step.afterText !== undefined &&
+        (!step.afterSelector || !String(step.afterText).trim())
+      ) {
+        failures.push(`invalid post-action text: ${stepName}`);
+      }
+      for (const timingKey of ["waitMs", "timeoutMs"]) {
+        if (
+          step[timingKey] !== undefined &&
+          (!Number.isFinite(Number(step[timingKey])) ||
+            Number(step[timingKey]) < 0 ||
+            Number(step[timingKey]) > 30_000)
+        ) {
+          failures.push(`invalid action ${timingKey}: ${stepName}`);
+        }
+      }
     }
   }
   const contentUtilizationRoutes = routes.filter(
@@ -1934,6 +2214,45 @@ function runSelfTest() {
     if (route?.requiredRequestPath !== "/edu/backend/v1/user/file/list") {
       failures.push(`cloud API evidence missing: ${name}`);
     }
+  }
+
+  const capabilityWarning = allowedHttpFailure(
+    {
+      status: 404,
+      url: "https://api.example/edu/backend/v1/paper/list"
+    },
+    { name: "teacher-exam-paper-my-papers" }
+  );
+  if (!capabilityWarning) {
+    failures.push("known backend capability warning is not classified");
+  }
+  if (
+    normalizeObservedApiPath(
+      "http://127.0.0.1:4177/api/edu/backend/v1/paper/list"
+    ) !== "/edu/backend/v1/paper/list"
+  ) {
+    failures.push("local API proxy path is not normalized");
+  }
+  const localCapabilityWarning = allowedHttpFailure(
+    {
+      status: 404,
+      url: "http://127.0.0.1:4177/api/edu/backend/v1/paper/list"
+    },
+    { name: "teacher-exam-paper-my-papers" }
+  );
+  if (!localCapabilityWarning) {
+    failures.push("local backend capability warning is not classified");
+  }
+  if (
+    allowedHttpFailure(
+      {
+        status: 404,
+        url: "https://api.example/edu/backend/v1/paper/list"
+      },
+      { name: "teacher-course-list" }
+    )
+  ) {
+    failures.push("backend capability warning leaked into an unrelated route");
   }
 
   const courseRoute = routes.find(route => route.requiresCourse);
@@ -2124,7 +2443,7 @@ async function main() {
           try {
             responseRecords.push({
               requestId: message.params.requestId,
-              path: new URL(response.url).pathname,
+              path: normalizeObservedApiPath(response.url),
               status: Number(response.status || 0),
               mimeType: String(response.mimeType || "")
             });
@@ -2138,7 +2457,7 @@ async function main() {
             if (response.status === 404) {
               try {
                 if (
-                  new URL(response.url).pathname ===
+                  normalizeObservedApiPath(response.url) ===
                   "/edu/v1/html-animation/display"
                 ) {
                   responseIssues.set(message.params.requestId, issue);
@@ -2182,6 +2501,7 @@ async function main() {
         );
       }
       await wait(route.postActionWaitMs || 600);
+      info = await inspectPage(client);
       const firstShot = await client.send("Page.captureScreenshot", {
         format: "png",
         fromSurface: true

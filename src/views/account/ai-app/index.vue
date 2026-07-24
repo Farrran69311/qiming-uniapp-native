@@ -20,11 +20,7 @@ import {
   Avatar,
   Clock,
   DataBoard,
-  Calendar,
-  Bell,
-  ChatLineRound,
-  Close,
-  ArrowRight
+  Close
 } from "@element-plus/icons-vue";
 
 // 引入三个拆分后的组件
@@ -866,62 +862,6 @@ const railItems = ref([
   { key: "governance", label: "治理看板", icon: "DataBoard" },
   { key: "automation", label: "常规任务", icon: "Check" }
 ]);
-
-const selectedTaskId = ref("");
-
-const routineTasks = ref([
-  {
-    id: "r1",
-    title: "学情周报生成",
-    desc: "每周五 18:00 自动汇总本周学习数据并生成专属报告",
-    role: "student",
-    status: "active",
-    lastRun: "上周五 18:00",
-    icon: Calendar
-  },
-  {
-    id: "r2",
-    title: "遗忘曲线复习推送",
-    desc: "每日 20:00 基于艾宾浩斯曲线生成错题回顾任务",
-    role: "student",
-    status: "active",
-    lastRun: "昨天 20:00",
-    icon: Bell
-  },
-  {
-    id: "r3",
-    title: "课前预习资料速递",
-    desc: "根据明日课表提前生成包含重难点的预习大纲",
-    role: "student",
-    status: "paused",
-    lastRun: "-",
-    icon: Document
-  },
-  {
-    id: "r4",
-    title: "班级共性错题汇总",
-    desc: "每日 22:00 分析班级作业数据并生成共性盲点看板",
-    role: "teacher",
-    status: "active",
-    lastRun: "昨天 22:00",
-    icon: DataBoard
-  },
-  {
-    id: "r5",
-    title: "答疑区高频问题聚合",
-    desc: "每周日 12:00 自动整理答疑区相似提问并生成FAQ",
-    role: "teacher",
-    status: "active",
-    lastRun: "上周日 12:00",
-    icon: ChatLineRound
-  }
-]);
-const routineTaskRole = computed(() =>
-  apiMode.value === "student" ? "student" : "teacher"
-);
-const visibleRoutineTasks = computed(() =>
-  routineTasks.value.filter(task => task.role === routineTaskRole.value)
-);
 
 // === 智能画像、智能体与资源数据 ===
 const profileDimensions = ref([
@@ -2675,18 +2615,21 @@ const handleNewChat = async (payload: { course: string }) => {
 };
 
 const syncHumanRenderState = () => {
-  const shouldPauseAll = document.hidden || activeRail.value !== "chat";
-  if (shouldPauseAll) {
-    virtualHumanRef.value?.pauseRender?.();
-    floatingHumanRef.value?.pauseRender?.();
-    return;
-  }
-
-  floatingHumanRef.value?.resumeRender?.();
-  if (!canMountInline3D.value || humanCollapsed.value) {
+  const shouldPauseVirtualHuman =
+    document.hidden ||
+    activeRail.value !== "chat" ||
+    humanCollapsed.value ||
+    !canMountInline3D.value;
+  if (shouldPauseVirtualHuman) {
     virtualHumanRef.value?.pauseRender?.();
   } else {
     virtualHumanRef.value?.resumeRender?.();
+  }
+
+  if (document.hidden) {
+    floatingHumanRef.value?.pauseRender?.();
+  } else {
+    floatingHumanRef.value?.resumeRender?.();
   }
 };
 
@@ -3055,10 +2998,10 @@ onUnmounted(() => {
           <!-- 【场景 A2】 智能辅导欢迎中心 (未选课) -->
           <div
             v-else-if="activeRail === `chat` && !activeCourse"
-            class="h-full w-full p-4 flex items-center justify-center relative"
+            class="ai-welcome-center h-full w-full p-4 flex items-center justify-center relative"
           >
             <div
-              class="w-full max-w-5xl px-6 space-y-8 relative z-10 transform -translate-y-8"
+              class="ai-welcome-content w-full max-w-5xl px-6 space-y-8 relative z-10 transform -translate-y-8"
             >
               <div class="text-center space-y-4">
                 <h1
@@ -3478,166 +3421,19 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- 【场景 C】 常规任务 (原自动化) -->
+          <!-- 【场景 C】 常规任务 -->
           <div
             v-else-if="activeRail === `automation`"
-            class="ai-automation-view h-full w-full min-w-0 overflow-hidden flex justify-center bg-white"
+            class="ai-automation-view h-full w-full min-w-0 overflow-hidden flex items-center justify-center bg-white p-4"
           >
             <div
-              class="ai-automation-workspace flex w-full min-w-0 h-full gap-4 transition-all duration-500 ease-in-out p-6"
-              :class="[
-                selectedTaskId ? 'max-w-full' : 'max-w-5xl',
-                { 'is-task-selected': selectedTaskId }
-              ]"
+              class="ai-automation-empty-shell h-full w-full min-w-0 flex items-center justify-center"
             >
-              <!-- 左侧：任务列表 -->
-              <div
-                class="ai-automation-list h-full min-w-0 bg-white p-2 overflow-y-auto transition-all duration-500"
-                :class="selectedTaskId ? 'w-[45%]' : 'w-full'"
-              >
-                <div class="mb-8">
-                  <h2 class="text-2xl font-bold text-gray-800">常规任务计划</h2>
-                  <p class="text-sm text-gray-500 mt-2">
-                    助手会在后台为您自动执行这些周期性或触发式任务，提升教与学的效率。
-                  </p>
-                </div>
-
-                <div class="space-y-4">
-                  <div
-                    v-for="task in visibleRoutineTasks"
-                    :key="task.id"
-                    class="ai-automation-task-card flex items-start justify-between p-5 rounded-2xl border transition-all group"
-                    :class="
-                      selectedTaskId === task.id
-                        ? 'border-primary/40 bg-primary/5 shadow-md shadow-primary/10'
-                        : 'border-gray-100 hover:border-primary/20 hover:shadow-md bg-gray-50/50'
-                    "
-                  >
-                    <button
-                      type="button"
-                      class="ai-automation-task-main flex flex-1 min-w-0 items-start gap-4 rounded-xl border-0 bg-transparent p-0 text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2"
-                      :aria-label="`查看任务记录：${task.title}`"
-                      @click="selectedTaskId = task.id"
-                    >
-                      <div
-                        class="ai-automation-task-icon w-12 h-12 flex-shrink-0 bg-white rounded-xl shadow-sm flex items-center justify-center text-primary"
-                      >
-                        <component :is="task.icon" class="w-6 h-6" />
-                      </div>
-                      <div class="min-w-0 flex-1">
-                        <h4
-                          class="text-base font-semibold text-gray-800 flex flex-wrap items-center gap-2"
-                        >
-                          {{ task.title }}
-                          <span
-                            class="px-2 py-0.5 text-[10px] rounded-full"
-                            :class="
-                              task.status === 'active'
-                                ? 'bg-green-100 text-green-600'
-                                : 'bg-gray-200 text-gray-500'
-                            "
-                          >
-                            {{ task.status === "active" ? "运行中" : "已暂停" }}
-                          </span>
-                        </h4>
-                        <p class="text-sm text-gray-500 mt-1 line-clamp-2">
-                          {{ task.desc }}
-                        </p>
-                        <p
-                          class="text-xs text-gray-400 mt-2 flex items-center gap-1"
-                        >
-                          <el-icon><Clock /></el-icon> 上次执行：{{
-                            task.lastRun
-                          }}
-                        </p>
-                      </div>
-                    </button>
-                    <div
-                      class="ai-automation-task-actions flex flex-shrink-0 flex-col items-end justify-between h-full pl-2"
-                    >
-                      <el-switch
-                        v-model="task.status"
-                        active-value="active"
-                        inactive-value="paused"
-                        style="--el-switch-on-color: var(--el-color-primary)"
-                        @click.stop
-                      />
-                      <el-button
-                        type="primary"
-                        link
-                        class="ai-automation-record-button mt-4 transition-opacity"
-                        :class="
-                          selectedTaskId === task.id
-                            ? 'opacity-100 font-bold'
-                            : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
-                        "
-                        @click.stop="selectedTaskId = task.id"
-                      >
-                        记录 <el-icon class="ml-1"><ArrowRight /></el-icon>
-                      </el-button>
-                    </div>
-                  </div>
-
-                  <div
-                    v-if="visibleRoutineTasks.length === 0"
-                    class="py-12 flex justify-center"
-                  >
-                    <AiAppEmptyState
-                      title="暂无常规任务"
-                      description="当前课程暂未配置周期性或触发式任务。"
-                      :icon="Clock"
-                      compact
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <!-- 右侧：历史记录面板 -->
-              <div
-                v-if="selectedTaskId"
-                class="ai-automation-history flex-1 min-w-0 h-full bg-white rounded-3xl shadow-sm border border-gray-100 flex flex-col overflow-hidden animate-fade-in"
-              >
-                <!-- 头部 -->
-                <div
-                  class="flex items-center justify-between p-6 border-b border-gray-50"
-                >
-                  <div class="flex items-center gap-3">
-                    <div
-                      class="w-10 h-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center"
-                    >
-                      <el-icon :size="20"><Document /></el-icon>
-                    </div>
-                    <div>
-                      <h3 class="text-lg font-bold text-gray-800">
-                        {{
-                          routineTasks.find(t => t.id === selectedTaskId)?.title
-                        }}
-                      </h3>
-                      <p class="text-[13px] text-gray-400 mt-0.5">
-                        任务执行历史记录
-                      </p>
-                    </div>
-                  </div>
-                  <el-button
-                    circle
-                    plain
-                    size="small"
-                    @click="selectedTaskId = ''"
-                  >
-                    <el-icon><Close /></el-icon>
-                  </el-button>
-                </div>
-
-                <!-- 时间轴区域 -->
-                <div class="flex-1 overflow-y-auto p-8 relative bg-gray-50/30">
-                  <AiAppEmptyState
-                    title="暂无执行记录"
-                    description="任务执行后会在这里显示状态、时间和结果。"
-                    :icon="Document"
-                    compact
-                  />
-                </div>
-              </div>
+              <AiAppEmptyState
+                title="常规任务暂未接入"
+                description="当前后端尚未提供常规任务的配置、启停与执行记录接口。"
+                :icon="Clock"
+              />
             </div>
           </div>
 
@@ -3659,7 +3455,6 @@ onUnmounted(() => {
     </div>
 
     <FloatingDigitalHuman2D
-      v-if="activeRail === 'chat'"
       ref="floatingHumanRef"
       :role-label="currentUserRoleLabel"
       :course-name="selectedCourseName"
@@ -4524,6 +4319,15 @@ onUnmounted(() => {
 }
 
 @media (max-width: 768px) {
+  .ai-welcome-center {
+    padding: 8px !important;
+  }
+
+  .ai-welcome-content {
+    padding-right: 8px !important;
+    padding-left: 8px !important;
+  }
+
   .ai-course-context-bar {
     align-items: stretch;
     justify-content: flex-start;
@@ -4559,9 +4363,16 @@ onUnmounted(() => {
   .ai-profile-main {
     flex: 0 0 auto;
     width: 100%;
-    height: clamp(420px, 68dvh, 680px) !important;
-    min-height: 420px;
+    height: auto !important;
+    min-height: 0;
+    overflow: visible;
     border-radius: 12px;
+  }
+
+  .ai-profile-main .profile-page {
+    height: auto !important;
+    min-height: 0;
+    overflow: visible;
   }
 
   .ai-profile-inspector {
@@ -4573,10 +4384,17 @@ onUnmounted(() => {
   }
 
   .ai-automation-view {
-    align-items: stretch;
+    align-items: flex-start;
+    padding: 12px 8px !important;
     overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior-y: contain;
+  }
+
+  .ai-automation-empty-shell {
+    align-items: flex-start;
+    height: auto !important;
+    padding-top: 8px;
   }
 
   .ai-automation-workspace {

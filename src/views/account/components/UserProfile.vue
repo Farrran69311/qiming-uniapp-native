@@ -1,15 +1,11 @@
 <template>
   <div class="user-profile" :class="currentTheme">
-    <!-- 顶部自定义横幅图片区域 -->
-    <div
-      v-if="extraInfo.bannerUrl || defaultBanner"
-      class="profile-banner"
-      :style="bannerStyle"
-    >
+    <!-- 顶部资料概览区域 -->
+    <div class="profile-banner" :style="bannerStyle">
       <div class="banner-overlay">
         <div class="banner-text">
           <div class="banner-title">个人中心</div>
-          <div class="banner-sub">定制你的专属空间</div>
+          <div class="banner-sub">学习与账户概览</div>
         </div>
       </div>
     </div>
@@ -58,14 +54,10 @@
           <div class="info-item">
             <div class="label">邮箱</div>
             <div class="value email-value">
-              {{ extraInfo.email || "未设置" }}
-              <el-tag
-                v-if="!extraInfo.email"
-                size="small"
-                type="info"
-                effect="plain"
-                >建议尽快完善</el-tag
-              >
+              暂未提供
+              <el-tag size="small" type="info" effect="plain">
+                服务未接入
+              </el-tag>
             </div>
           </div>
           <div class="info-item">
@@ -83,15 +75,11 @@
           <div class="group-title">账户时间</div>
           <div class="info-item">
             <div class="label">注册时间</div>
-            <div class="value time-value">
-              {{ formattedRegisterTime }}
-            </div>
+            <div class="value time-value">暂未提供</div>
           </div>
           <div class="info-item">
             <div class="label">最后登录</div>
-            <div class="value time-value">
-              {{ formattedLastLoginTime }}
-            </div>
+            <div class="value time-value">暂未提供</div>
           </div>
         </div>
         <div v-show="showStats" class="info-group stats">
@@ -172,14 +160,31 @@
             v-for="course in recentCourses"
             :key="course.courseId"
             class="course-mini-card"
+            role="button"
+            tabindex="0"
             @click="
+              router.push({
+                path: `/course/${course.courseId}`
+              })
+            "
+            @keydown.enter="
+              router.push({
+                path: `/course/${course.courseId}`
+              })
+            "
+            @keydown.space.prevent="
               router.push({
                 path: `/course/${course.courseId}`
               })
             "
           >
             <div class="course-thumb">
-              <img v-if="course.thumbUrl" :src="course.thumbUrl" />
+              <img
+                v-if="course.thumbUrl"
+                :src="course.thumbUrl"
+                :alt="course.courseName"
+                loading="lazy"
+              />
               <div v-else class="thumb-placeholder">
                 {{ course.courseName.charAt(0) }}
               </div>
@@ -238,7 +243,7 @@
           </div>
           <el-empty
             v-if="learningActivities.length === 0"
-            description="暂无学习动态"
+            description="学习动态服务暂未接入"
             :image-size="60"
           />
         </div>
@@ -276,49 +281,6 @@
         <el-form-item label="昵称" prop="nickname">
           <el-input v-model="form.nickname" placeholder="请输入昵称" />
         </el-form-item>
-        <el-form-item label="邮箱" prop="email">
-          <el-input v-model="form.email" placeholder="请输入邮箱" />
-        </el-form-item>
-        <el-form-item label="横幅图" prop="bannerUrl">
-          <el-input
-            v-model="form.bannerUrl"
-            placeholder="请输入地址或点击右侧箭头选择"
-            clearable
-            @input="val => (bannerPreviewUrl = val)"
-          >
-            <template #suffix>
-              <el-dropdown trigger="click" @command="handleBannerCommand">
-                <AccountSvgIcon
-                  name="chevron-down"
-                  class="el-input__icon cursor-pointer"
-                  style="margin-right: 8px"
-                />
-                <template #dropdown>
-                  <el-dropdown-menu>
-                    <el-dropdown-item command="preset"
-                      >选择预设图片</el-dropdown-item
-                    >
-                    <el-dropdown-item command="upload"
-                      >上传自定义图片</el-dropdown-item
-                    >
-                  </el-dropdown-menu>
-                </template>
-              </el-dropdown>
-            </template>
-          </el-input>
-          <input
-            ref="bannerInputRef"
-            type="file"
-            hidden
-            accept="image/*"
-            @change="handleBannerFileChange"
-          />
-        </el-form-item>
-        <el-form-item v-if="bannerPreviewUrl" label="预览">
-          <div class="banner-preview">
-            <img :src="bannerPreviewUrl" alt="banner" crossorigin="anonymous" />
-          </div>
-        </el-form-item>
         <el-form-item label="性别">
           <el-radio-group v-model="form.sex">
             <el-radio :value="1">男</el-radio>
@@ -345,33 +307,10 @@
       </template>
     </el-dialog>
 
-    <!-- 预设背景图选择弹窗 -->
-    <el-dialog
-      v-model="presetDialogVisible"
-      title="选择预设背景图"
-      width="min(600px, calc(100vw - 24px))"
-      append-to-body
-    >
-      <div class="preset-banners-grid">
-        <div
-          v-for="url in presetBanners"
-          :key="url"
-          class="preset-item"
-          @click="handleSelectPreset(url)"
-        >
-          <img :src="url" alt="preset" />
-          <div class="preset-overlay">
-            <AccountSvgIcon name="plus" />
-            <span>点击裁剪</span>
-          </div>
-        </div>
-      </div>
-    </el-dialog>
-
     <!-- 图片裁剪弹窗 -->
     <el-dialog
       v-model="cropperDialogVisible"
-      :title="currentCroppingType === 'avatar' ? '裁剪头像' : '裁剪横幅图'"
+      title="裁剪头像"
       width="min(800px, calc(100vw - 24px))"
       append-to-body
       destroy-on-close
@@ -383,7 +322,7 @@
           :realTimePreview="false"
           crossorigin="anonymous"
           :options="{
-            aspectRatio: currentCroppingType === 'avatar' ? 1 : 5,
+            aspectRatio: 1,
             viewMode: 1,
             guides: true,
             checkCrossOrigin: true
@@ -455,12 +394,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, reactive, watch } from "vue";
+import { ref, computed, onMounted, reactive } from "vue";
 import { useRouter } from "vue-router";
 import type { FormInstance } from "element-plus";
 import { ElMessage } from "element-plus";
 import ReCropper from "@/components/ReCropper";
 import AccountSvgIcon from "./AccountSvgIcon.vue";
+import defaultAvatar from "@/assets/user.jpg";
+import defaultBanner from "@/assets/publicbackgroundpreset/9cc666916ece355333bbe45723e2921d.jpeg";
 import { storageLocal } from "@pureadmin/utils";
 import { formatAvatar } from "@/utils/avatar";
 import { userKey, removeToken, getToken, setToken } from "@/utils/auth";
@@ -470,17 +411,8 @@ import {
   updateFrontendUserPassword,
   type UpdateUserInfoParams
 } from "@/api/frontend/user";
-import {
-  uploadFile,
-  getUserDetail,
-  getStudentStats,
-  getUserActivities,
-  type StudentStatsResult,
-  type UserStatusResult,
-  type UserActivity
-} from "@/api/user";
+import { uploadFile, getUserDetail, getStudentStats } from "@/api/user";
 import { getFrontendCourseList } from "@/api/frontend/course";
-import dayjs from "dayjs";
 
 const props = defineProps<{
   currentTheme?: string;
@@ -489,33 +421,14 @@ const props = defineProps<{
 const emit = defineEmits(["to-course"]);
 
 const router = useRouter();
-const defaultAvatar = "/src/assets/user.jpg";
 const dialogVisible = ref(false);
 const loading = ref(false);
 const userInfo = ref<DataInfo<number> | any>(storageLocal().getItem(userKey));
 
-// 动态加载预设背景图
-const presetBannerNames = [
-  "9cc666916ece355333bbe45723e2921d.jpeg",
-  "FullSizeRender.jpeg",
-  "IMG_6914.jpeg",
-  "IMG_6994.jpeg",
-  "IMG_7006.jpeg",
-  "IMG_7069.jpeg",
-  "IMG_7462.jpeg",
-  "IMG_9180.jpeg"
-] as const;
-const presetBanners = presetBannerNames.map(
-  name => `${import.meta.env.BASE_URL}publicbackgroundpreset/${name}`
-);
-
 // 弹窗与加载状态
-const presetDialogVisible = ref(false);
 const cropperDialogVisible = ref(false);
-const currentCroppingType = ref<"avatar" | "banner">("avatar");
 const croppingImage = ref("");
 const cropperRef = ref();
-const bannerInputRef = ref<HTMLInputElement>();
 
 // 修改密码相关
 const passwordDialogVisible = ref(false);
@@ -529,51 +442,36 @@ const passwordForm = reactive({
 
 const formRef = ref<FormInstance>();
 const avatarUrl = ref("");
-const bannerPreviewUrl = ref("");
+const profileOriginalInfo = ref("");
 
 // 表单数据
 const form = reactive({
   nickname: "",
   sex: 0,
   avatar: "",
-  info: "",
-  email: "",
-  bannerUrl: ""
+  info: ""
 });
-
-// 额外前端模拟信息（注册时间、最后登录时间、邮箱）
-const EXTRA_KEY = "userExtraInfo";
-interface ExtraInfo {
-  registrationTime: string; // ISO string
-  lastLoginTime: string; // ISO string
-  email?: string;
-  bannerUrl?: string;
-}
-const extraInfo = reactive<ExtraInfo>({
-  registrationTime: "",
-  lastLoginTime: "",
-  email: "",
-  bannerUrl: ""
-});
-
-const everBeenStudent = ref(false);
 
 // 签名兜底：优先展示用户详情里的 info，缺失时尝试从其他接口补齐
 const signatureFallback = ref("");
 const displaySignature = computed(
-  () =>
-    userInfo.value?.info ||
-    signatureFallback.value ||
-    "这个人很懒，什么都没留下"
+  () => userInfo.value?.info || signatureFallback.value || "暂未填写"
 );
 
 // 学习统计数据：入驻/均分取自 /user/study，学时/进度取自 /user/status，失败时回落到课程列表计算
 // 学习统计持久化 Key
 const STATS_STORAGE_KEY = "userStudyStatsCache";
+const getStatsStorageKey = () => {
+  const userId = userInfo.value?.userId || userInfo.value?.id;
+  return userId ? `${STATS_STORAGE_KEY}:${userId}` : "";
+};
 
 // 必杀技 1：从缓存初始化，实现“秒开”不闪烁
 const getInitialStats = () => {
-  const cached = storageLocal().getItem(STATS_STORAGE_KEY) as any;
+  const statsStorageKey = getStatsStorageKey();
+  const cached = statsStorageKey
+    ? (storageLocal().getItem(statsStorageKey) as any)
+    : null;
   // 核心改进：显式标记 null，区分“初始状态”和“数值为0”
   return {
     joinDate: cached?.joinDate || "--",
@@ -585,50 +483,25 @@ const getInitialStats = () => {
 };
 
 const studyStats = reactive(getInitialStats());
+const persistStudyStats = () => {
+  const statsStorageKey = getStatsStorageKey();
+  if (statsStorageKey) {
+    storageLocal().setItem(statsStorageKey, { ...studyStats });
+  }
+};
 
 // 最近学习课程
 const recentCourses = ref([]);
 
-const iconMap = {
-  CheckIcon: "check",
-  EmailIcon: "mail",
-  PlayIcon: "play",
-  TrendIcon: "activity",
-  DeskIcon: "desktop"
-};
-
-// The activity endpoint is unavailable on native builds; keep the honest empty state.
-const learningActivities = ref([]);
-
-const fetchActivities = async () => {
-  const isNativeWebView =
-    document.documentElement.classList.contains("qiming-native-webview") ||
-    document.documentElement.dataset.qimingNative === "true" ||
-    window.location.protocol === "file:" ||
-    new URLSearchParams(window.location.search).has("qimingNative");
-  if (
-    isNativeWebView ||
-    document.documentElement.classList.contains(
-      "qiming-mini-program-webview"
-    ) ||
-    document.documentElement.dataset.qimingMiniProgram === "true" ||
-    localStorage.getItem("qimingMiniProgramWebView") === "1" ||
-    sessionStorage.getItem("qimingMiniProgramWebView") === "1"
-  ) {
-    return;
-  }
-  try {
-    const res = await getUserActivities().catch(() => null);
-    if (res?.code === 200 && res.data?.list) {
-      learningActivities.value = res.data.list.map(item => ({
-        ...item,
-        icon: iconMap[item.iconName] || "activity"
-      }));
-    }
-  } catch (error) {
-    console.error("获取学习动态失败:", error);
-  }
-};
+const learningActivities = ref<
+  Array<{
+    id: number | string;
+    content: string;
+    timestamp: string;
+    type: string;
+    icon?: string;
+  }>
+>([]);
 
 const sanitizeProgress = (val: any) => {
   const num = Number(val);
@@ -684,7 +557,7 @@ const fetchStudyStats = async () => {
         recentCourses.value = list.slice(0, 3);
 
         // 持久化缓存
-        storageLocal().setItem(STATS_STORAGE_KEY, { ...studyStats });
+        persistStudyStats();
       }
     }
 
@@ -707,11 +580,8 @@ const fetchStudyStats = async () => {
         signatureFallback.value = sig;
       }
       // 更新缓存
-      storageLocal().setItem(STATS_STORAGE_KEY, { ...studyStats });
+      persistStudyStats();
     }
-
-    // 获取学习动态
-    await fetchActivities();
   } catch (error) {
     console.error("获取学习统计失败:", error);
   } finally {
@@ -719,39 +589,9 @@ const fetchStudyStats = async () => {
   }
 };
 
-const loadExtraInfo = () => {
-  try {
-    const cached = storageLocal().getItem(EXTRA_KEY) as ExtraInfo | null;
-    if (cached && cached.registrationTime) {
-      Object.assign(extraInfo, cached, {
-        lastLoginTime: dayjs().toISOString()
-      });
-    } else {
-      extraInfo.registrationTime = dayjs().toISOString();
-      extraInfo.lastLoginTime = dayjs().toISOString();
-    }
-    persistExtra();
-  } catch (e) {
-    console.warn("读取额外信息失败", e);
-  }
-};
-
-const persistExtra = () => {
-  storageLocal().setItem(EXTRA_KEY, { ...extraInfo });
-};
-
 // 表单验证规则
-const emailValidator = (rule, value, callback) => {
-  if (!value) return callback();
-  const emailRegex =
-    /^(?:[\w!#$%&'*+/=?`{|}~^-]+(?:\.[\w!#$%&'*+/=?`{|}~^-]+)*)@(?:[A-Z0-9-]+\.)+[A-Z]{2,}$/i;
-  if (!emailRegex.test(value)) callback(new Error("邮箱格式不正确"));
-  else callback();
-};
-
 const rules = {
   nickname: [{ max: 20, message: "昵称长度不能超过20个字符", trigger: "blur" }],
-  email: [{ validator: emailValidator, trigger: "blur" }],
   info: [
     { max: 200, message: "个性签名长度不能超过200个字符", trigger: "blur" }
   ]
@@ -800,20 +640,20 @@ const userRole = computed(() => {
   }
 });
 
-// 监听角色变化，一旦是学生就记住
-watch(
-  userRole,
-  val => {
-    if (val === "学生") {
-      everBeenStudent.value = true;
-    }
-  },
-  { immediate: true }
-);
+const rolesForRoleType = (roleType?: number) => {
+  switch (Number(roleType)) {
+    case 1:
+      return ["student"];
+    case 2:
+      return ["teacher"];
+    case 3:
+      return ["admin"];
+    default:
+      return ["common"];
+  }
+};
 
-const showStats = computed(() => {
-  return userRole.value === "学生" || everBeenStudent.value;
-});
+const showStats = computed(() => userRole.value === "学生");
 
 // 计算属性：性别显示
 const getSexLabel = computed(() => {
@@ -858,12 +698,18 @@ const fetchUserDetail = async () => {
           (tokenData as any).expires || localData.expires;
       }
 
-      // 补全必要的默认权限（Mock 环境常备）
+      // 认证元数据沿用登录态，角色缺失时按后端 roleType 收敛。
       mergedUserInfo.permissions = mergedUserInfo.permissions || ["*:*:*"];
-      mergedUserInfo.roles = mergedUserInfo.roles || ["admin"];
+      mergedUserInfo.roles =
+        mergedUserInfo.roles?.length > 0
+          ? mergedUserInfo.roles
+          : rolesForRoleType(mergedUserInfo.roleType);
 
       // 更新响应式数据
       userInfo.value = mergedUserInfo;
+      profileOriginalInfo.value = newUserInfo.info || "";
+      localStorage.setItem("userSex", String(newUserInfo.sex ?? 0));
+      localStorage.setItem("userInfo", newUserInfo.info || "");
 
       // 只要有 accessToken 就走 setToken 链路进行同步
       if (mergedUserInfo.accessToken) {
@@ -899,9 +745,6 @@ const openEditDialog = () => {
     form.nickname = userInfo.value.nickname || "";
     form.sex = userInfo.value.sex || 0;
     form.info = userInfo.value.info || "";
-    form.email = extraInfo.email || "";
-    form.bannerUrl = userInfo.value.bannerUrl || extraInfo.bannerUrl || "";
-    bannerPreviewUrl.value = form.bannerUrl;
     avatarUrl.value = userInfo.value.avatar || defaultAvatar;
   }
   dialogVisible.value = true;
@@ -914,35 +757,7 @@ const handleAvatarChange = file => {
     ElMessage.error("头像图片大小不能超过 2MB!");
     return false;
   }
-  currentCroppingType.value = "avatar";
   croppingImage.value = URL.createObjectURL(file.raw);
-  cropperDialogVisible.value = true;
-};
-
-// 处理横幅图操作指令
-const handleBannerCommand = (command: string) => {
-  if (command === "preset") {
-    presetDialogVisible.value = true;
-  } else if (command === "upload") {
-    bannerInputRef.value?.click();
-  }
-};
-
-// 处理自定义横幅图上传
-const handleBannerFileChange = (e: Event) => {
-  const file = (e.target as HTMLInputElement).files?.[0];
-  if (file) {
-    currentCroppingType.value = "banner";
-    croppingImage.value = URL.createObjectURL(file);
-    cropperDialogVisible.value = true;
-    (e.target as HTMLInputElement).value = "";
-  }
-};
-
-// 处理选择预设图
-const handleSelectPreset = (url: string) => {
-  currentCroppingType.value = "banner";
-  croppingImage.value = url;
   cropperDialogVisible.value = true;
 };
 
@@ -971,23 +786,9 @@ const handleCropperResult = async ({ blob, base64 }) => {
     const res = await uploadFile(formData);
 
     if (res.code === 200 && res.data?.url) {
-      // 在 Mock 环境下，由于上传接口返回的是随机图片地址，会导致裁切效果失效。
-      // 为了演示效果，如果是 Mock 地址（包含 picsum.photos），我们优先使用裁切后的 base64。
-      const finalUrl =
-        res.data.url.includes("picsum.photos") ||
-        res.data.url.includes("placeholder")
-          ? base64
-          : res.data.url;
-
-      if (currentCroppingType.value === "avatar") {
-        form.avatar = finalUrl;
-        avatarUrl.value = base64;
-      } else {
-        form.bannerUrl = finalUrl;
-        bannerPreviewUrl.value = base64;
-      }
+      form.avatar = res.data.url;
+      avatarUrl.value = base64;
       cropperDialogVisible.value = false;
-      presetDialogVisible.value = false;
       ElMessage.success("图片处理成功");
     } else {
       ElMessage.error(res.msg || "图片上传失败");
@@ -1006,14 +807,23 @@ const submitForm = async () => {
 
   await formRef.value.validate(async valid => {
     if (valid) {
+      const nickname = form.nickname.trim();
+      if (!nickname) {
+        ElMessage.warning("昵称不能为空");
+        return;
+      }
+      const info = form.info.trim();
+      if (profileOriginalInfo.value.trim() && !info) {
+        ElMessage.warning("当前服务暂不支持清空签名，请保留或修改签名内容");
+        return;
+      }
       try {
         loading.value = true;
 
         const updateData: UpdateUserInfoParams = {
-          nickname: form.nickname,
+          nickname,
           sex: form.sex,
-          info: form.info,
-          bannerUrl: form.bannerUrl
+          info
         };
 
         if (form.avatar) {
@@ -1025,10 +835,6 @@ const submitForm = async () => {
         const isSuccess = res && (res.code === 200 || (res as any).success);
 
         if (isSuccess) {
-          extraInfo.email = form.email || "";
-          extraInfo.bannerUrl = form.bannerUrl || "";
-          persistExtra();
-
           // 等待用户信息同步完成，确保本地存储和 UI 状态一致
           const syncSuccess = await fetchUserDetail();
           if (syncSuccess) {
@@ -1135,26 +941,11 @@ const submitPasswordForm = async () => {
   });
 };
 
-const formattedRegisterTime = computed(() =>
-  extraInfo.registrationTime
-    ? dayjs(extraInfo.registrationTime).format("YYYY-MM-DD HH:mm:ss")
-    : "-"
-);
-const formattedLastLoginTime = computed(() =>
-  extraInfo.lastLoginTime
-    ? dayjs(extraInfo.lastLoginTime).format("YYYY-MM-DD HH:mm:ss")
-    : "-"
-);
-
-const defaultBanner = "/src/assets/course/cover-default.jpg";
-const bannerStyle = computed(() => {
-  const url = userInfo.value?.bannerUrl || extraInfo.bannerUrl || defaultBanner;
-  return { backgroundImage: `url(${url})` };
-});
+const bannerStyle = computed(() => ({
+  backgroundImage: `url(${defaultBanner})`
+}));
 
 onMounted(async () => {
-  loadExtraInfo();
-
   // 先同步用户信息
   await fetchUserDetail();
 
@@ -1637,72 +1428,6 @@ onMounted(async () => {
 
       .el-icon {
         font-size: 14px;
-      }
-    }
-  }
-}
-
-.banner-preview {
-  width: 100%;
-  max-height: 120px;
-  overflow: hidden;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  box-shadow: 0 4px 10px -2px rgb(0 0 0 / 6%);
-
-  img {
-    display: block;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-}
-
-.preset-banners-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-  padding: 8px;
-
-  .preset-item {
-    position: relative;
-    aspect-ratio: 16 / 9;
-    overflow: hidden;
-    cursor: pointer;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgb(0 0 0 / 10%);
-    transition: transform 0.3s;
-
-    &:hover {
-      transform: scale(1.02);
-
-      .preset-overlay {
-        opacity: 1;
-      }
-    }
-
-    img {
-      display: block;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-
-    .preset-overlay {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      align-items: center;
-      justify-content: center;
-      color: #fff;
-      background: rgb(0 0 0 / 40%);
-      opacity: 0;
-      transition: opacity 0.3s;
-
-      .el-icon {
-        font-size: 24px;
       }
     }
   }

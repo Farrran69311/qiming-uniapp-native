@@ -9,24 +9,22 @@ import { debounce } from "@pureadmin/utils";
 import { useNav } from "@/layout/hooks/useNav";
 import { useEventListener } from "@vueuse/core";
 import type { FormInstance } from "element-plus";
-import { $t, transformI18n } from "@/plugins/i18n";
-import { operates, thirdParty } from "./utils/enums";
 import { useLayout } from "@/layout/hooks/useLayout";
-import LoginPhone from "./components/LoginPhone.vue";
 import LoginRegist from "./components/LoginRegist.vue";
-import LoginUpdate from "./components/LoginUpdate.vue";
-import LoginQrCode from "./components/LoginQrCode.vue";
 import ParticlesBg from "./components/ParticlesBg.vue";
 import { useUserStoreHook } from "@/store/modules/user";
-import { initRouter, getTopMenu } from "@/router/utils";
-import { bg, avatar, illustration } from "./utils/static";
-import { ReImageVerify } from "@/components/ReImageVerify";
+import { avatar, illustration } from "./utils/static";
 import { ref, toRaw, reactive, watch, computed, onMounted } from "vue";
 import { useRenderIcon } from "@/components/ReIcon/src/hooks";
 import { useTranslationLang } from "@/layout/hooks/useTranslationLang";
 import { useDataThemeChange } from "@/layout/hooks/useDataThemeChange";
-import { resetThemeToDefault, setToken, getToken } from "@/utils/auth";
-import { getUserDetail } from "@/api/user";
+import { resetThemeToDefault } from "@/utils/auth";
+import { userLogin } from "@/api/user";
+import {
+  completeUserCenterAuthentication,
+  requireAuthData,
+  resolveAuthErrorMessage
+} from "./utils/userCenterSession";
 
 import dayIcon from "@/assets/svg/day.svg?component";
 import darkIcon from "@/assets/svg/dark.svg?component";
@@ -37,24 +35,19 @@ import EyeOff from "~icons/ri/eye-off-line";
 import Check from "~icons/ep/check";
 import User from "~icons/ri/user-3-fill";
 import Info from "~icons/ri/information-line";
-import Keyhole from "~icons/ri/shield-keyhole-line";
-import Tenant from "~icons/ri/home-gear-line";
 
 defineOptions({
   name: "Login"
 });
 
-const imgCode = ref("");
 const loginDay = ref(7);
 const router = useRouter();
 const loading = ref(false);
 const checked = ref(false);
 const disabled = ref(false);
 const ruleFormRef = ref<FormInstance>();
-const isTenantFocused = ref(false);
 const isUsernameFocused = ref(false);
 const isPasswordFocused = ref(false);
-const isVerifyCodeFocused = ref(false);
 const passwordVisible = ref(false);
 const currentPage = computed(() => {
   return useUserStoreHook().currentPage;
@@ -64,6 +57,7 @@ const currentPage = computed(() => {
 const isLoaded = ref(false);
 
 onMounted(() => {
+  useUserStoreHook().SET_CURRENTPAGE(0);
   setTimeout(() => {
     isLoaded.value = true;
   }, 100);
@@ -79,6 +73,9 @@ initStorage();
 const { dataTheme, overallStyle, dataThemeChange } = useDataThemeChange();
 dataThemeChange(overallStyle.value);
 const { title, getDropdownItemStyle, getDropdownItemClass } = useNav();
+const productTitle = computed(
+  () => String(title.value || "").trim() || "启明智教"
+);
 const {
   locale,
   translationCh,
@@ -87,132 +84,63 @@ const {
   translationJa,
   translationKo
 } = useTranslationLang();
-const { VITE_ENABLE_TENANT } = import.meta.env;
-
 const ruleForm = reactive({
-  tenant: "pure-admin",
-  username: "admin",
-  password: "admin123",
-  verifyCode: ""
+  username: "",
+  password: ""
 });
 
-// 特性列表
 const features = [
   {
-    icon: "🚀",
-    title: "高性能",
-    desc: "基于 Vue3 + Vite 构建，极速体验"
+    icon: "book-open-line",
+    title: "课程教学",
+    desc: "集中管理课程、资料与学习进度"
   },
   {
-    icon: "🎨",
-    title: "优雅设计",
-    desc: "现代化 UI 设计，响应式布局"
+    icon: "file-list-3-line",
+    title: "作业考试",
+    desc: "支持作业练习、在线考试与成绩查看"
   },
   {
-    icon: "🔐",
-    title: "安全可靠",
-    desc: "完善的权限管理和安全机制"
+    icon: "discuss-line",
+    title: "教学互动",
+    desc: "通过课程讨论连接教师与学生"
   },
   {
-    icon: "⚡",
-    title: "开箱即用",
-    desc: "丰富的组件和功能模块"
+    icon: "sparkling-2-line",
+    title: "智能助学",
+    desc: "在教学流程中使用智能学习工具"
   }
 ];
-
-// 统计数据
-const statistics = [
-  { number: "10K+", label: "活跃用户" },
-  { number: "500+", label: "企业客户" },
-  { number: "99.9%", label: "系统稳定性" },
-  { number: "24/7", label: "技术支持" }
-];
-
-// 获取用户详细信息（包括头像）
-const fetchUserDetail = async () => {
-  try {
-    const res = await getUserDetail();
-    if (res && res.data && res.data.userInfo) {
-      const userInfo = res.data.userInfo;
-      const userStore = useUserStoreHook();
-      // 直接使用后端返回的头像
-      userStore.SET_NICKNAME(userInfo.nickname || "");
-      userStore.SET_AVATAR(userInfo.avatar || "");
-
-      // 根据 roleType 设置正确的角色
-      // roleType: 1=学生, 2=教师, 3=管理员
-      let roles: string[] = [];
-      if (userInfo.roleType === 3) {
-        roles = ["admin"];
-      } else if (userInfo.roleType === 2) {
-        roles = ["teacher"];
-      } else if (userInfo.roleType === 1) {
-        roles = ["student"];
-      } else {
-        roles = ["student"];
-      }
-
-      setToken({
-        accessToken: getToken()?.accessToken || "",
-        refreshToken: getToken()?.refreshToken || "",
-        expires: getToken()?.expires
-          ? new Date(getToken().expires)
-          : new Date(),
-        username: userInfo.mobile,
-        nickname: userInfo.nickname,
-        avatar: userInfo.avatar || "",
-        roles: roles,
-        permissions: ["*:*:*"],
-        roleType: userInfo.roleType,
-        userId: userInfo.id
-      });
-
-      localStorage.setItem("userId", userInfo.id.toString());
-      localStorage.setItem("userMobile", userInfo.mobile);
-      localStorage.setItem("userSex", userInfo.sex.toString());
-      localStorage.setItem("userInfo", userInfo.info || "");
-      localStorage.setItem("userRoleType", userInfo.roleType.toString());
-    }
-  } catch (error) {
-    console.error("获取用户详细信息出错:", error);
-  }
-};
 
 const onLogin = async (formEl: FormInstance | undefined) => {
-  if (!formEl) return;
-  await formEl.validate(valid => {
-    if (valid) {
-      loading.value = true;
-      useUserStoreHook()
-        .loginByUsername({
-          username: ruleForm.username,
-          password: ruleForm.password
-        })
-        .then(async res => {
-          if (res.success) {
-            // 获取用户详细信息（包括头像）
-            await fetchUserDetail();
-            // 获取后端路由
-            return initRouter().then(() => {
-              disabled.value = true;
-              router
-                .push(getTopMenu(true).path)
-                .then(() => {
-                  message(t("login.pureLoginSuccess"), { type: "success" });
-                })
-                .finally(() => (disabled.value = false));
-            });
-          } else {
-            message(t("login.pureLoginFail"), { type: "error" });
-          }
-        })
-        .finally(() => (loading.value = false));
-    }
-  });
+  if (!formEl || loading.value) return;
+
+  const valid = await formEl.validate().catch(() => false);
+  if (!valid) return;
+
+  loading.value = true;
+  disabled.value = true;
+  try {
+    const mobile = ruleForm.username.trim();
+    const response = await userLogin({
+      mobile,
+      password: ruleForm.password
+    });
+    const authData = requireAuthData(response, "手机号或密码错误");
+    await completeUserCenterAuthentication(router, mobile, authData);
+    message(t("login.pureLoginSuccess"), { type: "success" });
+  } catch (error) {
+    message(resolveAuthErrorMessage(error, "登录失败，请稍后重试"), {
+      type: "error"
+    });
+  } finally {
+    loading.value = false;
+    disabled.value = false;
+  }
 };
 
-const immediateDebounce: any = debounce(
-  formRef => onLogin(formRef),
+const immediateDebounce = debounce(
+  () => onLogin(ruleFormRef.value),
   1000,
   true
 );
@@ -220,15 +148,13 @@ const immediateDebounce: any = debounce(
 useEventListener(document, "keydown", ({ code }) => {
   if (
     ["Enter", "NumpadEnter"].includes(code) &&
+    currentPage.value === 0 &&
     !disabled.value &&
     !loading.value
   )
-    immediateDebounce(ruleFormRef.value);
+    immediateDebounce();
 });
 
-watch(imgCode, value => {
-  useUserStoreHook().SET_VERIFYCODE(value);
-});
 watch(checked, bool => {
   useUserStoreHook().SET_ISREMEMBERED(bool);
 });
@@ -249,7 +175,7 @@ watch(loginDay, value => {
     <div class="top-toolbar">
       <div class="brand">
         <avatar class="brand-logo" />
-        <span class="brand-name">Pure Admin</span>
+        <span class="brand-name">{{ productTitle }}</span>
       </div>
       <div class="toolbar-actions">
         <!-- 主题切换 -->
@@ -334,14 +260,12 @@ watch(loginDay, value => {
         <!-- 主标题 -->
         <div class="hero-section">
           <h1 class="hero-title">
-            <span class="gradient-text">智慧管理</span>
+            <span class="gradient-text">启明智教</span>
             <br />
-            <span class="sub-title">新一代企业级管理平台</span>
+            <span class="sub-title">教学、学习与课程协作平台</span>
           </h1>
           <p class="hero-desc">
-            基于 Vue 3.0 + TypeScript + Vite + Element Plus
-            构建的企业级后台管理系统，
-            提供丰富的组件和功能模块，助力企业数字化转型。
+            面向教师与学生，覆盖课程学习、作业考试、教学讨论和智能助学等日常教学场景。
           </p>
         </div>
 
@@ -353,23 +277,13 @@ watch(loginDay, value => {
             class="feature-card"
             :style="{ animationDelay: `${index * 0.1}s` }"
           >
-            <div class="feature-icon">{{ feature.icon }}</div>
+            <div class="feature-icon">
+              <IconifyIconOnline :icon="`ri:${feature.icon}`" width="28" />
+            </div>
             <div class="feature-content">
               <h3>{{ feature.title }}</h3>
               <p>{{ feature.desc }}</p>
             </div>
-          </div>
-        </div>
-
-        <!-- 统计数据 -->
-        <div class="statistics-bar">
-          <div
-            v-for="(stat, index) in statistics"
-            :key="index"
-            class="stat-item"
-          >
-            <div class="stat-number">{{ stat.number }}</div>
-            <div class="stat-label">{{ stat.label }}</div>
           </div>
         </div>
 
@@ -387,11 +301,21 @@ watch(loginDay, value => {
             <Motion>
               <h2 class="login-title">
                 <TypeIt
-                  :options="{ strings: [title], cursor: false, speed: 100 }"
+                  :options="{
+                    strings: [productTitle],
+                    cursor: false,
+                    speed: 100
+                  }"
                 />
               </h2>
             </Motion>
-            <p class="login-subtitle">欢迎回来，请登录您的账户</p>
+            <p class="login-subtitle">
+              {{
+                currentPage === 3
+                  ? "使用手机号创建账号"
+                  : "请使用手机号和密码登录"
+              }}
+            </p>
           </div>
 
           <el-form
@@ -402,45 +326,8 @@ watch(loginDay, value => {
             size="large"
             class="login-form"
           >
-            <Motion v-if="VITE_ENABLE_TENANT === 'true'">
+            <Motion>
               <el-form-item
-                :rules="[
-                  {
-                    required: true,
-                    message: transformI18n($t('login.pureTenantReg')),
-                    trigger: 'blur'
-                  }
-                ]"
-                prop="tenant"
-                class="floating-label-item"
-                :class="{
-                  'has-value': !!ruleForm.tenant,
-                  'is-focused': isTenantFocused
-                }"
-              >
-                <el-input
-                  v-model="ruleForm.tenant"
-                  clearable
-                  placeholder=""
-                  :prefix-icon="useRenderIcon(Tenant)"
-                  @focus="isTenantFocused = true"
-                  @blur="isTenantFocused = false"
-                />
-                <label class="floating-label">{{
-                  t("login.pureTenant")
-                }}</label>
-              </el-form-item>
-            </Motion>
-
-            <Motion :delay="100">
-              <el-form-item
-                :rules="[
-                  {
-                    required: true,
-                    message: transformI18n($t('login.pureUsernameReg')),
-                    trigger: 'blur'
-                  }
-                ]"
                 prop="username"
                 class="floating-label-item"
                 :class="{
@@ -449,16 +336,17 @@ watch(loginDay, value => {
                 }"
               >
                 <el-input
-                  v-model="ruleForm.username"
+                  v-model.trim="ruleForm.username"
                   clearable
+                  inputmode="tel"
+                  autocomplete="username"
+                  maxlength="11"
                   placeholder=""
                   :prefix-icon="useRenderIcon(User)"
                   @focus="isUsernameFocused = true"
                   @blur="isUsernameFocused = false"
                 />
-                <label class="floating-label">{{
-                  t("login.pureUsername")
-                }}</label>
+                <label class="floating-label">手机号</label>
               </el-form-item>
             </Motion>
 
@@ -475,6 +363,7 @@ watch(loginDay, value => {
                   v-model="ruleForm.password"
                   clearable
                   :type="passwordVisible ? 'text' : 'password'"
+                  autocomplete="current-password"
                   placeholder=""
                   :prefix-icon="useRenderIcon(Lock)"
                   @focus="isPasswordFocused = true"
@@ -495,35 +384,8 @@ watch(loginDay, value => {
             </Motion>
 
             <Motion :delay="200">
-              <el-form-item
-                prop="verifyCode"
-                class="floating-label-item"
-                :class="{
-                  'has-value': !!ruleForm.verifyCode,
-                  'is-focused': isVerifyCodeFocused
-                }"
-              >
-                <el-input
-                  v-model="ruleForm.verifyCode"
-                  clearable
-                  placeholder=""
-                  :prefix-icon="useRenderIcon(Keyhole)"
-                  @focus="isVerifyCodeFocused = true"
-                  @blur="isVerifyCodeFocused = false"
-                >
-                  <template v-slot:append>
-                    <ReImageVerify v-model:code="imgCode" />
-                  </template>
-                </el-input>
-                <label class="floating-label">{{
-                  t("login.pureVerifyCode")
-                }}</label>
-              </el-form-item>
-            </Motion>
-
-            <Motion :delay="250">
               <el-form-item>
-                <div class="w-full h-[20px] flex justify-between items-center">
+                <div class="w-full remember-row">
                   <el-checkbox v-model="checked">
                     <span class="flex">
                       <select
@@ -551,13 +413,6 @@ watch(loginDay, value => {
                       />
                     </span>
                   </el-checkbox>
-                  <el-button
-                    link
-                    type="primary"
-                    @click="useUserStoreHook().SET_CURRENTPAGE(4)"
-                  >
-                    {{ t("login.pureForget") }}
-                  </el-button>
                 </div>
                 <el-button
                   class="w-full mt-4 login-btn"
@@ -572,106 +427,42 @@ watch(loginDay, value => {
               </el-form-item>
             </Motion>
 
-            <Motion :delay="300">
+            <Motion :delay="250">
               <el-form-item>
-                <div class="w-full h-[20px] flex justify-between items-center">
-                  <el-button
-                    v-for="(item, index) in operates"
-                    :key="index"
-                    class="w-full mt-4"
-                    size="default"
-                    @click="useUserStoreHook().SET_CURRENTPAGE(index + 1)"
-                  >
-                    {{ t(item.title) }}
-                  </el-button>
-                </div>
+                <el-button
+                  class="w-full"
+                  size="default"
+                  @click="useUserStoreHook().SET_CURRENTPAGE(3)"
+                >
+                  注册账号
+                </el-button>
               </el-form-item>
             </Motion>
           </el-form>
 
-          <Motion v-if="currentPage === 0" :delay="350">
-            <el-form-item>
-              <el-divider>
-                <p class="text-gray-500 text-xs">
-                  {{ t("login.pureThirdLogin") }}
-                </p>
-              </el-divider>
-              <div class="w-full flex justify-evenly third-party-icons">
-                <span
-                  v-for="(item, index) in thirdParty"
-                  :key="index"
-                  :title="t(item.title)"
-                  class="third-party-item"
-                >
-                  <IconifyIconOnline
-                    :icon="`ri:${item.icon}-fill`"
-                    width="24"
-                    class="cursor-pointer"
-                  />
-                </span>
-              </div>
-            </el-form-item>
-          </Motion>
-
-          <!-- 手机号登录 -->
-          <LoginPhone v-if="currentPage === 1" />
-          <!-- 二维码登录 -->
-          <LoginQrCode v-if="currentPage === 2" />
-          <!-- 注册 -->
           <LoginRegist v-if="currentPage === 3" />
-          <!-- 忘记密码 -->
-          <LoginUpdate v-if="currentPage === 4" />
         </div>
       </div>
     </div>
 
     <!-- 底部信息 -->
     <div class="footer-info">
-      <div class="footer-links">
-        <a href="https://pure-admin.cn" target="_blank">官方文档</a>
-        <span class="divider">|</span>
-        <a href="https://github.com/pure-admin" target="_blank">GitHub</a>
-        <span class="divider">|</span>
-        <a href="#">技术支持</a>
-        <span class="divider">|</span>
-        <a href="#">隐私政策</a>
-      </div>
       <p class="copyright">
         © {{ new Date().getFullYear() }} 吉林省云创迅捷软件开发有限公司
         版权所有
       </p>
-      <p
-        class="beian"
-        style="
-          display: flex;
-          gap: 15px;
-          align-items: center;
-          justify-content: center;
-          margin-top: 5px;
-          font-size: 12px;
-          color: #888;
-        "
-      >
-        <a
-          href="https://beian.miit.gov.cn/"
-          target="_blank"
-          style="color: inherit; text-decoration: none"
+      <p class="beian">
+        <a href="https://beian.miit.gov.cn/" target="_blank"
           >吉ICP备2025035820号-2X</a
         >
         <a
           href="https://beian.mps.gov.cn/#/query/webSearch?code=22017302000511"
           rel="noreferrer"
           target="_blank"
-          style="
-            display: inline-flex;
-            align-items: center;
-            color: inherit;
-            text-decoration: none;
-          "
         >
           <img
             src="https://jsd.kai233.top/web/img/batb.png"
-            style="width: 16px; margin-right: 3px"
+            class="beian-icon"
             alt="备案图标"
           />吉公网安备22017302000511号
         </a>
@@ -708,90 +499,11 @@ watch(loginDay, value => {
   }
 }
 
-// 响应式设计
-@media screen and (width <= 1200px) {
-  .main-content {
-    grid-template-columns: 1fr;
-    gap: 40px;
-    padding: 100px 40px;
-  }
-
-  .showcase-section {
-    order: 2;
-  }
-
-  .login-section {
-    order: 1;
-  }
-
-  .hero-title {
-    font-size: 40px;
-  }
-
-  .sub-title {
-    font-size: 24px;
-  }
-
-  .features-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .statistics-bar {
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-
-  .illustration-wrapper {
-    display: none;
-  }
-}
-
-@media screen and (width <= 768px) {
-  .top-toolbar {
-    padding: 16px 20px;
-  }
-
-  .brand-name {
-    display: none;
-  }
-
-  .main-content {
-    padding: 80px 20px 100px;
-  }
-
-  .hero-title {
-    font-size: 32px;
-  }
-
-  .sub-title {
-    font-size: 20px;
-  }
-
-  .hero-desc {
-    font-size: 14px;
-  }
-
-  .login-card {
-    padding: 24px;
-    border-radius: 16px;
-  }
-
-  .feature-card {
-    padding: 16px;
-  }
-
-  .statistics-bar {
-    gap: 24px;
-  }
-
-  .stat-number {
-    font-size: 28px;
-  }
-}
-
 .login-page {
   position: relative;
+  width: 100%;
   min-height: 100vh;
+  min-height: 100dvh;
   overflow: hidden;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
 }
@@ -860,11 +572,15 @@ watch(loginDay, value => {
 .main-content {
   position: relative;
   z-index: 1;
+  box-sizing: border-box;
   display: grid;
   grid-template-columns: 1fr 480px;
   gap: 60px;
+  width: 100%;
+  min-width: 0;
   min-height: 100vh;
   padding: 100px 60px 80px;
+  margin: 0;
 }
 
 .showcase-section {
@@ -965,32 +681,6 @@ watch(loginDay, value => {
   }
 }
 
-.statistics-bar {
-  display: flex;
-  gap: 40px;
-  padding: 30px 0;
-  margin-bottom: 40px;
-  border-top: 1px solid rgb(255 255 255 / 20%);
-  border-bottom: 1px solid rgb(255 255 255 / 20%);
-}
-
-.stat-item {
-  text-align: center;
-}
-
-.stat-number {
-  margin-bottom: 8px;
-  font-size: 36px;
-  font-weight: 800;
-  line-height: 1;
-  color: #fff;
-}
-
-.stat-label {
-  font-size: 14px;
-  color: rgb(255 255 255 / 70%);
-}
-
 .illustration-wrapper {
   display: flex;
   justify-content: center;
@@ -1006,6 +696,8 @@ watch(loginDay, value => {
 
 .login-section {
   display: flex;
+  width: 100%;
+  min-width: 0;
   align-items: center;
   justify-content: center;
   opacity: 0;
@@ -1020,7 +712,9 @@ watch(loginDay, value => {
 }
 
 .login-card {
+  box-sizing: border-box;
   width: 100%;
+  min-width: 0;
   max-width: 420px;
   padding: 40px;
   background: rgb(255 255 255 / 95%);
@@ -1055,6 +749,9 @@ watch(loginDay, value => {
 }
 
 .login-form {
+  width: 100%;
+  min-width: 0;
+
   .floating-label-item {
     position: relative;
 
@@ -1104,29 +801,6 @@ watch(loginDay, value => {
   }
 }
 
-.third-party-icons {
-  margin-top: 16px;
-}
-
-.third-party-item {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 48px;
-  height: 48px;
-  color: #6b7280;
-  background: #f3f4f6;
-  border-radius: 12px;
-  transition: all 0.3s ease;
-
-  &:hover {
-    color: #fff;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    box-shadow: 0 10px 20px rgb(102 126 234 / 30%);
-    transform: translateY(-4px);
-  }
-}
-
 .footer-info {
   position: fixed;
   right: 0;
@@ -1139,26 +813,27 @@ watch(loginDay, value => {
   backdrop-filter: blur(10px);
 }
 
-.footer-links {
+.beian {
   display: flex;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 5px 15px;
+  align-items: center;
   justify-content: center;
-  margin-bottom: 8px;
+  margin: 5px 0 0;
+  font-size: 12px;
+  color: #b8b8b8;
 
   a {
-    font-size: 14px;
-    color: rgb(255 255 255 / 80%);
+    display: inline-flex;
+    align-items: center;
+    color: inherit;
     text-decoration: none;
-    transition: color 0.3s;
-
-    &:hover {
-      color: #fff;
-    }
   }
+}
 
-  .divider {
-    color: rgb(255 255 255 / 40%);
-  }
+.beian-icon {
+  width: 16px;
+  margin-right: 3px;
 }
 
 .copyright {
@@ -1179,6 +854,118 @@ watch(loginDay, value => {
   .check-btn {
     position: absolute;
     left: 20px;
+  }
+}
+
+@media screen and (width <= 1200px) {
+  .login-page {
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .main-content {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 40px;
+    padding: 100px 40px 120px;
+  }
+
+  .showcase-section {
+    order: 2;
+  }
+
+  .login-section {
+    order: 1;
+  }
+
+  .hero-title {
+    font-size: 40px;
+  }
+
+  .sub-title {
+    font-size: 24px;
+  }
+
+  .features-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .illustration-wrapper {
+    display: none;
+  }
+}
+
+@media screen and (width <= 768px) {
+  .top-toolbar {
+    padding: 14px 16px;
+  }
+
+  .brand {
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .brand-logo {
+    width: 34px;
+    height: 34px;
+  }
+
+  .brand-name {
+    overflow: hidden;
+    font-size: 18px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .toolbar-actions {
+    flex: 0 0 auto;
+    gap: 8px;
+  }
+
+  .main-content {
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding: 84px 16px 132px;
+  }
+
+  .showcase-section {
+    display: none;
+  }
+
+  .login-card {
+    max-width: 420px;
+    padding: 24px;
+    border-radius: 16px;
+  }
+
+  .footer-info {
+    position: absolute;
+    padding: 12px 8px;
+  }
+}
+
+@media screen and (width <= 390px) {
+  .main-content {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .login-card {
+    max-width: 100%;
+    padding: 22px 16px;
+  }
+
+  .login-header {
+    margin-bottom: 24px;
+  }
+
+  .login-avatar {
+    width: 64px;
+    height: 64px;
+  }
+
+  .beian {
+    flex-direction: column;
+    gap: 3px;
   }
 }
 </style>

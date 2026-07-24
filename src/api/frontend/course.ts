@@ -177,7 +177,7 @@ export const getFrontendCourseList = (
   params: {
     pageNum: number;
     pageSize?: number;
-    status?: string;
+    queryType?: number;
   },
   options: { timeout?: number } = {}
 ) => {

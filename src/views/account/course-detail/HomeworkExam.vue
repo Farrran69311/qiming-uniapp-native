@@ -22,15 +22,33 @@
     <div class="homework-container" :class="currentTheme">
       <el-tabs v-model="homeworkExamTab" class="homework-tabs">
         <el-tab-pane label="作业" name="homework">
+          <div v-if="loading" class="homework-data-state">
+            <el-skeleton :rows="4" animated />
+          </div>
+          <el-result
+            v-else-if="loadError"
+            icon="warning"
+            title="作业数据加载失败"
+            :sub-title="loadError"
+          >
+            <template #extra>
+              <el-button type="primary" @click="$emit('retry')">
+                重新加载
+              </el-button>
+            </template>
+          </el-result>
           <div
-            v-if="homeworkList && homeworkList.length > 0"
+            v-else-if="homeworkList && homeworkList.length > 0"
             class="homework-list"
           >
             <div
               v-for="(item, index) in homeworkList"
               :key="index"
               class="homework-item"
-              :class="{ dark: currentTheme === 'dark' }"
+              :class="{
+                dark: currentTheme === 'dark',
+                'is-unavailable': !canViewHomework(item)
+              }"
               @click="viewHomework(item)"
             >
               <div class="homework-header">
@@ -56,7 +74,14 @@
                   </el-tag>
                 </div>
                 <div class="homework-action">
-                  <el-button size="small" type="primary">查看</el-button>
+                  <el-button
+                    size="small"
+                    type="primary"
+                    :disabled="!canViewHomework(item)"
+                    @click.stop="viewHomework(item)"
+                  >
+                    {{ canViewHomework(item) ? "查看" : "暂不可用" }}
+                  </el-button>
                 </div>
               </div>
             </div>
@@ -72,12 +97,30 @@
           </el-empty>
         </el-tab-pane>
         <el-tab-pane label="考试" name="exam">
-          <div v-if="examList && examList.length > 0" class="exam-list">
+          <div v-if="loading" class="homework-data-state">
+            <el-skeleton :rows="4" animated />
+          </div>
+          <el-result
+            v-else-if="loadError"
+            icon="warning"
+            title="考试数据加载失败"
+            :sub-title="loadError"
+          >
+            <template #extra>
+              <el-button type="primary" @click="$emit('retry')">
+                重新加载
+              </el-button>
+            </template>
+          </el-result>
+          <div v-else-if="examList && examList.length > 0" class="exam-list">
             <div
               v-for="(item, index) in examList"
               :key="index"
               class="exam-item"
-              :class="{ dark: currentTheme === 'dark' }"
+              :class="{
+                dark: currentTheme === 'dark',
+                'is-unavailable': !canViewExam(item)
+              }"
               @click="viewExam(item)"
             >
               <div class="exam-header">
@@ -102,7 +145,14 @@
                   </el-tag>
                 </div>
                 <div class="exam-action">
-                  <el-button size="small" type="primary">查看</el-button>
+                  <el-button
+                    size="small"
+                    type="primary"
+                    :disabled="!canViewExam(item)"
+                    @click.stop="viewExam(item)"
+                  >
+                    {{ canViewExam(item) ? "查看" : "暂不可用" }}
+                  </el-button>
                 </div>
               </div>
             </div>
@@ -133,15 +183,23 @@ import logo from "@/assets/iconss/exam-test-checklist-online-learning-education-
 import homeworkEmptyImg from "@/assets/new-release/homework-svgrepo-com.svg?url";
 
 // Props
-const props = defineProps<{
-  visible: boolean;
-  currentTheme: string;
-  courseId: number;
-  homeworkList: any[];
-  examList: any[];
-  userAvatar: string;
-  userNickname: string;
-}>();
+const props = withDefaults(
+  defineProps<{
+    visible: boolean;
+    currentTheme: string;
+    courseId: number;
+    homeworkList: any[];
+    examList: any[];
+    loading?: boolean;
+    loadError?: string;
+    userAvatar: string;
+    userNickname: string;
+  }>(),
+  {
+    loading: false,
+    loadError: ""
+  }
+);
 
 // Emits
 defineEmits<{
@@ -149,6 +207,7 @@ defineEmits<{
   (e: "toggle-theme", event: MouseEvent): void;
   (e: "go-to-account"): void;
   (e: "logout"): void;
+  (e: "retry"): void;
 }>();
 
 const router = useRouter();
@@ -211,42 +270,53 @@ const getExamStatusText = (status: number) => {
   return textMap[status] || "未知状态";
 };
 
+const canViewHomework = (homework: any) =>
+  Boolean(homework?.homeworkId) && homework.status === 2;
+
+const canViewExam = (exam: any) => Boolean(exam?.examId) && exam.status === 2;
+
 // 查看作业
 const viewHomework = (homework: any) => {
-  if (homework && homework.homeworkId) {
-    if (homework.status === 2) {
-      router.push({
-        path: `/account/homework-detail`,
-        query: {
-          homeworkId: homework.homeworkId,
-          courseId: props.courseId.toString(),
-          theme: props.currentTheme
-        }
-      });
-    } else {
-      ElMessage.warning(
-        `${getHomeworkStatusText(homework.status)}状态的作业不可查看`
-      );
-    }
+  if (!homework?.homeworkId) {
+    ElMessage.warning("作业信息不完整，暂时无法查看");
+    return;
   }
+  if (homework.status !== 2) {
+    ElMessage.warning(
+      `${getHomeworkStatusText(homework.status)}状态的作业不可查看`
+    );
+    return;
+  }
+
+  router.push({
+    path: `/account/homework-detail`,
+    query: {
+      homeworkId: homework.homeworkId,
+      courseId: props.courseId.toString(),
+      theme: props.currentTheme
+    }
+  });
 };
 
 // 查看考试
 const viewExam = (exam: any) => {
-  if (exam && exam.examId) {
-    if (exam.status === 2) {
-      router.push({
-        path: `/account/exam-detail`,
-        query: {
-          examId: exam.examId,
-          courseId: props.courseId.toString(),
-          theme: props.currentTheme
-        }
-      });
-    } else {
-      ElMessage.warning(`${getExamStatusText(exam.status)}状态的考试不可查看`);
-    }
+  if (!exam?.examId) {
+    ElMessage.warning("考试信息不完整，暂时无法查看");
+    return;
   }
+  if (exam.status !== 2) {
+    ElMessage.warning(`${getExamStatusText(exam.status)}状态的考试不可查看`);
+    return;
+  }
+
+  router.push({
+    path: `/account/exam-detail`,
+    query: {
+      examId: exam.examId,
+      courseId: props.courseId.toString(),
+      theme: props.currentTheme
+    }
+  });
 };
 </script>
 
@@ -287,6 +357,15 @@ const viewExam = (exam: any) => {
 
 .homework-tabs {
   width: 100%;
+}
+
+.homework-data-state {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 24px;
+  background: var(--el-bg-color, #fff);
+  border: 1px solid var(--el-border-color-lighter, #ebeef5);
+  border-radius: 8px;
 }
 
 /* 标签页样式优化 */
@@ -404,6 +483,11 @@ const viewExam = (exam: any) => {
 .exam-item.dark {
   background: linear-gradient(145deg, #111b2d, #0f172a);
   border-color: #1e293b;
+}
+
+.homework-item.is-unavailable,
+.exam-item.is-unavailable {
+  cursor: default;
 }
 
 .homework-item:hover,
@@ -622,6 +706,51 @@ const viewExam = (exam: any) => {
   .homework-container {
     padding: var(--course-mobile-top-offset, 156px) 10px
       calc(20px + env(safe-area-inset-bottom));
+  }
+
+  :deep(.homework-tabs .el-tabs__nav) {
+    display: flex;
+    width: 100%;
+  }
+
+  :deep(.homework-tabs .el-tabs__item) {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+    margin-right: 4px;
+    font-size: 14px;
+  }
+
+  .homework-header,
+  .exam-header {
+    align-items: flex-start;
+    padding: 14px;
+  }
+
+  .homework-icon,
+  .exam-icon {
+    width: 48px;
+    height: 48px;
+    margin-right: 12px;
+    border-radius: 12px;
+  }
+
+  .homework-icon img,
+  .exam-icon img {
+    width: 28px;
+    height: 28px;
+  }
+
+  .homework-title,
+  .exam-title {
+    margin-bottom: 8px;
+    font-size: 16px;
+    white-space: normal;
+  }
+
+  .homework-footer,
+  .exam-footer {
+    padding: 12px 14px;
   }
 }
 </style>

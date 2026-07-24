@@ -4,6 +4,18 @@
  */
 
 import { http } from "@/utils/http";
+import {
+  type DiscussionListPayload,
+  type DiscussionMutationPayload,
+  DiscussionResponseError,
+  isDiscussionPostListItemPayload,
+  isDiscussionReplyListItemPayload,
+  normalizeOptionalDiscussionId,
+  toBackendDiscussionId,
+  unwrapDiscussionListResponse,
+  unwrapDiscussionMutationResponse,
+  unwrapDiscussionResponseData
+} from "./discussionResponse";
 
 //==================== 类型定义 ====================
 
@@ -62,42 +74,51 @@ export interface Pagination {
   totalPages: number;
 }
 
-/** 统计数据 */
-export interface DiscussionStats {
-  totalPosts: number;
-  totalReplies: number;
-  activeUsers: number;
-  resolvedRate: string;
-  pendingReviewCount?: number;
-  hotTags: Array<{ name: string; count: number }>;
-}
-
 /** 获取讨论列表参数（前端使用） */
 export interface GetDiscussionsParams {
   page?: number;
   pageSize?: number;
-  sort?: "latest" | "hot" | "unanswered" | "most_replies";
-  keyword?: string;
+  sort?: "latest" | "hot" | "most_replies";
   tag?: string;
-  status?: PostStatus;
-  authorId?: string;
 }
 
 /** 后端返回的帖子列表项 */
 interface BackendPostListItem {
   postId: number;
-  title: string;
+  title?: string | null;
   content: string;
   authorId: number;
   authorName: string;
-  authorAvatar: string;
+  authorAvatar?: string | null;
+  tags?: string[] | null;
+  likeCount: number;
+  replyCount: number;
+  viewCount: number;
+  isPinned?: boolean | number | string | null;
+  isLiked?: boolean | number | string | null;
+  createTime: string;
+}
+
+/** 后端返回的帖子详情 */
+interface BackendPostDetail {
+  postId: number;
+  courseId: string;
+  courseName: string;
+  title: string;
+  content: string;
+  contentHtml: string;
+  authorId: number;
+  authorName: string;
+  authorAvatar?: string | null;
   tags: string[];
   likeCount: number;
   replyCount: number;
   viewCount: number;
   isPinned: boolean;
   isLiked: boolean;
+  isOwner: boolean;
   createTime: string;
+  editedAt?: string;
 }
 
 /** 后端返回的回复列表项 */
@@ -108,26 +129,20 @@ interface BackendReplyListItem {
   authorId: number;
   authorName: string;
   authorAvatar: string;
-  parentReplyId: number;
-  replyToUserId: number;
-  replyToUserName: string;
+  parentReplyId?: number | string | null;
+  replyToUserId?: number | string | null;
+  replyToUserName?: string | null;
   likeCount: number;
-  isLiked: boolean;
-  isOwner: boolean;
+  isLiked?: boolean | number | string | null;
+  isOwner?: boolean | number | string | null;
   createTime: string;
 }
 
 /** 后端返回的列表响应 */
-interface BackendListResponse {
-  total: number;
-  list: BackendPostListItem[];
-}
+type BackendListResponse = DiscussionListPayload<BackendPostListItem>;
 
 /** 后端回复列表响应 */
-interface BackendReplyListResponse {
-  total: number;
-  list: BackendReplyListItem[];
-}
+type BackendReplyListResponse = DiscussionListPayload<BackendReplyListItem>;
 
 /** 发布讨论参数 */
 export interface CreateDiscussionParams {
@@ -136,11 +151,21 @@ export interface CreateDiscussionParams {
   tags?: string[];
 }
 
+export interface CreateDiscussionResult {
+  postId: number;
+  status: "pending" | "auto_approved";
+}
+
 /** 发布回复参数 */
 export interface CreateReplyParams {
   content: string;
-  parentReplyId?: string;
-  replyToUserId?: string;
+  parentReplyId?: string | number;
+  replyToUserId?: string | number;
+}
+
+export interface CreateReplyResult {
+  replyId: number;
+  status: "pending" | "auto_approved";
 }
 
 /** 举报原因 */
@@ -155,7 +180,35 @@ export interface ReportParams {
 /** 审核参数 */
 export interface ReviewParams {
   action: "approve" | "reject";
+  reason?: string;
+  /** @deprecated Use `reason`; retained for existing callers. */
   note?: string;
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object";
+
+const isFiniteNumber = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value);
+
+const normalizeBackendBoolean = (value: unknown) =>
+  value === true || value === 1 || value === "true" || value === "1";
+
+function assertCreationResult<T extends "postId" | "replyId">(
+  payload: unknown,
+  idKey: T,
+  operationName: string
+): asserts payload is Record<T, number> & {
+  status: "pending" | "auto_approved";
+} {
+  if (
+    !isRecord(payload) ||
+    !Number.isSafeInteger(payload[idKey]) ||
+    (payload[idKey] as number) <= 0 ||
+    (payload.status !== "pending" && payload.status !== "auto_approved")
+  ) {
+    throw new DiscussionResponseError(`${operationName}返回格式异常`);
+  }
 }
 
 // ==================== API 接口 ====================
@@ -177,108 +230,140 @@ export async function getDiscussions(
   };
 
   // 转换排序参数
-  if (params?.sort && params.sort !== "unanswered") {
-    backendParams.sortBy = params.sort as "latest" | "hot" | "most_replies";
+  if (params?.sort) {
+    backendParams.sortBy = params.sort;
   }
 
   if (params?.tag) {
     backendParams.tag = params.tag;
   }
 
-  console.log(
-    "[API] getDiscussions - courseId:",
-    courseId,
-    "params:",
-    backendParams
+  const response = await http.request<
+    | {
+        code: number;
+        msg: string;
+        data: BackendListResponse;
+      }
+    | BackendListResponse
+  >("get", `/edu/frontend/v1/courses/${courseId}/discussions`, {
+    params: backendParams
+  });
+
+  const backendData = unwrapDiscussionListResponse<BackendPostListItem>(
+    response,
+    "讨论列表",
+    isDiscussionPostListItemPayload
   );
+  const total = backendData.total;
+  const pageSize = backendParams.pageSize;
+  const currentPage = backendParams.pageNum;
+  const totalPages = Math.ceil(total / pageSize);
 
-  try {
-    const response = await http.request<
-      | {
-          code: number;
-          msg: string;
-          data: BackendListResponse;
-        }
-      | BackendListResponse
-    >("get", `/edu/frontend/v1/courses/${courseId}/discussions`, {
-      params: backendParams
-    });
+  const list: DiscussionPost[] = backendData.list.map(item => ({
+    id: String(item.postId),
+    title: typeof item.title === "string" ? item.title : "",
+    content: item.content,
+    contentHtml: "",
+    author: {
+      id: String(item.authorId),
+      name: item.authorName,
+      avatar: typeof item.authorAvatar === "string" ? item.authorAvatar : "",
+      isTeacher: false,
+      isAdmin: false
+    },
+    tags: Array.isArray(item.tags) ? item.tags : [],
+    status: "approved" as PostStatus,
+    isPinned: normalizeBackendBoolean(item.isPinned),
+    likeCount: item.likeCount,
+    replyCount: item.replyCount,
+    viewCount: item.viewCount,
+    isLiked: normalizeBackendBoolean(item.isLiked),
+    createdAt: item.createTime
+  }));
 
-    console.log("[API] getDiscussions success:", response);
-
-    // 兼容后端是否包裹 data 字段
-    const backendData = (response as { data?: BackendListResponse }).data
-      ? (response as { data: BackendListResponse }).data
-      : (response as BackendListResponse);
-    const total = backendData?.total || 0;
-    const pageSize = backendParams.pageSize || 20;
-    const currentPage = backendParams.pageNum;
-    const totalPages = Math.ceil(total / pageSize);
-
-    // 转换列表项格式
-    const list: DiscussionPost[] = (backendData?.list || []).map(item => ({
-      id: String(item.postId),
-      title: item.title,
-      content: item.content,
-      contentHtml: item.content, // 后端可能未返回HTML格式，使用原始内容
-      author: {
-        id: String(item.authorId),
-        name: item.authorName,
-        avatar: item.authorAvatar,
-        isTeacher: false,
-        isAdmin: false
-      },
-      tags: item.tags || [],
-      status: "approved" as PostStatus,
-      isPinned:
-        (item as any).isPinned === true ||
-        (item as any).isPinned === 1 ||
-        String((item as any).isPinned) === "true" ||
-        String((item as any).isPinned) === "1",
-      likeCount: item.likeCount,
-      replyCount: item.replyCount,
-      viewCount: item.viewCount,
-      isLiked: item.isLiked,
-      createdAt: item.createTime
-    }));
-
-    return {
-      data: {
-        list,
-        pagination: {
-          page: currentPage,
-          pageSize,
-          total,
-          totalPages
-        }
+  return {
+    data: {
+      list,
+      pagination: {
+        page: currentPage,
+        pageSize,
+        total,
+        totalPages
       }
-    };
-  } catch (error) {
-    console.error("获取讨论列表失败:", error);
-    // 返回空数据，避免页面崩溃
-    return {
-      data: {
-        list: [],
-        pagination: {
-          page: 1,
-          pageSize: 20,
-          total: 0,
-          totalPages: 0
-        }
-      }
-    };
-  }
+    }
+  };
 }
 
 /**
  * 获取讨论详情
  * @param postId 帖子ID
  */
-export function getDiscussionDetail(postId: string) {
-  return http.request<DiscussionPost>(
+export async function getDiscussionDetail(postId: string): Promise<
+  DiscussionPost & {
+    courseId: string;
+    courseName: string;
+    isOwner: boolean;
+  }
+> {
+  const response = await http.request<unknown>(
     "get",
     `/edu/frontend/v1/discussions/${postId}`
   );
+  const backendData = unwrapDiscussionResponseData<BackendPostDetail>(
+    response,
+    "讨论详情"
+  );
+  if (
+    !isRecord(backendData) ||
+    !isFiniteNumber(backendData.postId) ||
+    String(backendData.postId) !== String(postId) ||
+    !isFiniteNumber(backendData.authorId) ||
+    !isFiniteNumber(backendData.likeCount) ||
+    !isFiniteNumber(backendData.replyCount) ||
+    !isFiniteNumber(backendData.viewCount) ||
+    typeof backendData.content !== "string" ||
+    typeof backendData.createTime !== "string"
+  ) {
+    throw new DiscussionResponseError("讨论详情返回格式异常");
+  }
+
+  return {
+    id: String(backendData.postId),
+    title: typeof backendData.title === "string" ? backendData.title : "",
+    content: backendData.content,
+    contentHtml: "",
+    author: {
+      id: String(backendData.authorId),
+      name:
+        typeof backendData.authorName === "string"
+          ? backendData.authorName
+          : "",
+      avatar:
+        typeof backendData.authorAvatar === "string"
+          ? backendData.authorAvatar
+          : "",
+      isTeacher: false,
+      isAdmin: false
+    },
+    tags: Array.isArray(backendData.tags)
+      ? backendData.tags.filter(tag => typeof tag === "string")
+      : [],
+    status: "approved",
+    isPinned: normalizeBackendBoolean(backendData.isPinned),
+    likeCount: backendData.likeCount,
+    replyCount: backendData.replyCount,
+    viewCount: backendData.viewCount,
+    isLiked: normalizeBackendBoolean(backendData.isLiked),
+    createdAt: backendData.createTime,
+    editedAt:
+      typeof backendData.editedAt === "string"
+        ? backendData.editedAt
+        : undefined,
+    courseId: String(backendData.courseId ?? ""),
+    courseName:
+      typeof backendData.courseName === "string" ? backendData.courseName : "",
+    isOwner: normalizeBackendBoolean(backendData.isOwner)
+  };
 }
 
 /**
@@ -286,15 +371,18 @@ export function getDiscussionDetail(postId: string) {
  * @param courseId 课程ID
  * @param data 帖子数据
  */
-export function createDiscussion(
+export async function createDiscussion(
   courseId: string,
   data: CreateDiscussionParams
-) {
-  return http.request<{
-    id: string;
-    status: PostStatus;
-    estimatedReviewTime: string;
-  }>("post", `/edu/frontend/v1/courses/${courseId}/discussions`, { data });
+): Promise<CreateDiscussionResult> {
+  const response = await http.request<unknown>(
+    "post",
+    `/edu/frontend/v1/courses/${courseId}/discussions`,
+    { data }
+  );
+  const payload = unwrapDiscussionResponseData<unknown>(response, "发布讨论");
+  assertCreationResult(payload, "postId", "发布讨论");
+  return payload;
 }
 
 /**
@@ -302,23 +390,30 @@ export function createDiscussion(
  * @param postId 帖子ID
  * @param data 更新数据
  */
-export function updateDiscussion(postId: string, data: CreateDiscussionParams) {
-  return http.request<{ success: boolean }>(
+export async function updateDiscussion(
+  postId: string,
+  data: CreateDiscussionParams
+): Promise<DiscussionMutationPayload> {
+  const response = await http.request<unknown>(
     "put",
     `/edu/frontend/v1/discussions/${postId}`,
     { data }
   );
+  return unwrapDiscussionMutationResponse(response, "编辑讨论");
 }
 
 /**
  * 删除讨论
  * @param postId 帖子ID
  */
-export function deleteDiscussion(postId: string) {
-  return http.request<{ success: boolean }>(
+export async function deleteDiscussion(
+  postId: string
+): Promise<DiscussionMutationPayload> {
+  const response = await http.request<unknown>(
     "delete",
     `/edu/frontend/v1/discussions/${postId}`
   );
+  return unwrapDiscussionMutationResponse(response, "删除讨论");
 }
 
 /**
@@ -330,64 +425,57 @@ export async function getReplies(
   postId: string,
   params?: { page?: number; pageSize?: number }
 ): Promise<{ data: { list: Reply[]; total: number } }> {
-  try {
-    const backendParams: any = {
-      pageNum: params?.page || 1,
-      pageSize: params?.pageSize || 20,
-      _t: Date.now() // 添加时间戳防止缓存
-    };
+  const backendParams: any = {
+    pageNum: params?.page || 1,
+    pageSize: params?.pageSize || 20,
+    _t: Date.now() // 添加时间戳防止缓存
+  };
 
-    const response = await http.request<
-      | {
-          code: number;
-          msg: string;
-          data: BackendReplyListResponse;
-        }
-      | BackendReplyListResponse
-    >("get", `/edu/frontend/v1/discussions/${postId}/replies`, {
-      params: backendParams
-    });
-
-    // 兼容后端是否包裹 data 字段
-    const backendData = (response as { data?: BackendReplyListResponse }).data
-      ? (response as { data: BackendReplyListResponse }).data
-      : (response as BackendReplyListResponse);
-
-    const list: Reply[] = (backendData?.list || []).map(item => ({
-      id: String(item.replyId),
-      author: {
-        id: String(item.authorId),
-        name: item.authorName,
-        avatar: item.authorAvatar,
-        isTeacher: false, // 后端若有此字段可对应映射
-        isAdmin: false
-      },
-      content: item.content,
-      contentHtml: item.contentHtml || item.content,
-      likeCount: item.likeCount,
-      isLiked: item.isLiked,
-      isOwner: item.isOwner,
-      replyTo: item.replyToUserName,
-      replyToId: String(item.replyToUserId),
-      parentReplyId: String(item.parentReplyId),
-      createdAt: item.createTime
-    }));
-
-    return {
-      data: {
-        list,
-        total: backendData?.total || 0
+  const response = await http.request<
+    | {
+        code: number;
+        msg: string;
+        data: BackendReplyListResponse;
       }
-    };
-  } catch (error) {
-    console.error("获取回复列表失败:", error);
-    return {
-      data: {
-        list: [],
-        total: 0
-      }
-    };
-  }
+    | BackendReplyListResponse
+  >("get", `/edu/frontend/v1/discussions/${postId}/replies`, {
+    params: backendParams
+  });
+
+  const backendData = unwrapDiscussionListResponse<BackendReplyListItem>(
+    response,
+    "回复列表",
+    isDiscussionReplyListItemPayload
+  );
+  const list: Reply[] = backendData.list.map(item => ({
+    id: String(item.replyId),
+    author: {
+      id: String(item.authorId),
+      name: item.authorName,
+      avatar: typeof item.authorAvatar === "string" ? item.authorAvatar : "",
+      isTeacher: false,
+      isAdmin: false
+    },
+    content: item.content,
+    contentHtml: "",
+    likeCount: item.likeCount,
+    isLiked: normalizeBackendBoolean(item.isLiked),
+    isOwner: normalizeBackendBoolean(item.isOwner),
+    replyTo:
+      typeof item.replyToUserName === "string"
+        ? item.replyToUserName
+        : undefined,
+    replyToId: normalizeOptionalDiscussionId(item.replyToUserId),
+    parentReplyId: normalizeOptionalDiscussionId(item.parentReplyId),
+    createdAt: item.createTime
+  }));
+
+  return {
+    data: {
+      list,
+      total: backendData.total
+    }
+  };
 }
 
 /**
@@ -395,11 +483,36 @@ export async function getReplies(
  * @param postId 帖子ID
  * @param data 回复数据
  */
-export function createReply(postId: string, data: CreateReplyParams) {
-  return http.request<{
-    id: string;
-    status: PostStatus;
-  }>("post", `/edu/frontend/v1/discussions/${postId}/replies`, { data });
+export async function createReply(
+  postId: string,
+  data: CreateReplyParams
+): Promise<CreateReplyResult> {
+  const requestData: {
+    content: string;
+    parentReplyId?: number;
+    replyToUserId?: number;
+  } = { content: data.content };
+  if (data.parentReplyId !== undefined) {
+    requestData.parentReplyId = toBackendDiscussionId(
+      data.parentReplyId,
+      "父回复ID"
+    );
+  }
+  if (data.replyToUserId !== undefined) {
+    requestData.replyToUserId = toBackendDiscussionId(
+      data.replyToUserId,
+      "被回复用户ID"
+    );
+  }
+
+  const response = await http.request<unknown>(
+    "post",
+    `/edu/frontend/v1/discussions/${postId}/replies`,
+    { data: requestData }
+  );
+  const payload = unwrapDiscussionResponseData<unknown>(response, "发布回复");
+  assertCreationResult(payload, "replyId", "发布回复");
+  return payload;
 }
 
 /**
@@ -407,67 +520,86 @@ export function createReply(postId: string, data: CreateReplyParams) {
  * @param replyId 回复ID
  * @param data 更新数据
  */
-export function updateReply(replyId: string, data: { content: string }) {
-  return http.request<{ success: boolean }>(
+export async function updateReply(
+  replyId: string,
+  data: { content: string }
+): Promise<DiscussionMutationPayload> {
+  const response = await http.request<unknown>(
     "put",
     `/edu/frontend/v1/discussions/replies/${replyId}`,
     { data }
   );
+  return unwrapDiscussionMutationResponse(response, "编辑回复");
 }
 
 /**
  * 删除回复
  * @param replyId 回复ID
  */
-export function deleteReply(replyId: string) {
-  return http.request<{ success: boolean }>(
+export async function deleteReply(
+  replyId: string
+): Promise<DiscussionMutationPayload> {
+  const response = await http.request<unknown>(
     "delete",
     `/edu/frontend/v1/discussions/replies/${replyId}`
   );
+  return unwrapDiscussionMutationResponse(response, "删除回复");
 }
 
 /**
  * 点赞帖子
  * @param postId 帖子ID
  */
-export function likePost(postId: string) {
-  return http.request<{ success: boolean; likeCount: number }>(
+export async function likePost(
+  postId: string
+): Promise<DiscussionMutationPayload> {
+  const response = await http.request<unknown>(
     "post",
     `/edu/frontend/v1/discussions/${postId}/like`
   );
+  return unwrapDiscussionMutationResponse(response, "点赞讨论");
 }
 
 /**
  * 取消点赞帖子
  * @param postId 帖子ID
  */
-export function unlikePost(postId: string) {
-  return http.request<{ success: boolean; likeCount: number }>(
+export async function unlikePost(
+  postId: string
+): Promise<DiscussionMutationPayload> {
+  const response = await http.request<unknown>(
     "delete",
     `/edu/frontend/v1/discussions/${postId}/like`
   );
+  return unwrapDiscussionMutationResponse(response, "取消讨论点赞");
 }
 
 /**
  * 点赞回复
  * @param replyId 回复ID
  */
-export function likeReply(replyId: string) {
-  return http.request<{ success: boolean; likeCount: number }>(
+export async function likeReply(
+  replyId: string
+): Promise<DiscussionMutationPayload> {
+  const response = await http.request<unknown>(
     "post",
     `/edu/frontend/v1/discussions/replies/${replyId}/like`
   );
+  return unwrapDiscussionMutationResponse(response, "点赞回复");
 }
 
 /**
  * 取消点赞回复
  * @param replyId 回复ID
  */
-export function unlikeReply(replyId: string) {
-  return http.request<{ success: boolean; likeCount: number }>(
+export async function unlikeReply(
+  replyId: string
+): Promise<DiscussionMutationPayload> {
+  const response = await http.request<unknown>(
     "delete",
     `/edu/frontend/v1/discussions/replies/${replyId}/like`
   );
+  return unwrapDiscussionMutationResponse(response, "取消回复点赞");
 }
 
 /**
@@ -475,13 +607,17 @@ export function unlikeReply(replyId: string) {
  * @param postId 帖子ID
  * @param data 举报数据
  */
-export function reportPost(postId: string | number, data: ReportParams) {
+export async function reportPost(
+  postId: string | number,
+  data: ReportParams
+): Promise<DiscussionMutationPayload> {
   const id = typeof postId === "string" ? parseInt(postId, 10) : postId;
-  return http.request<{ success: boolean }>(
+  const response = await http.request<unknown>(
     "post",
     `/edu/frontend/v1/discussions/${id}/report`,
     { data }
   );
+  return unwrapDiscussionMutationResponse(response, "举报讨论");
 }
 
 /**
@@ -489,36 +625,46 @@ export function reportPost(postId: string | number, data: ReportParams) {
  * @param replyId 回复ID
  * @param data 举报数据
  */
-export function reportReply(replyId: string | number, data: ReportParams) {
+export async function reportReply(
+  replyId: string | number,
+  data: ReportParams
+): Promise<DiscussionMutationPayload> {
   const id = typeof replyId === "string" ? parseInt(replyId, 10) : replyId;
-  return http.request<{ success: boolean }>(
+  const response = await http.request<unknown>(
     "post",
     `/edu/frontend/v1/discussions/replies/${id}/report`,
     { data }
   );
+  return unwrapDiscussionMutationResponse(response, "举报回复");
 }
 
 /**
  * 置顶帖子（管理员/教师专用）
  * @param postId 帖子ID
  */
-export function pinPost(postId: string | number) {
-  return http.request<{ code: number; msg: string; data: object }>(
+export async function pinPost(
+  postId: string | number
+): Promise<DiscussionMutationPayload> {
+  const response = await http.request<unknown>(
     "post",
     `/edu/backend/v1/discussions/${postId}/pin`
   );
+  return unwrapDiscussionMutationResponse(response, "置顶讨论");
 }
 
 /**
  * 取消置顶帖子（管理员/教师专用）
  * @param postId 帖子ID
  */
-export function unpinPost(postId: string | number) {
-  return http.request<{ code: number; msg: string; data: object }>(
+export async function unpinPost(
+  postId: string | number
+): Promise<DiscussionMutationPayload> {
+  const response = await http.request<unknown>(
     "delete",
     `/edu/backend/v1/discussions/${postId}/pin`,
     { params: { _t: Date.now() } }
   );
+  return unwrapDiscussionMutationResponse(response, "取消置顶讨论");
 }
 
 /**
@@ -526,77 +672,19 @@ export function unpinPost(postId: string | number) {
  * @param postId 帖子ID
  * @param data 审核数据
  */
-export function reviewPost(postId: string, data: ReviewParams) {
-  return http.request<{ success: boolean }>(
-    "post",
-    `/edu/frontend/v1/discussions/${postId}/review`,
-    { data }
-  );
-}
-
-/**
- * 获取讨论统计数据
- * @param _courseId 课程ID
- * @description 后端暂未提供此接口，使用mock数据
- */
-export function getDiscussionStats(_courseId: string) {
-  // Mock数据 - 后端接口暂未实现
-  const mockStats: DiscussionStats = {
-    totalPosts: 128,
-    totalReplies: 456,
-    activeUsers: 89,
-    resolvedRate: "76%",
-    pendingReviewCount: 5,
-    hotTags: [
-      { name: "作业问题", count: 45 },
-      { name: "课程内容", count: 38 },
-      { name: "考试相关", count: 25 },
-      { name: "学习方法", count: 20 }
-    ]
+export async function reviewPost(
+  postId: string,
+  data: ReviewParams
+): Promise<DiscussionMutationPayload> {
+  const reason = data.reason ?? data.note;
+  const requestData = {
+    action: data.action,
+    ...(reason !== undefined ? { reason } : {})
   };
-  return Promise.resolve({ data: mockStats });
-}
-
-/**
- * 获取审核队列（管理员/教师）
- * @param params 查询参数
- */
-export function getReviewQueue(params?: {
-  priority?: "high" | "medium" | "low";
-  courseId?: string;
-  page?: number;
-  pageSize?: number;
-}) {
-  return http.request<{
-    list: Array<
-      DiscussionPost & {
-        riskLevel: string;
-        matchedWords: string[];
-        priority: string;
-      }
-    >;
-    stats: {
-      pending: number;
-      highPriority: number;
-      avgWaitTime: string;
-    };
-  }>("get", "/api/v1/admin/discussions/review-queue", { params });
-}
-
-/**
- * 获取热门标签
- * @param _courseId 课程ID
- * @description 后端暂未提供此接口，使用mock数据
- */
-export function getHotTags(_courseId: string) {
-  // Mock数据 - 后端接口暂未实现
-  const mockTags: Array<{ name: string; count: number; type?: string }> = [
-    { name: "作业问题", count: 45 },
-    { name: "课程内容", count: 38 },
-    { name: "考试相关", count: 25 },
-    { name: "学习方法", count: 20 },
-    { name: "实验报告", count: 15 },
-    { name: "资料分享", count: 12 }
-  ];
-  return Promise.resolve({ data: mockTags });
+  const response = await http.request<unknown>(
+    "post",
+    `/edu/backend/v1/discussions/${postId}/review`,
+    { data: requestData }
+  );
+  return unwrapDiscussionMutationResponse(response, "审核讨论");
 }

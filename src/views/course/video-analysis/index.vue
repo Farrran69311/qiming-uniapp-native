@@ -27,7 +27,9 @@
         </p>
       </div>
 
-      <div class="p-6 space-y-6 flex-1 overflow-auto custom-scrollbar">
+      <div
+        class="sidebar-form-section p-6 space-y-6 flex-1 overflow-auto custom-scrollbar"
+      >
         <div class="space-y-3">
           <label
             class="text-base font-semibold text-[var(--el-text-color-secondary)] flex items-center"
@@ -195,7 +197,9 @@
         </div>
 
         <!-- 内容体 -->
-        <div class="flex-1 p-6 overflow-hidden flex flex-col">
+        <div
+          class="video-content-body flex-1 p-6 overflow-hidden flex flex-col"
+        >
           <!-- 空状态：未选择课程 -->
           <div
             v-if="!selectedCourseId"
@@ -1181,7 +1185,8 @@ onUnmounted(() => {
 }
 
 .video-analysis-container.is-mobile-layout .sidebar-card {
-  max-height: 48vh;
+  max-height: none;
+  overflow: visible;
 }
 
 .video-analysis-container.is-mobile-layout .sidebar-card .header-section,
@@ -1217,5 +1222,62 @@ onUnmounted(() => {
   min-height: 44px;
   padding-right: 12px;
   padding-left: 12px;
+}
+
+@media (width <= 768px) {
+  .video-analysis-container,
+  .video-analysis-container.is-mobile-layout {
+    height: auto !important;
+    min-height: calc(100vh - 96px);
+    margin: 0;
+    gap: 10px !important;
+    padding: 0 !important;
+    overflow: visible;
+    flex-direction: column;
+  }
+
+  .video-analysis-container .sidebar-card,
+  .video-analysis-container > .flex-1 {
+    width: 100% !important;
+    min-width: 0;
+  }
+
+  .video-analysis-container .sidebar-card,
+  .video-analysis-container.is-mobile-layout .sidebar-card {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .video-analysis-container .header-section,
+  .video-analysis-container .sidebar-form-section,
+  .video-analysis-container .video-content-body {
+    padding: 14px;
+  }
+
+  .video-analysis-container .sidebar-form-section {
+    overflow: visible;
+  }
+
+  .video-analysis-container .header-section h3 {
+    min-width: 0;
+    font-size: 18px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+
+  .video-analysis-container .icon-box {
+    width: 44px;
+    height: 44px;
+    margin-right: 10px;
+    flex: 0 0 auto;
+  }
+
+  .video-analysis-container .header-subtitle {
+    margin-left: 0;
+    font-size: 13px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
 }
 </style>

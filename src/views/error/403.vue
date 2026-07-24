@@ -10,9 +10,9 @@ const router = useRouter();
 </script>
 
 <template>
-  <div class="flex justify-center items-center h-[640px]">
-    <noAccess />
-    <div class="ml-12">
+  <div class="error-page flex justify-center items-center h-[640px]">
+    <noAccess class="error-page__art" />
+    <div class="error-page__copy ml-12">
       <p
         v-motion
         class="font-medium text-4xl mb-4 dark:text-white"
@@ -68,3 +68,26 @@ const router = useRouter();
     </div>
   </div>
 </template>
+
+<style scoped>
+@media (width <= 520px) {
+  .error-page {
+    flex-direction: column;
+    gap: 20px;
+    width: 100%;
+    min-height: calc(100dvh - 96px);
+    height: auto;
+    padding: 16px;
+    text-align: center;
+  }
+
+  .error-page__art {
+    width: min(68vw, 240px);
+    max-height: 42dvh;
+  }
+
+  .error-page__copy {
+    margin-left: 0;
+  }
+}
+</style>

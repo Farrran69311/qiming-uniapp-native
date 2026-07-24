@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { computed, onBeforeUnmount, ref, watchEffect } from "vue";
 import { useRouter } from "vue-router";
 import ReCol from "@/components/ReCol";
 import LottieAnimation from "@/components/LottieAnimation.vue";
@@ -16,8 +16,6 @@ import { useUserStoreHook } from "@/store/modules/user";
 
 // 导入动画
 import EducationAnimation from "@/animation/Education.json";
-import OnlineLearningAnimation from "@/animation/Online Learning Platform.json";
-import AITrainingAnimation from "@/animation/AI training.json";
 
 // 导入图标
 import MarkdownIcon from "@/assets/new-release/markdown-svgrepo-com.svg?component";
@@ -38,12 +36,7 @@ const { isDark } = useDark();
 const userStore = useUserStoreHook();
 const nickname = ref(userStore.nickname || userStore.username);
 
-// 随机选择一个动画
-const selectedAnimation = ref(
-  [EducationAnimation, OnlineLearningAnimation, AITrainingAnimation][
-    Math.floor(Math.random() * 3)
-  ]
-);
+const selectedAnimation = EducationAnimation;
 
 // 获取当前时间段招呼语
 const greeting = computed(() => {
@@ -63,30 +56,36 @@ const isAdminUser = ref(isAdmin());
 // 打字机效果
 const displayedText = ref("");
 const isTyping = ref(true);
+let typewriterTimer: ReturnType<typeof setInterval> | undefined;
 
 const startTypewriter = () => {
+  if (typewriterTimer) clearInterval(typewriterTimer);
   const fullText = `${greeting.value}, ${nickname.value}!`;
   displayedText.value = "";
   isTyping.value = true;
   let i = 0;
 
-  const timer = setInterval(() => {
+  typewriterTimer = setInterval(() => {
     if (i < fullText.length) {
       displayedText.value += fullText.charAt(i);
       i++;
     } else {
-      clearInterval(timer);
+      clearInterval(typewriterTimer);
+      typewriterTimer = undefined;
       isTyping.value = false;
     }
   }, 100);
 };
 
 // 监听问候语变化重新触发打字机
-import { watchEffect } from "vue";
 watchEffect(() => {
   if (greeting.value && nickname.value) {
     startTypewriter();
   }
+});
+
+onBeforeUnmount(() => {
+  if (typewriterTimer) clearInterval(typewriterTimer);
 });
 </script>
 
@@ -109,8 +108,7 @@ watchEffect(() => {
         <p
           class="welcome-description text-lg md:text-2xl font-medium leading-relaxed text-slate-600 dark:text-blue-50 opacity-90 max-w-2xl transition-all duration-300 group-hover:opacity-100 mb-8 mx-auto lg:mx-0"
         >
-          欢迎回到智慧教学平台。您的 AI
-          助手已经为您准备好了今天的课程方案和学生进度报告。
+          欢迎回到智慧教学平台。在这里查看课程、学情与教学分析。
         </p>
         <div
           class="welcome-actions mt-8 flex flex-wrap gap-4 justify-center lg:justify-start items-center"
@@ -202,7 +200,6 @@ watchEffect(() => {
                   <span class="w-1 h-5 bg-blue-500 rounded-full mr-2" />
                   最近7天平台活跃度
                 </span>
-                <el-tag size="small" effect="plain">实时更新</el-tag>
               </div>
             </template>
             <div class="h-[350px]">

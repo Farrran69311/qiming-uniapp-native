@@ -32,6 +32,10 @@ const { isMobile, paginationLayout, getDialogWidth } = usePageResponsive();
 type TagType = "warning" | "success" | "info" | "primary" | "danger";
 
 const loading = ref(false);
+const handling = ref(false);
+const loadError = ref("");
+const statsError = ref("");
+const statsLoaded = ref(false);
 const reports = ref<ReportItem[]>([]);
 const detailDialogVisible = ref(false);
 const handleDialogVisible = ref(false);
@@ -107,6 +111,11 @@ const getContentPreview = (content: string, limit = 92) => {
   return content.length > limit ? `${content.slice(0, limit)}...` : content;
 };
 
+const getErrorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error && error.message ? error.message : fallback;
+
+let latestDataRequest = 0;
+
 const filterBadgeText = computed(() => {
   if (!searchForm.status) {
     return "当前展示全部举报";
@@ -116,6 +125,8 @@ const filterBadgeText = computed(() => {
 });
 
 const listSummaryText = computed(() => {
+  if (loadError.value) return "举报记录加载失败";
+
   if (loading.value && pagination.total === 0) {
     return "正在同步举报记录...";
   }
@@ -132,7 +143,9 @@ const listSummaryText = computed(() => {
 });
 
 const fetchData = async () => {
+  const requestId = ++latestDataRequest;
   loading.value = true;
+  loadError.value = "";
   try {
     const params: {
       pageNum: number;
@@ -146,18 +159,22 @@ const fetchData = async () => {
     if (searchForm.status) params.status = searchForm.status;
 
     const res = await getReportList(params);
-    reports.value = res.list || [];
-    pagination.total = res.total || 0;
+    if (requestId !== latestDataRequest) return;
+    reports.value = res.list;
+    pagination.total = res.total;
   } catch (error) {
+    if (requestId !== latestDataRequest) return;
     console.error("加载举报列表失败", error);
     reports.value = [];
     pagination.total = 0;
+    loadError.value = getErrorMessage(error, "加载举报记录失败，请重试");
   } finally {
-    loading.value = false;
+    if (requestId === latestDataRequest) loading.value = false;
   }
 };
 
 const fetchStats = async () => {
+  statsError.value = "";
   try {
     const data = await getReportStatistics();
     stats.value = {
@@ -165,8 +182,11 @@ const fetchStats = async () => {
       resolvedToday: Number(data.resolvedToday || 0),
       totalReports: Number(data.totalReports || 0)
     };
+    statsLoaded.value = true;
   } catch (error) {
     console.error("加载举报统计失败", error);
+    statsLoaded.value = false;
+    statsError.value = getErrorMessage(error, "加载举报统计失败，请重试");
   }
 };
 
@@ -204,6 +224,8 @@ const openHandleDialog = (row: ReportItem) => {
 };
 
 const quickDismiss = async (row: ReportItem) => {
+  if (handling.value) return false;
+  handling.value = true;
   try {
     await ElMessageBox.confirm("确定要驳回这条举报吗？", "提示", {
       type: "info",
@@ -213,14 +235,20 @@ const quickDismiss = async (row: ReportItem) => {
     await handleReport(row.reportId, { action: "reject", note: "内容无问题" });
     ElMessage.success("已驳回");
     await Promise.all([fetchStats(), fetchData()]);
+    return true;
   } catch (error: any) {
     if (error !== "cancel") {
-      ElMessage.error("操作失败");
+      ElMessage.error(getErrorMessage(error, "操作失败"));
     }
+    return false;
+  } finally {
+    handling.value = false;
   }
 };
 
 const quickDelete = async (row: ReportItem) => {
+  if (handling.value) return false;
+  handling.value = true;
   try {
     await ElMessageBox.confirm("确定要接受这条举报吗？", "警告", {
       type: "warning",
@@ -230,15 +258,30 @@ const quickDelete = async (row: ReportItem) => {
     await handleReport(row.reportId, { action: "accept", note: "内容违规" });
     ElMessage.success("已接受");
     await Promise.all([fetchStats(), fetchData()]);
+    return true;
   } catch (error: any) {
     if (error !== "cancel") {
-      ElMessage.error("操作失败");
+      ElMessage.error(getErrorMessage(error, "操作失败"));
     }
+    return false;
+  } finally {
+    handling.value = false;
   }
+};
+
+const quickHandleFromDetail = async (action: "accept" | "reject") => {
+  if (!currentReport.value) return;
+  const succeeded =
+    action === "accept"
+      ? await quickDelete(currentReport.value)
+      : await quickDismiss(currentReport.value);
+  if (succeeded) detailDialogVisible.value = false;
 };
 
 const submitHandle = async () => {
   if (!currentReport.value) return;
+  if (handling.value) return;
+  handling.value = true;
 
   try {
     await handleReport(currentReport.value.reportId, {
@@ -250,7 +293,9 @@ const submitHandle = async () => {
     handleDialogVisible.value = false;
     await Promise.all([fetchStats(), fetchData()]);
   } catch (error) {
-    ElMessage.error("处理失败");
+    ElMessage.error(getErrorMessage(error, "处理失败"));
+  } finally {
+    handling.value = false;
   }
 };
 
@@ -298,12 +343,17 @@ onActivated(() => {
 </script>
 
 <template>
-  <div class="report-manage p-4" :class="{ 'report-manage--mobile': isMobile }">
+  <div
+    class="report-manage p-4 max-[769px]:p-0"
+    :class="{ 'report-manage--mobile': isMobile }"
+  >
     <div class="report-stats-grid mb-4">
       <div class="report-stats-grid__item">
         <el-card shadow="hover" class="stat-card">
           <div class="stat-content">
-            <div class="stat-number text-warning">{{ stats.pending }}</div>
+            <div class="stat-number text-warning">
+              {{ statsLoaded ? stats.pending : "--" }}
+            </div>
             <div class="stat-label">待处理</div>
           </div>
         </el-card>
@@ -312,7 +362,7 @@ onActivated(() => {
         <el-card shadow="hover" class="stat-card">
           <div class="stat-content">
             <div class="stat-number text-success">
-              {{ stats.resolvedToday }}
+              {{ statsLoaded ? stats.resolvedToday : "--" }}
             </div>
             <div class="stat-label">今日已处理</div>
           </div>
@@ -321,11 +371,24 @@ onActivated(() => {
       <div class="report-stats-grid__item">
         <el-card shadow="hover" class="stat-card">
           <div class="stat-content">
-            <div class="stat-number text-info">{{ stats.totalReports }}</div>
+            <div class="stat-number text-info">
+              {{ statsLoaded ? stats.totalReports : "--" }}
+            </div>
             <div class="stat-label">累计举报</div>
           </div>
         </el-card>
       </div>
+    </div>
+
+    <div v-if="statsError" class="load-error mb-4">
+      <el-alert
+        title="举报统计加载失败"
+        :description="statsError"
+        type="warning"
+        show-icon
+        :closable="false"
+      />
+      <el-button plain :icon="Refresh" @click="fetchStats">重试统计</el-button>
     </div>
 
     <el-card shadow="never" class="mb-4 report-panel">
@@ -371,8 +434,26 @@ onActivated(() => {
         <div class="text-sm text-gray-500">{{ listSummaryText }}</div>
       </div>
       <div class="flex justify-end mb-4">
-        <el-button :icon="Refresh" text @click="refreshData">
+        <el-button
+          :icon="Refresh"
+          text
+          :disabled="loading || handling"
+          @click="refreshData"
+        >
           同步数据
+        </el-button>
+      </div>
+
+      <div v-if="loadError" class="load-error mb-4">
+        <el-alert
+          title="举报记录加载失败"
+          :description="loadError"
+          type="error"
+          show-icon
+          :closable="false"
+        />
+        <el-button type="primary" plain :icon="Refresh" @click="fetchData">
+          重试
         </el-button>
       </div>
 
@@ -424,13 +505,28 @@ onActivated(() => {
           <div class="mobile-report-card__actions">
             <el-button plain @click="viewDetail(row)">查看详情</el-button>
             <template v-if="row.status === 'pending'">
-              <el-button type="success" plain @click="quickDelete(row)">
+              <el-button
+                type="success"
+                plain
+                :disabled="handling"
+                @click="quickDelete(row)"
+              >
                 接受举报
               </el-button>
-              <el-button type="danger" plain @click="quickDismiss(row)">
+              <el-button
+                type="danger"
+                plain
+                :disabled="handling"
+                @click="quickDismiss(row)"
+              >
                 驳回举报
               </el-button>
-              <el-button type="warning" plain @click="openHandleDialog(row)">
+              <el-button
+                type="warning"
+                plain
+                :disabled="handling"
+                @click="openHandleDialog(row)"
+              >
                 更多处理
               </el-button>
             </template>
@@ -438,12 +534,18 @@ onActivated(() => {
         </div>
 
         <el-empty
-          v-if="!loading && reports.length === 0"
+          v-if="!loading && !loadError && reports.length === 0"
           description="暂无举报记录"
         />
       </div>
 
-      <el-table v-else v-loading="loading" :data="reports" stripe>
+      <el-table
+        v-else
+        v-loading="loading"
+        :data="reports"
+        :empty-text="loadError ? '数据加载失败' : '暂无举报记录'"
+        stripe
+      >
         <el-table-column label="被举报内容" min-width="300">
           <template #default="{ row }">
             <div class="report-content">
@@ -503,6 +605,7 @@ onActivated(() => {
                     type="success"
                     size="large"
                     :icon="Check"
+                    :disabled="handling"
                     @click="quickDelete(row)"
                   />
                 </el-tooltip>
@@ -512,6 +615,7 @@ onActivated(() => {
                     type="danger"
                     size="large"
                     :icon="Close"
+                    :disabled="handling"
                     @click="quickDismiss(row)"
                   />
                 </el-tooltip>
@@ -521,6 +625,7 @@ onActivated(() => {
                     type="warning"
                     size="large"
                     :icon="MoreFilled"
+                    :disabled="handling"
                     @click="openHandleDialog(row)"
                   />
                 </el-tooltip>
@@ -530,7 +635,7 @@ onActivated(() => {
         </el-table-column>
       </el-table>
 
-      <div class="pagination-bar">
+      <div v-if="!loadError" class="pagination-bar">
         <el-pagination
           v-model:current-page="pagination.page"
           v-model:page-size="pagination.pageSize"
@@ -602,19 +707,15 @@ onActivated(() => {
           <div v-if="currentReport?.status === 'pending'">
             <el-button
               type="success"
-              @click="
-                quickDelete(currentReport!);
-                detailDialogVisible = false;
-              "
+              :disabled="handling"
+              @click="quickHandleFromDetail('accept')"
             >
               接受举报
             </el-button>
             <el-button
               type="danger"
-              @click="
-                quickDismiss(currentReport!);
-                detailDialogVisible = false;
-              "
+              :disabled="handling"
+              @click="quickHandleFromDetail('reject')"
             >
               驳回举报
             </el-button>
@@ -661,7 +762,9 @@ onActivated(() => {
 
       <template #footer>
         <el-button @click="handleDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitHandle">确认处理</el-button>
+        <el-button type="primary" :loading="handling" @click="submitHandle">
+          确认处理
+        </el-button>
       </template>
     </el-dialog>
   </div>
@@ -670,6 +773,14 @@ onActivated(() => {
 <style lang="scss" scoped>
 .report-manage {
   font-size: 16px;
+
+  .load-error {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    min-width: 0;
+  }
 
   .report-stats-grid {
     display: grid;

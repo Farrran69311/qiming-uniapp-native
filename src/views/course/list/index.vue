@@ -676,6 +676,7 @@
                           <el-form-item
                             :label="'时长(秒)'"
                             :prop="`hourList[${hourIndex}].duration`"
+                            :rules="videoDurationRules"
                           >
                             <el-input-number
                               v-model="hour.duration"
@@ -819,7 +820,9 @@ import CourseStats from "./components/CourseStats.vue";
 import BulkCourseUploadDialog from "./components/BulkCourseUploadDialog.vue";
 import { FolderOpened, Plus, Loading, Search } from "@element-plus/icons-vue";
 import { openPlatformUrl } from "@/utils/platformCapability";
+import { uploadFileWithSts } from "@/utils/sts-upload";
 import { downloadPlatformResource } from "@/components/PlatformResourcePreview/resource-preview";
+import { getVideoDuration } from "./utils/course-package";
 
 const appStore = useAppStoreHook();
 const router = useRouter();
@@ -1827,6 +1830,29 @@ const newChapterForm = ref({
   hourList: [] as any[]
 });
 const activeHours = ref([0]); // 默认展开第一个课时
+const videoDurationRules = [
+  {
+    required: true,
+    type: "number" as const,
+    min: 1,
+    message: "无法读取视频时长，请重新上传有效视频",
+    trigger: "change"
+  }
+];
+const supportedVideoMimeTypes = new Set([
+  "video/mp4",
+  "video/webm",
+  "video/ogg"
+]);
+const supportedVideoExtensions = new Set(["mp4", "webm", "ogg"]);
+
+const isSupportedVideoFile = (file: File) => {
+  const extension = file.name.split(".").pop()?.toLowerCase() || "";
+  return (
+    supportedVideoMimeTypes.has(file.type.toLowerCase()) ||
+    supportedVideoExtensions.has(extension)
+  );
+};
 
 // 显示新增章节对话框
 const showAddChapterDialog = () => {
@@ -1870,35 +1896,49 @@ const handleResourceUpload = async (
   hourList: any[],
   hourIndex: number
 ) => {
+  const hour = hourList[hourIndex];
+  const rawFile = file?.raw as File | undefined;
+  if (!hour || !rawFile) {
+    if (hour) hour.isUploading = false;
+    ElMessage.error("无法读取所选视频，请重新选择");
+    return;
+  }
+
   try {
-    // 模拟上传过程
-    const formData = new FormData();
-    formData.append("file", file.raw);
+    hour.isUploading = true;
+    if (!isSupportedVideoFile(rawFile)) {
+      ElMessage.error("请上传视频文件（MP4、WebM、Ogg 格式）");
+      return;
+    }
 
-    // TODO: 这里应该调用实际的上传API
-    // 假设上传成功后会返回以下数据
-    setTimeout(() => {
-      const result = {
-        resourceId: Math.floor(Math.random() * 10000) + 1,
-        title: file.name.split(".")[0],
-        fileUrl: URL.createObjectURL(file.raw),
-        rType: file.raw.type.split("/")[1].toUpperCase(),
-        duration: Math.floor(Math.random() * 600) + 60 // 模拟60-660秒的时长
-      };
+    const duration = await getVideoDuration(rawFile);
+    if (!Number.isFinite(duration) || duration <= 0) {
+      hour.duration = null;
+      ElMessage.error("无法读取视频时长，请重新选择可正常播放的视频");
+      return;
+    }
 
-      // 更新课时信息
-      hourList[hourIndex].resourceId = result.resourceId;
-      hourList[hourIndex].title = result.title;
-      hourList[hourIndex].fileUrl = result.fileUrl;
-      hourList[hourIndex].rType = result.rType;
-      hourList[hourIndex].duration = result.duration;
-      hourList[hourIndex].originalFileName = file.name;
-      hourList[hourIndex].isUploading = false;
-    }, 1500);
+    const courseId = Number(currentCourse.value?.courseId || 0);
+    const uploaded = await uploadFileWithSts(rawFile, {
+      bizType: "resource_upload",
+      ...(courseId > 0 ? { courseId } : {})
+    });
+
+    hour.resourceId = uploaded.fileId;
+    hour.title = rawFile.name.replace(/\.[^.]+$/, "") || rawFile.name;
+    hour.fileUrl = uploaded.url;
+    hour.rType = "video";
+    hour.duration = duration;
+    hour.originalFileName = rawFile.name;
+    ElMessage.success("视频上传成功，已读取标题和时长");
   } catch (error) {
     console.error("上传资源失败:", error);
-    hourList[hourIndex].isUploading = false;
+    hour.resourceId = null;
+    hour.fileUrl = "";
+    hour.duration = null;
     ElMessage.error("上传资源失败，请重试");
+  } finally {
+    hour.isUploading = false;
   }
 };
 
@@ -1925,13 +1965,39 @@ const submitNewChapter = async () => {
   if (!newChapterFormRef.value) return;
 
   try {
-    await newChapterFormRef.value.validate();
-
     // 检查是否有课时
     if (newChapterForm.value.hourList.length === 0) {
       ElMessage.warning("请至少添加一个课时");
       return;
     }
+
+    const uploadingHourIndex = newChapterForm.value.hourList.findIndex(
+      hour => hour.isUploading
+    );
+    if (uploadingHourIndex >= 0) {
+      activeHours.value = Array.from(
+        new Set([...activeHours.value, uploadingHourIndex])
+      );
+      ElMessage.warning("视频仍在上传，请等待上传完成");
+      return;
+    }
+
+    const invalidHourIndex = newChapterForm.value.hourList.findIndex(
+      hour =>
+        Number(hour.resourceId || 0) <= 0 ||
+        !hour.fileUrl ||
+        !Number.isFinite(Number(hour.duration)) ||
+        Number(hour.duration) <= 0
+    );
+    if (invalidHourIndex >= 0) {
+      activeHours.value = Array.from(
+        new Set([...activeHours.value, invalidHourIndex])
+      );
+      ElMessage.warning("请为每个课时上传可读取时长的有效视频");
+      return;
+    }
+
+    await newChapterFormRef.value.validate();
 
     addChapterLoading.value = true;
 
@@ -1940,7 +2006,13 @@ const submitNewChapter = async () => {
       courseId: currentCourse.value.courseId,
       chapter: {
         name: newChapterForm.value.name,
-        hourList: newChapterForm.value.hourList
+        hourList: newChapterForm.value.hourList.map(hour => ({
+          resourceId: Number(hour.resourceId),
+          duration: Number(hour.duration),
+          title: hour.title,
+          rType: hour.rType,
+          fileUrl: hour.fileUrl
+        }))
       }
     });
 
@@ -2450,7 +2522,7 @@ onMounted(async () => {
 
 @media screen and (max-width: 768px) {
   .main {
-    padding: 12px;
+    padding: 0;
     margin: 0;
   }
 

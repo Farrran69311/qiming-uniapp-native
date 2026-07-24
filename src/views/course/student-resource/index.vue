@@ -2085,6 +2085,10 @@ onUnmounted(() => {
       v-else-if="courseLoading && !courseOptions.length"
       class="workbench-skeleton"
     >
+      <div class="workbench-skeleton__status" role="status" aria-live="polite">
+        <el-icon class="is-loading"><Loading /></el-icon>
+        <span>正在加载课程...</span>
+      </div>
       <el-skeleton animated>
         <template #template>
           <el-skeleton-item variant="rect" class="workbench-skeleton__rail" />
@@ -2107,6 +2111,10 @@ onUnmounted(() => {
     </div>
 
     <div v-else-if="resourceLoading" class="workbench-skeleton">
+      <div class="workbench-skeleton__status" role="status" aria-live="polite">
+        <el-icon class="is-loading"><Loading /></el-icon>
+        <span>正在加载课程资源...</span>
+      </div>
       <el-skeleton animated>
         <template #template>
           <el-skeleton-item variant="rect" class="workbench-skeleton__rail" />
@@ -4407,12 +4415,28 @@ onUnmounted(() => {
   line-height: 1.6;
 }
 .workbench-skeleton {
+  position: relative;
   display: grid;
   flex: 1;
   grid-template-columns: 268px minmax(0, 1fr) 380px;
   gap: 1px;
   padding: 1px;
   background: var(--resource-border);
+}
+.workbench-skeleton__status {
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  color: var(--resource-muted);
+  background: var(--resource-surface);
+  border: 1px solid var(--resource-border);
+  border-radius: 8px;
+  transform: translateX(-50%);
 }
 .workbench-skeleton :deep(.el-skeleton) {
   display: contents;
@@ -4691,6 +4715,12 @@ onUnmounted(() => {
 }
 
 @media (max-width: 560px) {
+  .resource-overview {
+    padding: 12px 8px;
+  }
+  .resource-card {
+    padding: 12px;
+  }
   .resource-workbench__body {
     gap: 10px;
     padding: 0;

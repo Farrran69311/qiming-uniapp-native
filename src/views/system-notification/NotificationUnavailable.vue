@@ -139,7 +139,7 @@ const headingTag = computed(() => (props.embedded ? "h2" : "h1"));
   }
 }
 
-@media (width <= 340px) {
+@media (width <= 480px) {
   .notification-page {
     padding-inline-start: max(6px, env(safe-area-inset-left, 0px));
     padding-inline-end: max(6px, env(safe-area-inset-right, 0px));
@@ -147,6 +147,7 @@ const headingTag = computed(() => (props.embedded ? "h2" : "h1"));
 
   .notification-state {
     flex-direction: column;
+    padding: 14px;
   }
 }
 </style>

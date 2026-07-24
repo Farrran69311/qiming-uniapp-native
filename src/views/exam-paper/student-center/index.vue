@@ -19,7 +19,12 @@ import {
   Timer,
   View
 } from "@element-plus/icons-vue";
-import { getStudentPaperList, type StudentPaperItem } from "@/api/examPaper";
+import {
+  getStudentPaperList,
+  type GetStudentPaperListParams,
+  type StudentPaperItem
+} from "@/api/examPaper";
+import { getFrontendCourseList } from "@/api/frontend/course";
 import WaitingToCompleteIcon from "@/assets/papercentreicons/waitingtocomplete.svg?component";
 import AlreadyCompletedIcon from "@/assets/papercentreicons/alreadycompleted.svg?component";
 import AlreadyDeadlineIcon from "@/assets/papercentreicons/alreadydeadline.svg?component";
@@ -59,24 +64,20 @@ const activeTab = ref<
 type ExamTabKey = typeof activeTab.value;
 const searchQuery = ref("");
 const selectedCourse = ref("");
-const selectedStatus = ref("");
 
 // 数据
 const papers = ref<StudentPaperItem[]>([]);
 const loading = ref(false);
+const courseLoading = ref(false);
+const loadError = ref("");
+let latestPaperRequest = 0;
 
 // 分页
 const currentPage = ref(1);
 const pageSize = ref(12);
 const total = ref(0);
 
-// 课程选项(从后端获取)
-const courseOptions = ref([
-  { id: 0, name: "全部课程" },
-  { id: 1, name: "高等数学" },
-  { id: 2, name: "大学英语" },
-  { id: 3, name: "计算机基础" }
-]);
+const courseOptions = ref([{ id: 0, name: "全部课程" }]);
 
 // 统计数据
 const statistics = ref({
@@ -127,52 +128,91 @@ const filteredPapers = computed(() => papers.value);
 
 // 获取试卷列表
 const fetchPapers = async () => {
+  const requestId = ++latestPaperRequest;
   loading.value = true;
+  loadError.value = "";
   try {
-    const params: any = {
+    const params: GetStudentPaperListParams = {
       pageNum: currentPage.value,
       pageSize: pageSize.value,
       status: activeTab.value
     };
 
     // 只有在有值时才添加可选参数
-    if (searchQuery.value) {
-      params.keyword = searchQuery.value;
+    const keyword = searchQuery.value.trim();
+    if (keyword) {
+      params.keyword = keyword;
     }
     if (selectedCourse.value && selectedCourse.value !== "0") {
       params.courseId = Number(selectedCourse.value);
     }
 
-    console.log("获取试卷列表参数:", params);
     const res = await getStudentPaperList(params);
-    console.log("获取试卷列表响应:", res);
+    if (requestId !== latestPaperRequest) return;
 
-    if (res.code === 0) {
-      papers.value = res.data.list || [];
-      total.value = res.data.total || 0;
-      statistics.value = res.data.statistics || {
-        available: 0,
-        submitted: 0,
-        graded: 0,
-        completed: 0,
-        expired: 0,
-        retake: 0,
-        avgScore: 0
-      };
-    } else {
-      if (!isMiniProgramWebView()) {
-        ElMessage.error(res.msg || "获取试卷列表失败");
-      }
+    if (res.code !== 0 || !res.data) {
+      throw new Error(res.msg || "获取试卷列表失败");
     }
+
+    papers.value = res.data.list || [];
+    total.value = res.data.total || 0;
+    statistics.value = res.data.statistics || {
+      available: 0,
+      submitted: 0,
+      graded: 0,
+      completed: 0,
+      expired: 0,
+      retake: 0,
+      avgScore: 0
+    };
   } catch (error) {
+    if (requestId !== latestPaperRequest) return;
     papers.value = [];
     total.value = 0;
+    const responseMessage = (
+      error as { response?: { data?: { msg?: string } } }
+    )?.response?.data?.msg;
+    loadError.value =
+      responseMessage ||
+      (error instanceof Error && error.message
+        ? error.message
+        : "获取试卷列表失败，请稍后重试");
     if (!isMiniProgramWebView()) {
       console.error("获取试卷列表失败:", error);
-      ElMessage.error("获取试卷列表失败");
+      ElMessage.error(loadError.value);
     }
   } finally {
-    loading.value = false;
+    if (requestId === latestPaperRequest) {
+      loading.value = false;
+    }
+  }
+};
+
+const loadCourseOptions = async () => {
+  courseLoading.value = true;
+  try {
+    const { code, data, msg } = await getFrontendCourseList({
+      pageNum: 1,
+      pageSize: 100
+    });
+    if (code !== 200 || !data) {
+      throw new Error(msg || "课程列表加载失败");
+    }
+    courseOptions.value = [
+      { id: 0, name: "全部课程" },
+      ...(data.list || []).map(course => ({
+        id: course.courseId,
+        name: course.courseName
+      }))
+    ];
+  } catch (error) {
+    console.error("获取课程筛选项失败:", error);
+    courseOptions.value = [{ id: 0, name: "全部课程" }];
+    if (!isMiniProgramWebView()) {
+      ElMessage.warning("课程筛选暂时无法加载");
+    }
+  } finally {
+    courseLoading.value = false;
   }
 };
 
@@ -196,7 +236,12 @@ const viewScore = (paper: StudentPaperItem) => {
     ElMessage.warning("该试卷尚未完成");
     return;
   }
-  router.push(`/exam-paper/result/${paper.submissionId}`);
+  const submissionId = Number(paper.submissionId);
+  if (!Number.isInteger(submissionId) || submissionId <= 0) {
+    ElMessage.error("成绩记录暂时无法打开，请刷新列表后重试");
+    return;
+  }
+  router.push(`/exam-paper/result/${submissionId}`);
 };
 
 // 获取状态标签类型
@@ -283,7 +328,7 @@ const handlePageChange = () => {
 };
 
 onMounted(() => {
-  fetchPapers();
+  void Promise.all([fetchPapers(), loadCourseOptions()]);
 });
 </script>
 
@@ -368,6 +413,7 @@ onMounted(() => {
             type="button"
             class="mobile-tab-button"
             :class="{ 'is-active': activeTab === tab.key }"
+            :aria-pressed="activeTab === tab.key"
             @click="
               activeTab = tab.key;
               handleTabChange();
@@ -463,6 +509,7 @@ onMounted(() => {
         <el-select
           v-model="selectedCourse"
           placeholder="选择课程"
+          :loading="courseLoading"
           style="width: 160px"
           @change="handleSearch"
         >
@@ -502,7 +549,14 @@ onMounted(() => {
 
         <!-- 卡片内容 -->
         <div class="card-body">
-          <h3 class="paper-title" @click="viewDetail(paper)">
+          <h3
+            class="paper-title"
+            role="button"
+            tabindex="0"
+            @click="viewDetail(paper)"
+            @keydown.enter="viewDetail(paper)"
+            @keydown.space.prevent="viewDetail(paper)"
+          >
             {{ paper.title }}
           </h3>
           <p v-if="paper.description" class="paper-desc">
@@ -537,7 +591,11 @@ onMounted(() => {
 
           <!-- 已完成显示成绩 -->
           <div
-            v-if="paper.status === 'completed' && paper.score !== null"
+            v-if="
+              paper.status === 'completed' &&
+              paper.score !== null &&
+              paper.score !== undefined
+            "
             class="score-display"
           >
             <div class="score-label">得分</div>
@@ -595,8 +653,22 @@ onMounted(() => {
         </div>
       </div>
 
+      <div
+        v-if="!loading && loadError"
+        class="empty-state"
+        role="alert"
+        aria-live="assertive"
+      >
+        <el-empty :description="loadError" :image-size="96">
+          <el-button type="primary" @click="fetchPapers">重新加载</el-button>
+        </el-empty>
+      </div>
+
       <!-- 空状态 -->
-      <div v-if="!loading && filteredPapers.length === 0" class="empty-state">
+      <div
+        v-if="!loading && !loadError && filteredPapers.length === 0"
+        class="empty-state"
+      >
         <el-empty
           :description="
             activeTab === 'available'

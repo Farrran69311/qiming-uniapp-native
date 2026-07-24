@@ -31,7 +31,9 @@
         </p>
       </div>
 
-      <div class="p-6 space-y-6 flex-1 overflow-auto custom-scrollbar">
+      <div
+        class="sidebar-form-section p-6 space-y-6 flex-1 overflow-auto custom-scrollbar"
+      >
         <div class="space-y-3">
           <label
             class="text-base font-semibold text-[var(--el-text-color-secondary)] flex items-center"
@@ -310,7 +312,9 @@
         </div>
 
         <!-- 内容体 -->
-        <div class="flex-1 p-6 overflow-hidden flex flex-col">
+        <div
+          class="animation-content-body flex-1 p-6 overflow-hidden flex flex-col"
+        >
           <div
             v-if="!selectedChapterId"
             class="flex-1 flex flex-col items-center justify-center relative"
@@ -2682,37 +2686,43 @@ onBeforeUnmount(() => {
 }
 
 @media (width <= 768px) {
-  .ai-animation-container.is-mobile-layout {
+  .ai-animation-container {
     height: auto;
     min-height: calc(100vh - 96px);
-    margin: 8px;
+    margin: 0;
     overflow: visible;
     flex-direction: column;
   }
 
-  .ai-animation-container.is-mobile-layout .sidebar-card {
-    width: 100%;
+  .ai-animation-container .sidebar-card {
+    width: 100% !important;
   }
 
-  .ai-animation-container.is-mobile-layout .header-subtitle {
+  .ai-animation-container .header-section,
+  .ai-animation-container .sidebar-form-section,
+  .ai-animation-container .animation-content-body {
+    padding: 14px;
+  }
+
+  .ai-animation-container .header-subtitle {
     margin-left: 0 !important;
   }
 
-  .ai-animation-container.is-mobile-layout .content-toolbar,
-  .ai-animation-container.is-mobile-layout .filter-toolbar {
+  .ai-animation-container .content-toolbar,
+  .ai-animation-container .filter-toolbar {
     flex-direction: column;
     align-items: stretch;
     gap: 12px;
   }
 
-  .ai-animation-container.is-mobile-layout .toolbar-status,
-  .ai-animation-container.is-mobile-layout .toolbar-actions {
+  .ai-animation-container .toolbar-status,
+  .ai-animation-container .toolbar-actions {
     width: 100%;
     flex-wrap: wrap;
     gap: 10px;
   }
 
-  .ai-animation-container.is-mobile-layout .toolbar-actions :deep(.el-button) {
+  .ai-animation-container .toolbar-actions :deep(.el-button) {
     flex: 1 1 calc(50% - 8px);
     min-width: 0;
     min-height: 44px;
@@ -2722,11 +2732,11 @@ onBeforeUnmount(() => {
     min-height: 44px;
   }
 
-  .ai-animation-container.is-mobile-layout .filter-keyword {
+  .ai-animation-container .filter-keyword {
     width: 100% !important;
   }
 
-  .ai-animation-container.is-mobile-layout .animation-filter-group {
+  .ai-animation-container .animation-filter-group {
     width: 100%;
     overflow-x: auto;
   }

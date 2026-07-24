@@ -142,7 +142,7 @@ html.qiming-native-webview.ua-mobile .course-hours-dialog .el-dialog__body {
 html.qiming-mini-program-webview {
   --qiming-native-statusbar-offset: 0px;
   --pure-safe-area-top: 0px;
-  --pure-main-content-margin: 6px 10px 0;
+  --pure-main-content-margin: 6px 8px 0;
   --qiming-native-navbar-bg: #f8faff;
   --qiming-mini-topbar-height: 58px;
   --qiming-mini-toolbar-top: 8px;
@@ -829,6 +829,7 @@ html.qiming-mini-program-webview.ua-mobile .app-main-nofixed-header {
 }
 
 html.qiming-mini-program-webview.ua-mobile .main-content {
+  max-width: calc(100vw - 16px);
   padding-top: 0;
   padding-bottom: 0;
   margin-top: 0;

@@ -285,26 +285,14 @@
 
           <!-- 上方卡片 -->
           <div class="card" :class="currentTheme">
-            <!-- 重要提醒 -->
+            <!-- 信息来源说明 -->
             <div class="reminder">
-              <el-carousel
-                height="46px"
-                direction="vertical"
-                :autoplay="true"
-                :interval="4000"
-                indicator-position="none"
-                arrow="never"
-              >
-                <el-carousel-item
-                  v-for="(notice, index) in notices"
-                  :key="index"
-                >
-                  <div class="reminder-content">
-                    <el-icon><InfoFilled /></el-icon>
-                    <span class="notice-text">{{ notice }}</span>
-                  </div>
-                </el-carousel-item>
-              </el-carousel>
+              <div class="reminder-content">
+                <el-icon><InfoFilled /></el-icon>
+                <span class="notice-text">
+                  课程与学习进度来自当前账号的实时数据。
+                </span>
+              </div>
             </div>
             <!-- 课程信息和AI总结 -->
             <div class="info-section">
@@ -327,16 +315,32 @@
                   </div>
 
                   <template v-else>
-                    <!-- 将要考试的课程 -->
+                    <el-alert
+                      v-if="homeCourseError"
+                      class="mb-4"
+                      title="课程信息暂时无法加载"
+                      :description="homeCourseError"
+                      type="warning"
+                      :closable="false"
+                      show-icon
+                    />
+                    <el-button
+                      v-if="homeCourseError"
+                      class="mb-4"
+                      @click="loadHomeData"
+                    >
+                      重新加载
+                    </el-button>
+
                     <div
-                      v-if="myCourses.examList.length > 0"
+                      v-if="myCourses.learningList.length > 0"
                       class="course-section"
                     >
-                      <h4>将要考试的</h4>
+                      <h4>正在学习</h4>
                       <div class="mini-course-list">
                         <div
-                          v-for="course in myCourses.examList"
-                          :key="'exam-' + course.courseId"
+                          v-for="course in myCourses.learningList"
+                          :key="'learning-' + course.courseId"
                           class="mini-course-item"
                           @click="handleCourseClick(course.courseId)"
                         >
@@ -353,108 +357,30 @@
                               :src="course.thumbUrl"
                               class="thumb-image"
                             />
-                            <el-tag type="warning">考试</el-tag>
+                            <el-tag
+                              :type="
+                                course.isRequired === 1 ? 'warning' : 'info'
+                              "
+                            >
+                              {{ course.isRequired === 1 ? "必修" : "选修" }}
+                            </el-tag>
                           </div>
                           <div class="course-content">
                             <span class="course-name">{{
                               course.courseName
                             }}</span>
-                            <span class="course-time"
-                              >{{ course.daysLeft }}天后</span
-                            >
+                            <span class="course-time">
+                              已完成 {{ course.finishedHours }} /
+                              {{ course.totalHours }} 课时
+                            </span>
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    <!-- 将要结课的课程 -->
-                    <div
-                      v-if="myCourses.endingList.length > 0"
-                      class="course-section"
-                    >
-                      <h4>将要结课的</h4>
-                      <div class="mini-course-list">
-                        <div
-                          v-for="course in myCourses.endingList"
-                          :key="'end-' + course.courseId"
-                          class="mini-course-item"
-                          @click="handleCourseClick(course.courseId)"
-                        >
-                          <div
-                            class="course-thumb"
-                            :style="{
-                              backgroundColor: course.thumbUrl
-                                ? ''
-                                : getCoverColor(course.courseId)
-                            }"
-                          >
-                            <img
-                              v-if="course.thumbUrl"
-                              :src="course.thumbUrl"
-                              class="thumb-image"
-                            />
-                            <el-tag type="success">结课</el-tag>
-                          </div>
-                          <div class="course-content">
-                            <span class="course-name">{{
-                              course.courseName
-                            }}</span>
-                            <span class="course-time"
-                              >{{ course.daysLeft }}天后</span
-                            >
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <!-- 作业未交的课程 -->
-                    <div
-                      v-if="myCourses.homeworkList.length > 0"
-                      class="course-section"
-                    >
-                      <h4>作业未交的</h4>
-                      <div class="mini-course-list">
-                        <div
-                          v-for="course in myCourses.homeworkList"
-                          :key="'homework-' + course.courseId"
-                          class="mini-course-item"
-                          @click="handleCourseClick(course.courseId)"
-                        >
-                          <div
-                            class="course-thumb"
-                            :style="{
-                              backgroundColor: course.thumbUrl
-                                ? ''
-                                : getCoverColor(course.courseId)
-                            }"
-                          >
-                            <img
-                              v-if="course.thumbUrl"
-                              :src="course.thumbUrl"
-                              class="thumb-image"
-                            />
-                            <el-tag type="danger">作业</el-tag>
-                          </div>
-                          <div class="course-content">
-                            <span class="course-name">{{
-                              course.courseName
-                            }}</span>
-                            <span class="course-time"
-                              >{{ course.daysLeft }}天后</span
-                            >
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <!-- 无数据提示 -->
                     <el-empty
-                      v-if="
-                        !myCourses.examList.length &&
-                        !myCourses.endingList.length &&
-                        !myCourses.homeworkList.length
-                      "
-                      description="暂无课程数据"
+                      v-else-if="!homeCourseError"
+                      description="暂无已加入课程"
                     />
                   </template>
                 </div>
@@ -462,17 +388,13 @@
               <div class="ai-summary">
                 <h3>AI总结</h3>
                 <div class="summary-card" :class="currentTheme">
-                  <p>{{ aiSummaryTitle }}</p>
-                  <ul>
-                    <li v-for="(item, idx) in displayedSummary" :key="idx">
-                      {{ item }}
-                    </li>
-                    <li v-if="isTyping" class="typing-cursor">
-                      正在生成中<span v-for="n in 3" :key="n" class="dot"
-                        >.</span
-                      >
-                    </li>
-                  </ul>
+                  <el-alert
+                    title="学习总结服务尚未接入"
+                    description="服务器当前未提供个人学习总结能力，因此这里不展示自动生成的模拟结论。"
+                    type="info"
+                    :closable="false"
+                    show-icon
+                  />
                 </div>
               </div>
             </div>
@@ -496,9 +418,10 @@
               <div class="course-filter">
                 <el-select v-model="courseFilter" placeholder="课程状态">
                   <el-option label="全部" value="all" />
-                  <el-option label="进行中" value="ongoing" />
+                  <el-option label="必修" value="required" />
+                  <el-option label="选修" value="elective" />
                   <el-option label="已完成" value="completed" />
-                  <el-option label="未开始" value="upcoming" />
+                  <el-option label="未完成" value="incomplete" />
                 </el-select>
               </div>
             </div>
@@ -510,6 +433,22 @@
 
             <!-- 课程网格 -->
             <template v-else>
+              <el-alert
+                v-if="coursePageError"
+                class="mb-4"
+                title="课程列表暂时无法加载"
+                :description="coursePageError"
+                type="warning"
+                :closable="false"
+                show-icon
+              />
+              <el-button
+                v-if="coursePageError"
+                class="mb-4"
+                @click="loadCoursePageData"
+              >
+                重新加载
+              </el-button>
               <div v-if="coursesData.list.length > 0" class="course-grid">
                 <div
                   v-for="course in coursesData.list"
@@ -558,11 +497,7 @@
                     <div class="course-meta">
                       <span>
                         <el-icon><Clock /></el-icon>
-                        学习进度：{{
-                          Math.floor(
-                            (course.finishedHours / course.totalHours) * 100
-                          )
-                        }}%
+                        学习进度：{{ getCourseProgress(course) }}%
                       </span>
                       <span>
                         <el-icon><Calendar /></el-icon>
@@ -574,7 +509,10 @@
               </div>
 
               <!-- 无数据提示 -->
-              <el-empty v-else description="暂无课程数据" />
+              <el-empty
+                v-else-if="!coursePageError"
+                description="暂无课程数据"
+              />
             </template>
 
             <!-- 分页 -->
@@ -659,6 +597,7 @@ import Classroom3D from "@/views/course/classroom/index.vue";
 import StudentExamCenter from "@/views/exam-paper/student-center/index.vue";
 import StudentResourceWorkbench from "@/views/course/student-resource/index.vue";
 import { getFrontendCourseList } from "@/api/frontend/course";
+import type { CourseListResult } from "@/api/frontend/course";
 
 // 导入新图标
 import LabIcon from "@/new student interface icons/lab-medical-test-svgrepo-com.svg?component";
@@ -678,7 +617,7 @@ const router = useRouter();
 const route = useRoute();
 const isScrolled = ref(false);
 const showLoginDialog = ref(false);
-const isMiniProgramDemoRoute = computed(
+const isEmbeddedMobileRoute = computed(
   () =>
     route.query.qimingMiniProgram === "1" || route.query.qimingNative === "1"
 );
@@ -706,41 +645,6 @@ const readRouteMenu = () => {
     : route.query.menu;
   return typeof menu === "string" && menuKeys.includes(menu) ? menu : "";
 };
-
-const demoCourses = [
-  {
-    courseId: 1,
-    courseName: "嵌入式 Linux 开发实践教程",
-    thumbUrl: "",
-    isRequired: 1,
-    totalHours: 24,
-    finishedHours: 8
-  },
-  {
-    courseId: 2,
-    courseName: "数据结构动画课件",
-    thumbUrl: "",
-    isRequired: 1,
-    totalHours: 18,
-    finishedHours: 12
-  },
-  {
-    courseId: 3,
-    courseName: "AI 助教学习诊断",
-    thumbUrl: "",
-    isRequired: 0,
-    totalHours: 12,
-    finishedHours: 4
-  },
-  {
-    courseId: 4,
-    courseName: "计算机组成原理测评",
-    thumbUrl: "",
-    isRequired: 1,
-    totalHours: 20,
-    finishedHours: 15
-  }
-];
 
 const userInfo = ref<DataInfo<number> | null>(storageLocal().getItem(userKey));
 
@@ -847,7 +751,7 @@ const initActiveMenu = () => {
 // 分页相关
 const currentPage = ref(1);
 const pageSize = ref(12); // 每页显示12个课程
-const total = ref(15); // 假设总共15个课程
+const total = ref(0);
 const totalPages = computed(() => Math.ceil(total.value / pageSize.value));
 
 // 添加课程筛选状态
@@ -855,25 +759,17 @@ const courseFilter = ref("all");
 
 // 课程数据加载状态
 const loading = ref(false);
+const homeCourseError = ref("");
+const coursePageError = ref("");
+type CourseListItem = CourseListResult["list"][number];
 
 // 我的课程数据
-const myCourses = ref({
-  examList: [], // 考试课程
-  endingList: [], // 结课课程
-  homeworkList: [] // 作业课程
+const myCourses = ref<{ learningList: CourseListItem[] }>({
+  learningList: []
 });
 
-// 轮播通知数据
-const notices = ref([
-  "重要提示:同学们，新学期到了，系统已经分配最新的课程，请各位同学抓紧学习 书山有路勤为径，学海无涯苦作舟 🎉",
-  "温馨提示：请同学们按时提交作业，避免影响课程进度和最终成绩。如有疑问请及时联系课程导师。",
-  "新功能上线：虚拟实验室现已支持更多实验场景，欢迎同学们前往体验，探索科学的奥秘。",
-  "赛事预告：下周将举行全校程序设计大赛，感兴趣的同学请在赛事场报名，展示你的编程才华。",
-  "学习建议：合理安排学习时间，利用好学习云盘整理资料，保持良好的学习习惯是成功的关键。"
-]);
-
 // 课程页面数据
-const coursesData = ref({
+const coursesData = ref<{ list: CourseListItem[]; loading: boolean }>({
   list: [], // 课程列表
   loading: false // 加载状态
 });
@@ -882,26 +778,24 @@ const coursesData = ref({
 const fetchCourseList = async () => {
   try {
     loading.value = true;
+    homeCourseError.value = "";
     const { code, data, msg } = await getFrontendCourseList(
       {
         pageNum: 1,
         pageSize: 100 // 获取足够多的课程数据
       },
-      { timeout: isMiniProgramDemoRoute.value ? 8000 : 0 }
+      { timeout: isEmbeddedMobileRoute.value ? 8000 : 0 }
     );
 
     if (code === 200 && data) {
       return data.list || [];
-    } else {
-      if (isMiniProgramDemoRoute.value) return demoCourses;
-      ElMessage.error(msg || "获取课程列表失败");
-      return [];
     }
+    homeCourseError.value = msg || "请稍后重试";
+    return null;
   } catch (error) {
     console.error("获取课程列表出错:", error);
-    if (isMiniProgramDemoRoute.value) return demoCourses;
-    ElMessage.error("获取课程数据失败，请稍后重试");
-    return [];
+    homeCourseError.value = "请检查网络后重试";
+    return null;
   } finally {
     loading.value = false;
   }
@@ -912,33 +806,8 @@ const loadHomeData = async () => {
   loading.value = true;
 
   try {
-    // 获取课程列表
     const courseList = await fetchCourseList();
-
-    // 这里只是模拟数据，实际项目中应该根据后端接口返回的数据进行处理
-    // 将数据分类到不同的列表中
-    if (courseList.length > 0) {
-      // 随机分配一些课程到各个类别，实际项目中应该根据业务逻辑处理
-      myCourses.value.examList = courseList.slice(0, 2).map(course => ({
-        ...course,
-        daysLeft: Math.floor(Math.random() * 5) + 1 // 随机1-5天
-      }));
-
-      myCourses.value.endingList = courseList.slice(2, 5).map(course => ({
-        ...course,
-        daysLeft: Math.floor(Math.random() * 7) + 3 // 随机3-10天
-      }));
-
-      myCourses.value.homeworkList = courseList.slice(5, 9).map(course => ({
-        ...course,
-        daysLeft: Math.floor(Math.random() * 5) + 1 // 随机1-5天
-      }));
-    } else {
-      // 如果没有数据，则清空所有列表
-      myCourses.value.examList = [];
-      myCourses.value.endingList = [];
-      myCourses.value.homeworkList = [];
-    }
+    myCourses.value.learningList = Array.isArray(courseList) ? courseList : [];
   } catch (error) {
     console.error("加载主页数据失败:", error);
   } finally {
@@ -949,38 +818,37 @@ const loadHomeData = async () => {
 // 加载课程页面数据
 const loadCoursePageData = async () => {
   coursesData.value.loading = true;
+  coursePageError.value = "";
   try {
     // 分页获取课程列表
     const { code, data, msg } = await getFrontendCourseList(
       {
         pageNum: currentPage.value,
         pageSize: pageSize.value,
-        status: courseFilter.value === "all" ? undefined : courseFilter.value
+        queryType:
+          courseFilter.value === "all"
+            ? undefined
+            : {
+                required: 1,
+                elective: 2,
+                completed: 3,
+                incomplete: 4
+              }[courseFilter.value]
       },
-      { timeout: isMiniProgramDemoRoute.value ? 8000 : 0 }
+      { timeout: isEmbeddedMobileRoute.value ? 8000 : 0 }
     );
 
     if (code === 200 && data) {
       coursesData.value.list = data.list || [];
       total.value = data.total || 0;
     } else {
-      if (isMiniProgramDemoRoute.value) {
-        coursesData.value.list = demoCourses;
-        total.value = demoCourses.length;
-        return;
-      }
-      ElMessage.error(msg || "获取课程列表失败");
+      coursePageError.value = msg || "请稍后重试";
       coursesData.value.list = [];
       total.value = 0;
     }
   } catch (error) {
     console.error("获取课程列表出错:", error);
-    if (isMiniProgramDemoRoute.value) {
-      coursesData.value.list = demoCourses;
-      total.value = demoCourses.length;
-      return;
-    }
-    ElMessage.error("获取课程数据失败，请稍后重试");
+    coursePageError.value = "请检查网络后重试";
     coursesData.value.list = [];
     total.value = 0;
   } finally {
@@ -1012,14 +880,6 @@ const handleExternalMenuSelect = (menu: string) => {
   activeMenu.value = menu;
   storageLocal().setItem("account_active_menu", menu);
 };
-
-onUnmounted(() => {
-  window.removeEventListener("scroll", handleScroll);
-  window.removeEventListener(
-    "userInfoUpdated",
-    handleUserInfoUpdate as EventListener
-  );
-});
 
 // 监听课程筛选变化
 watch(courseFilter, () => {
@@ -1069,6 +929,14 @@ const format = (percentage: number) => {
   return percentage === 100 ? "完成" : `${percentage}%`;
 };
 
+const getCourseProgress = (course: CourseListItem) => {
+  const totalHours = Number(course.totalHours);
+  const finishedHours = Number(course.finishedHours);
+  if (!Number.isFinite(totalHours) || totalHours <= 0) return 0;
+  if (!Number.isFinite(finishedHours) || finishedHours <= 0) return 0;
+  return Math.min(100, Math.floor((finishedHours / totalHours) * 100));
+};
+
 const handlePrevPage = () => {
   if (currentPage.value > 1) {
     currentPage.value--;
@@ -1110,75 +978,6 @@ const handleCourseClick = (courseId: number) => {
   router.push(`/course/${courseId}`);
 };
 
-// ---------------- AI 总结相关（后续可替换为真实接口） ----------------
-// 标题与列表通过变量控制，方便后续替换为后端返回
-const aiSummaryTitle = ref("根据您的学习进度，AI助手小启为您总结：");
-const aiSummaryList = ref<string[]>([
-  "您目前已完成基础模块学习，知识点体系良好",
-  "建议加强实践环节的练习",
-  "下周将开始新模块的学习",
-  "根据您的习题练习已经生成相似题目推荐，推荐练习",
-  "您可以结合AI课程动画再次复习知识点体系",
-  "知识点已生成可以在课程主页进行观看"
-]);
-
-// 打字效果相关状态
-const typingIndex = ref(0); // 当前正在打的行索引
-const charIndex = ref(0); // 当前行字符位置
-const typedLines = ref<string[]>([]); // 已经显示的内容（含正在输入的行）
-const isTyping = ref(false);
-const typingSpeed = 55; // 每个字符毫秒
-let typingTimer: number | null = null;
-
-const resetTyping = () => {
-  if (typingTimer) {
-    clearTimeout(typingTimer);
-    typingTimer = null;
-  }
-  typedLines.value = [];
-  typingIndex.value = 0;
-  charIndex.value = 0;
-  isTyping.value = false;
-};
-
-const typeNextChar = () => {
-  const lines = aiSummaryList.value;
-  if (typingIndex.value >= lines.length) {
-    isTyping.value = false;
-    typingTimer = null;
-    return;
-  }
-
-  const currentLine = lines[typingIndex.value];
-  // 初始化当前行
-  if (!typedLines.value[typingIndex.value]) {
-    typedLines.value[typingIndex.value] = "";
-  }
-
-  // 追加一个字符
-  typedLines.value[typingIndex.value] += currentLine[charIndex.value];
-  charIndex.value++;
-
-  if (charIndex.value < currentLine.length) {
-    typingTimer = window.setTimeout(typeNextChar, typingSpeed);
-  } else {
-    // 当前行完成，进入下一行
-    typingIndex.value++;
-    charIndex.value = 0;
-    typingTimer = window.setTimeout(typeNextChar, 320); // 换行停顿
-  }
-};
-
-const startTyping = () => {
-  resetTyping();
-  if (!aiSummaryList.value.length) return;
-  isTyping.value = true;
-  typeNextChar();
-};
-
-// 供模板使用的展示列表
-const displayedSummary = computed(() => typedLines.value);
-
 const initialLoadDone = ref(false);
 
 // 监听菜单变化并持久化
@@ -1188,7 +987,6 @@ watch(activeMenu, async newVal => {
 
   if (newVal === "home") {
     await loadHomeData();
-    startTyping();
   } else if (newVal === "course") {
     await loadCoursePageData();
   }
@@ -1202,7 +1000,6 @@ watch(
     activeMenu.value = routeMenu;
     if (routeMenu === "home") {
       await loadHomeData();
-      startTyping();
     } else if (routeMenu === "course") {
       await loadCoursePageData();
     }
@@ -1222,7 +1019,6 @@ onMounted(async () => {
 
   if (activeMenu.value === "home") {
     await loadHomeData();
-    setTimeout(() => startTyping(), 150);
   } else if (activeMenu.value === "course") {
     await loadCoursePageData();
   }
@@ -1237,7 +1033,6 @@ onUnmounted(() => {
     handleUserInfoUpdate as EventListener
   );
   emitter.off("accountMenuSelect", handleExternalMenuSelect);
-  if (typingTimer) clearTimeout(typingTimer);
 });
 </script>
 
@@ -2794,7 +2589,7 @@ onUnmounted(() => {
             flex-direction: column;
             gap: 12px;
             align-items: stretch;
-            padding: 16px;
+            padding: 12px;
             border-radius: 18px;
 
             h3 {
@@ -2806,6 +2601,10 @@ onUnmounted(() => {
                 width: 100%;
               }
             }
+          }
+
+          .course-grid .course-item .course-info {
+            padding: 14px;
           }
 
           .course-grid {
@@ -2871,7 +2670,21 @@ onUnmounted(() => {
 
       .account-main {
         .card {
-          padding: 16px;
+          padding: 10px;
+
+          .info-section .course-info .course-card {
+            padding: 8px;
+
+            .mini-course-item {
+              gap: 10px;
+              padding: 8px;
+
+              .course-thumb {
+                width: 52px;
+                height: 52px;
+              }
+            }
+          }
         }
 
         .course-list {

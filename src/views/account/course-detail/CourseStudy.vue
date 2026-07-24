@@ -23,21 +23,14 @@
                 </h2>
               </div>
               <div class="video-actions">
-                <button class="action-btn" title="收藏">
-                  <svg
-                    viewBox="0 0 24 24"
-                    width="18"
-                    height="18"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  >
-                    <path
-                      d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"
-                    />
-                  </svg>
-                </button>
-                <button class="action-btn" title="分享">
+                <button
+                  type="button"
+                  class="action-btn"
+                  title="分享当前课时"
+                  aria-label="分享当前课时"
+                  :disabled="sharing"
+                  @click="handleShare"
+                >
                   <svg
                     viewBox="0 0 24 24"
                     width="18"
@@ -424,6 +417,9 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, nextTick } from "vue";
+import { useRouter } from "vue-router";
+import { ElMessage } from "element-plus";
+import { copyPlatformText } from "@/utils/platformCapability";
 import CourseHeader from "./CourseHeader.vue";
 import VideoAnalysisPanel from "./VideoAnalysisPanel.vue";
 
@@ -459,6 +455,7 @@ const emit = defineEmits([
   "send-message",
   "node-click"
 ]);
+const router = useRouter();
 
 type AiAvatarState = "standby" | "standup" | "answering";
 
@@ -501,6 +498,42 @@ const handleSeekVideo = (timeMs: number) => {
 const internalMsg = ref("");
 const videoPlayerRef = ref(null);
 const catalogScrollRef = ref(null);
+const sharing = ref(false);
+
+const handleShare = async () => {
+  if (sharing.value) return;
+  sharing.value = true;
+  const title = props.currentHour?.title || props.courseName || "课程学习";
+  const routeHref = router.resolve({
+    name: "CourseDetail",
+    params: { id: props.courseId },
+    query: { section: "course-learn" }
+  }).href;
+  const shareUrl = new URL(routeHref, window.location.href).toString();
+
+  try {
+    if (typeof navigator.share === "function") {
+      try {
+        await navigator.share({
+          title,
+          text: `课程学习：${title}`,
+          url: shareUrl
+        });
+        return;
+      } catch (error: any) {
+        if (error?.name === "AbortError") return;
+      }
+    }
+
+    if (await copyPlatformText(shareUrl)) {
+      ElMessage.success("课程链接已复制");
+    } else {
+      ElMessage.error("课程链接复制失败");
+    }
+  } finally {
+    sharing.value = false;
+  }
+};
 
 // 监听 activeNode 变化，自动滚动到当前课时
 watch(
@@ -807,6 +840,11 @@ $shadow-xl:
       &:hover {
         color: #fff;
         background: rgb(255 255 255 / 20%);
+      }
+
+      &:disabled {
+        cursor: wait;
+        opacity: 0.6;
       }
     }
   }

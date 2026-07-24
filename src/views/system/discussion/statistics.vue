@@ -8,7 +8,6 @@
  * - GET /edu/backend/v1/discussions/audit-logs - 获取审计日志
  */
 import { ref, reactive, onMounted, computed, watch } from "vue";
-import { ElMessage } from "element-plus";
 import { usePageResponsive } from "@/utils/pageResponsive";
 import {
   Refresh,
@@ -110,6 +109,7 @@ const normalizeStatistics = (
 // ==================== 状态统计 ====================
 
 const loading = ref(false);
+const statisticsError = ref("");
 const stats = ref<GlobalStatistics | null>(null);
 const selectedCourse = ref<number | null | undefined>(null);
 const courses = ref<CourseOption[]>([]);
@@ -491,6 +491,7 @@ const initCharts = async () => {
 // ==================== 审计日志 ====================
 
 const auditLoading = ref(false);
+const auditError = ref("");
 const auditLogs = ref<AuditLog[]>([]);
 const total = ref(0);
 const queryForm = reactive({
@@ -505,8 +506,16 @@ const queryForm = reactive({
 
 const timeRange = ref([]);
 
+const getErrorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error && error.message ? error.message : fallback;
+
+let latestAuditRequest = 0;
+let latestStatisticsRequest = 0;
+
 const fetchAuditLogs = async () => {
+  const requestId = ++latestAuditRequest;
   auditLoading.value = true;
+  auditError.value = "";
   try {
     const params: any = {
       pageNum: queryForm.pageNum,
@@ -520,12 +529,17 @@ const fetchAuditLogs = async () => {
       params.endTime = timeRange.value[1];
     }
     const result = await getAuditLogs(params);
-    auditLogs.value = result?.list || [];
-    total.value = result?.total || 0;
+    if (requestId !== latestAuditRequest) return;
+    auditLogs.value = result.list;
+    total.value = result.total;
   } catch (error) {
+    if (requestId !== latestAuditRequest) return;
     console.error("加载审计日志失败", error);
+    auditLogs.value = [];
+    total.value = 0;
+    auditError.value = getErrorMessage(error, "加载审计日志失败，请重试");
   } finally {
-    auditLoading.value = false;
+    if (requestId === latestAuditRequest) auditLoading.value = false;
   }
 };
 
@@ -561,22 +575,25 @@ const handleCurrentChange = (val: number) => {
 // ==================== 数据加载 ====================
 
 const fetchData = async () => {
+  const requestId = ++latestStatisticsRequest;
   loading.value = true;
+  statisticsError.value = "";
   try {
     const params =
       selectedCourse.value != null
         ? { courseId: selectedCourse.value }
         : undefined;
     const result = await getGlobalStatistics(params);
+    if (requestId !== latestStatisticsRequest) return;
     stats.value = normalizeStatistics(result);
     await initCharts();
   } catch (error) {
+    if (requestId !== latestStatisticsRequest) return;
     console.error("加载统计数据失败", error);
-    ElMessage.error("加载统计数据失败");
-    stats.value = createEmptyStatistics();
-    await initCharts();
+    stats.value = null;
+    statisticsError.value = getErrorMessage(error, "加载讨论统计失败，请重试");
   } finally {
-    loading.value = false;
+    if (requestId === latestStatisticsRequest) loading.value = false;
   }
 };
 
@@ -601,7 +618,7 @@ watch(theme, () => {
 </script>
 
 <template>
-  <div class="statistics-container p-4">
+  <div class="statistics-container p-4 max-[769px]:p-0">
     <div class="statistics-toolbar mb-6">
       <el-select
         v-model="selectedCourse"
@@ -629,8 +646,21 @@ watch(theme, () => {
       </el-button>
     </div>
 
+    <div v-if="statisticsError" class="load-error mb-6">
+      <el-alert
+        title="讨论统计加载失败"
+        :description="statisticsError"
+        type="error"
+        show-icon
+        :closable="false"
+      />
+      <el-button type="primary" plain :icon="Refresh" @click="fetchData">
+        重试统计
+      </el-button>
+    </div>
+
     <!-- 核心数据总览 - 9个字段全部展示 -->
-    <div class="mb-8">
+    <div v-if="stats" class="mb-8">
       <div class="section-heading mb-4">
         <div class="section-heading__bar section-heading__bar--blue" />
         <span class="text-base font-bold">核心数据指标</span>
@@ -762,7 +792,7 @@ watch(theme, () => {
     </div>
 
     <!-- 待处理任务预警 -->
-    <div class="mb-8">
+    <div v-if="stats" class="mb-8">
       <div class="section-heading mb-4">
         <div class="section-heading__bar section-heading__bar--warm" />
         <span class="text-base font-bold">待处理任务预警</span>
@@ -819,7 +849,7 @@ watch(theme, () => {
     </div>
 
     <!-- 图表展示 -->
-    <el-row :gutter="16" class="mb-8 charts-grid">
+    <el-row v-if="stats" :gutter="16" class="mb-8 charts-grid">
       <el-col :xs="24" :lg="14">
         <el-card
           shadow="never"
@@ -879,7 +909,7 @@ watch(theme, () => {
     </el-row>
 
     <!-- 平台角色活跃与课程排行 -->
-    <el-row :gutter="16" class="mb-8 insights-grid">
+    <el-row v-if="stats" :gutter="16" class="mb-8 insights-grid">
       <el-col :xs="24" :lg="8">
         <el-card
           shadow="never"
@@ -1076,6 +1106,19 @@ watch(theme, () => {
         </el-form>
       </div>
 
+      <div v-if="auditError" class="load-error mb-4">
+        <el-alert
+          title="审计日志加载失败"
+          :description="auditError"
+          type="error"
+          show-icon
+          :closable="false"
+        />
+        <el-button type="primary" plain :icon="Refresh" @click="fetchAuditLogs">
+          重试日志
+        </el-button>
+      </div>
+
       <div v-if="isMobile" v-loading="auditLoading" class="audit-log-list">
         <div v-for="row in auditLogs" :key="row.id" class="audit-log-card">
           <div class="audit-log-card__header">
@@ -1146,7 +1189,7 @@ watch(theme, () => {
         </div>
 
         <el-empty
-          v-if="!auditLoading && auditLogs.length === 0"
+          v-if="!auditLoading && !auditError && auditLogs.length === 0"
           description="暂无审计日志"
         />
       </div>
@@ -1155,6 +1198,7 @@ watch(theme, () => {
         v-else
         v-loading="auditLoading"
         :data="auditLogs"
+        :empty-text="auditError ? '数据加载失败' : '暂无审计日志'"
         border
         stripe
         style="width: 100%"
@@ -1257,7 +1301,7 @@ watch(theme, () => {
       </el-table>
 
       <!-- 分页 -->
-      <div class="pagination-bar">
+      <div v-if="!auditError" class="pagination-bar">
         <el-pagination
           v-model:current-page="queryForm.pageNum"
           v-model:page-size="queryForm.pageSize"
@@ -1278,6 +1322,14 @@ watch(theme, () => {
 .statistics-container {
   max-width: 1600px;
   margin: 0 auto;
+}
+
+.load-error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
 }
 
 .statistics-toolbar {

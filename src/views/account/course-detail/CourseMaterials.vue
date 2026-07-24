@@ -28,7 +28,10 @@
           v-for="(item, index) in courseAttrList"
           :key="index"
           class="material-item"
-          :class="{ dark: currentTheme === 'dark' }"
+          :class="{
+            dark: currentTheme === 'dark',
+            'is-unavailable': !hasMaterialUrl(item)
+          }"
           @click="viewMaterial(item)"
         >
           <div class="material-icon">
@@ -44,7 +47,14 @@
             </div>
           </div>
           <div class="material-action">
-            <el-button size="small" type="primary">查看</el-button>
+            <el-button
+              size="small"
+              type="primary"
+              :disabled="!hasMaterialUrl(item)"
+              @click.stop="viewMaterial(item)"
+            >
+              {{ hasMaterialUrl(item) ? "查看" : "暂不可用" }}
+            </el-button>
           </div>
         </div>
       </div>
@@ -90,12 +100,18 @@ const getMaterialTypeName = (type: string) => {
   return typeMap[type] || "其他资源";
 };
 
+const hasMaterialUrl = (material: any) =>
+  typeof material?.fileUrl === "string" && material.fileUrl.trim().length > 0;
+
 // 查看课程资料
 const viewMaterial = (material: any) => {
-  if (material && material.fileUrl) {
-    if (!openPlatformUrl(material.fileUrl).opened) {
-      ElMessage.warning("当前环境无法打开该资料");
-    }
+  if (!hasMaterialUrl(material)) {
+    ElMessage.warning("该资料暂未提供可访问地址");
+    return;
+  }
+
+  if (!openPlatformUrl(material.fileUrl.trim()).opened) {
+    ElMessage.warning("当前环境无法打开该资料");
   }
 };
 </script>
@@ -165,6 +181,16 @@ const viewMaterial = (material: any) => {
   background-color: #2a2a2a;
   border-color: #3e3e3e;
   box-shadow: 0 2px 6px rgb(0 0 0 / 20%);
+}
+
+.material-item.is-unavailable {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.material-item.is-unavailable:hover,
+.material-item.is-unavailable.dark:hover {
+  box-shadow: 0 2px 6px rgb(0 0 0 / 5%);
 }
 
 .material-item:hover {

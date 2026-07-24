@@ -6,6 +6,7 @@ import { getCourseStats, type CourseStatsResult } from "@/api/course";
 
 const { isDark } = useDark();
 const loading = ref(true);
+const loadError = ref("");
 
 interface StatItem {
   title: string;
@@ -68,20 +69,35 @@ const buildStats = (data?: CourseStatsResult): StatItem[] => {
 
 const stats = ref<StatItem[]>(buildStats());
 
-onMounted(async () => {
+const fetchStats = async () => {
+  loadError.value = "";
+  loading.value = true;
   try {
-    const { data } = await getCourseStats();
-    if (data) stats.value = buildStats(data);
+    const response = await getCourseStats();
+    if (response?.code !== 200 || !response.data) {
+      throw new Error(response?.msg || "课程概览接口未返回有效数据");
+    }
+    stats.value = buildStats(response.data);
   } catch (error) {
     console.error("Failed to fetch course overview:", error);
+    loadError.value = "课程概览暂时无法加载";
   } finally {
     loading.value = false;
   }
+};
+
+onMounted(() => {
+  void fetchStats();
 });
 </script>
 
 <template>
-  <el-row v-loading="loading" :gutter="20" class="stats-overview-row">
+  <div v-if="loadError && !loading" class="stats-overview-state">
+    <el-empty :description="loadError" :image-size="64">
+      <el-button type="primary" plain @click="fetchStats">重新加载</el-button>
+    </el-empty>
+  </div>
+  <el-row v-else v-loading="loading" :gutter="20" class="stats-overview-row">
     <el-col
       v-for="(item, index) in stats"
       :key="index"
@@ -151,6 +167,13 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.stats-overview-state {
+  display: flex;
+  min-height: 180px;
+  align-items: center;
+  justify-content: center;
+}
+
 .stat-card {
   position: relative;
   overflow: hidden;
@@ -177,6 +200,10 @@ onMounted(async () => {
   .stats-overview-row {
     margin-right: -4px !important;
     margin-left: -4px !important;
+  }
+
+  .stats-overview-state {
+    min-height: 152px;
   }
 
   .stat-col {

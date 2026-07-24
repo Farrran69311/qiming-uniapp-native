@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, computed, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useDark, useECharts, useResizeObserver } from "@pureadmin/utils";
 import { getTeacherUsage, getStudentUsage } from "@/api/statistics";
 import { useAppStoreHook } from "@/store/modules/app";
@@ -9,8 +9,12 @@ defineOptions({
 });
 
 const loading = ref(true);
+const loadError = ref("");
 const teacherData = ref<{ date: string; usageNum: number }[]>([]);
 const studentData = ref<{ date: string; usageNum: number }[]>([]);
+const hasUsageData = computed(
+  () => teacherData.value.length > 0 || studentData.value.length > 0
+);
 const appStore = useAppStoreHook();
 const isMobile = computed(() => appStore.getDevice === "mobile");
 
@@ -28,6 +32,7 @@ useResizeObserver(chartRef, () => resize(), {
 
 // 获取教师和学生使用情况数据
 const fetchData = async () => {
+  loadError.value = "";
   loading.value = true;
   try {
     const [teacherRes, studentRes] = await Promise.all([
@@ -35,28 +40,45 @@ const fetchData = async () => {
       getStudentUsage()
     ]);
 
-    if (teacherRes?.data?.usageInfoList) {
-      teacherData.value = teacherRes.data.usageInfoList;
+    if (
+      teacherRes?.code !== 200 ||
+      studentRes?.code !== 200 ||
+      !Array.isArray(teacherRes.data?.usageInfoList) ||
+      !Array.isArray(studentRes.data?.usageInfoList)
+    ) {
+      throw new Error("平台活跃度接口未返回有效数据");
     }
 
-    if (studentRes?.data?.usageInfoList) {
-      studentData.value = studentRes.data.usageInfoList;
-    }
-
-    renderChart();
+    teacherData.value = teacherRes.data.usageInfoList;
+    studentData.value = studentRes.data.usageInfoList;
   } catch (error) {
     console.error("获取使用情况数据失败:", error);
+    teacherData.value = [];
+    studentData.value = [];
+    loadError.value = "平台活跃度暂时无法加载";
   } finally {
     loading.value = false;
+    await nextTick();
+    if (!loadError.value && hasUsageData.value) renderChart();
   }
 };
 
 // 渲染图表
 const renderChart = () => {
-  // 从数据中提取日期和使用次数
-  const dates = teacherData.value.map(item => item.date);
-  const teacherUsage = teacherData.value.map(item => item.usageNum);
-  const studentUsage = studentData.value.map(item => item.usageNum);
+  const dates = Array.from(
+    new Set([
+      ...teacherData.value.map(item => item.date),
+      ...studentData.value.map(item => item.date)
+    ])
+  ).sort();
+  const teacherUsageMap = new Map(
+    teacherData.value.map(item => [item.date, item.usageNum])
+  );
+  const studentUsageMap = new Map(
+    studentData.value.map(item => [item.date, item.usageNum])
+  );
+  const teacherUsage = dates.map(date => teacherUsageMap.get(date) ?? 0);
+  const studentUsage = dates.map(date => studentUsageMap.get(date) ?? 0);
 
   setOptions({
     tooltip: {
@@ -182,21 +204,17 @@ const renderChart = () => {
 };
 
 watch(
-  () => [teacherData.value, studentData.value, isMobile.value],
+  () => isMobile.value,
   () => {
-    renderChart();
-  },
-  { deep: true }
+    if (hasUsageData.value) renderChart();
+  }
 );
 
 // 监听主题变化，重新渲染图表
 watch(
   () => isDark.value,
   () => {
-    if (
-      !loading.value &&
-      (teacherData.value.length > 0 || studentData.value.length > 0)
-    ) {
+    if (!loading.value && hasUsageData.value) {
       renderChart();
     }
   }
@@ -211,7 +229,18 @@ onMounted(() => {
   <div class="w-full">
     <el-skeleton :loading="loading" animated :rows="6">
       <template #default>
+        <el-empty v-if="loadError" :description="loadError" :image-size="64">
+          <el-button type="primary" plain @click="fetchData">
+            重新加载
+          </el-button>
+        </el-empty>
+        <el-empty
+          v-else-if="!hasUsageData"
+          description="最近 7 天暂无平台活跃数据"
+          :image-size="64"
+        />
         <div
+          v-else
           ref="chartRef"
           class="usage-chart"
           style="width: 100%; height: 350px"

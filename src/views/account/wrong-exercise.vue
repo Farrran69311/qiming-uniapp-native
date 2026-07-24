@@ -73,6 +73,11 @@
                     size="default"
                     value-format="YYYY-MM-DD"
                     class="filter-date"
+                    style="
+                      width: 100%;
+                      max-width: 100%;
+                      --el-date-editor-width: 100%;
+                    "
                     popper-class="custom-select-popper"
                   />
                 </div>
@@ -104,7 +109,7 @@
                   <el-button
                     size="default"
                     :type="selectionMode ? 'warning' : 'primary'"
-                    :disabled="batchAnalyzing"
+                    :disabled="batchAnalyzing || !courseId"
                     class="action-btn"
                     @click="toggleSelectionMode"
                   >
@@ -142,7 +147,7 @@
                       :min="1"
                       :max="10"
                       size="default"
-                      :disabled="batchAnalyzing"
+                      :disabled="batchAnalyzing || !courseId"
                       class="concurrency-input"
                     />
                   </div>
@@ -151,7 +156,11 @@
                     v-if="selectionMode"
                     size="default"
                     type="success"
-                    :disabled="batchAnalyzing || selectedUnAnalyzedCount === 0"
+                    :disabled="
+                      batchAnalyzing ||
+                      !courseId ||
+                      selectedUnAnalyzedCount === 0
+                    "
                     :loading="batchAnalyzing"
                     class="action-btn analyze-btn"
                     @click="batchAnalyzeSelected"
@@ -163,7 +172,9 @@
                     v-else
                     size="default"
                     type="success"
-                    :disabled="batchAnalyzing || unAnalyzedCount === 0"
+                    :disabled="
+                      batchAnalyzing || !courseId || unAnalyzedCount === 0
+                    "
                     :loading="batchAnalyzing"
                     class="action-btn analyze-btn"
                     @click="() => batchAnalyze()"
@@ -188,23 +199,38 @@
           </div>
         </template>
 
+        <el-alert
+          v-if="!courseId"
+          class="course-context-alert"
+          title="当前显示全部课程错题；请从具体课程进入随练后使用 AI 分析。"
+          type="info"
+          show-icon
+          :closable="false"
+        />
+
         <el-empty v-if="loading" description="加载中..." />
+
+        <el-result
+          v-else-if="loadError"
+          icon="warning"
+          title="错题记录加载失败"
+          :sub-title="loadError"
+        >
+          <template #extra>
+            <el-button type="primary" @click="fetchList">重新加载</el-button>
+          </template>
+        </el-result>
 
         <div v-else>
           <el-alert
-            v-if="historyUnavailable && !listError"
-            class="history-alert"
+            v-if="analysisHistoryError"
+            class="analysis-history-alert"
+            :title="analysisHistoryError"
             type="warning"
-            :closable="false"
             show-icon
-            title="错题分析历史暂不可用，当前仅显示错题列表"
+            :closable="false"
           />
-
-          <el-empty v-if="listError" :description="listError">
-            <el-button type="primary" @click="fetchList">重新加载</el-button>
-          </el-empty>
-
-          <el-empty v-else-if="!records.length" description="暂无错题记录" />
+          <el-empty v-if="!records.length" description="暂无错题记录" />
 
           <template v-else>
             <div class="list-stats">
@@ -357,9 +383,9 @@ const page = ref(1);
 const pageSize = ref(10);
 const total = ref(0);
 const loading = ref(false);
+const loadError = ref("");
+const analysisHistoryError = ref("");
 const records = ref<WrongQuestionListResult["list"]>([] as any);
-const listError = ref("");
-const historyUnavailable = ref(false);
 // 筛选状态
 const filterSource = ref<number | undefined>();
 const filterType = ref<number | undefined>();
@@ -401,8 +427,8 @@ function resetFilters() {
 const courseId = computed<number | undefined>(() => {
   const raw = props.courseId ?? route.query.courseId ?? route.params.id;
   if (Array.isArray(raw)) return undefined;
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  const value = Number(raw);
+  return Number.isSafeInteger(value) && value > 0 ? value : undefined;
 });
 
 const detailCourseId = computed(() => courseId.value ?? "");
@@ -452,22 +478,9 @@ async function batchAnalyzeSelected() {
   await batchAnalyze(subset);
 }
 
-function isSuccessfulResponse(code: unknown) {
-  return [0, 200].includes(Number(code));
-}
-
-function apiFailureMessage(error: any, fallback: string) {
-  if (Number(error?.response?.status) === 404) {
-    return `${fallback}接口暂未部署，请稍后重试`;
-  }
-  return (
-    error?.response?.data?.msg || error?.response?.data?.message || fallback
-  );
-}
-
 const fetchList = async () => {
   loading.value = true;
-  listError.value = "";
+  loadError.value = "";
   const params: Parameters<typeof getUserWrongQuestionList>[0] = {
     pageNum: page.value,
     pageSize: pageSize.value
@@ -475,48 +488,66 @@ const fetchList = async () => {
   if (courseId.value !== undefined) params.courseId = courseId.value;
   if (filterSource.value !== undefined) params.sourceType = filterSource.value;
   try {
-    const { code, data, msg } = await getUserWrongQuestionList(params);
-    if (isSuccessfulResponse(code) && data && Array.isArray(data.list)) {
-      records.value = data.list;
-      total.value = (data as any).total || 0;
-    } else {
-      records.value = [];
-      total.value = 0;
-      listError.value = msg || "错题记录暂不可用，请稍后重试";
+    const { code, data } = await getUserWrongQuestionList(params);
+    if (
+      code !== 200 ||
+      !data ||
+      !Array.isArray((data as any).list) ||
+      typeof (data as any).total !== "number"
+    ) {
+      throw new Error("错题列表返回异常");
     }
+    records.value = (data as any).list;
+    total.value = (data as any).total;
   } catch (error) {
-    records.value = [];
+    records.value = [] as any;
     total.value = 0;
-    listError.value = apiFailureMessage(error, "错题记录暂不可用，请稍后重试");
+    const source = error as any;
+    loadError.value =
+      source?.response?.data?.msg ||
+      source?.message ||
+      "错题记录加载失败，请稍后重试";
+    console.error("错题记录加载失败:", error);
   } finally {
     loading.value = false;
   }
 };
 
 const fetchAnalyzedHistory = async () => {
-  historyUnavailable.value = false;
-  analysisHistoryMap.value = {};
-  const params: Parameters<typeof getWrongExerciseHistory>[0] = {
-    page: 1,
-    page_size: 100
-  };
-  if (courseId.value !== undefined) params.course_id = courseId.value;
+  analysisHistoryError.value = "";
+  if (!courseId.value) {
+    analysisHistoryMap.value = {};
+    return;
+  }
   try {
-    const { code, data } = await getWrongExerciseHistory(params);
-    if (isSuccessfulResponse(code) && data?.records) {
-      const map: Record<string, WrongExerciseAnalyzeResponse> = {};
-      for (const rec of data.records) {
-        map[String(rec.original_exercise_id)] = {
-          analysis: rec.analysis,
-          generated_exercises: rec.generated_exercises
-        } as WrongExerciseAnalyzeResponse;
-      }
-      analysisHistoryMap.value = map;
-    } else {
-      historyUnavailable.value = true;
+    const { code, msg, data } = await getWrongExerciseHistory({
+      course_id: courseId.value,
+      page: 1,
+      page_size: 100
+    });
+    const historyRecords = data?.records ?? [];
+    if (
+      (code !== 0 && code !== 200) ||
+      !data ||
+      !Array.isArray(historyRecords)
+    ) {
+      throw new Error(msg || "AI 分析历史返回异常");
     }
-  } catch {
-    historyUnavailable.value = true;
+    const map: Record<string, WrongExerciseAnalyzeResponse> = {};
+    for (const rec of historyRecords) {
+      map[String(rec.original_exercise_id)] = {
+        analysis: rec.analysis,
+        generated_exercises: rec.generated_exercises
+      } as WrongExerciseAnalyzeResponse;
+    }
+    analysisHistoryMap.value = map;
+  } catch (error) {
+    const source = error as any;
+    analysisHistoryError.value =
+      source?.response?.data?.msg ||
+      source?.message ||
+      "AI 分析历史暂未加载，已有分析标记可能不完整";
+    console.warn("错题 AI 分析历史加载失败:", error);
   }
 };
 
@@ -590,8 +621,9 @@ function cancelBatch() {
 
 async function batchAnalyze(customList?: any[]) {
   if (batchAnalyzing.value) return;
-  if (courseId.value === undefined) {
-    ElMessage.warning("当前错题缺少课程上下文，暂不能进行 AI 分析");
+  const analysisCourseId = courseId.value;
+  if (!analysisCourseId) {
+    ElMessage.warning("请从具体课程进入随练后使用 AI 分析");
     return;
   }
   const toAnalyze =
@@ -645,7 +677,7 @@ async function batchAnalyze(customList?: any[]) {
               "@/api/frontend/wrong-exercise"
             );
             const { data } = await analyzeWrongExercise({
-              course_id: courseId.value,
+              course_id: analysisCourseId,
               original_exercise_id: key,
               original_exercise_content: item.stem,
               student_answer: item.userAnswer || "",
@@ -944,6 +976,11 @@ onMounted(async () => {
 
 .main-content.dark .list-stats .stats-count {
   color: #38bdf8;
+}
+
+.course-context-alert,
+.analysis-history-alert {
+  margin-bottom: 16px;
 }
 
 /* ============== 筛选区 ============== */
@@ -1432,11 +1469,29 @@ onMounted(async () => {
   .filter-group,
   .date-group {
     width: 100%;
+    min-width: 0;
   }
 
   .filter-select,
   .filter-date {
     width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .filter-date.el-date-editor--daterange {
+    width: 100% !important;
+  }
+
+  .filter-date :deep(.el-range-input) {
+    flex: 1 1 0;
+    width: 0;
+    min-width: 0;
+  }
+
+  .filter-date :deep(.el-range-separator) {
+    flex: 0 0 24px;
+    padding: 0;
   }
 
   .filter-actions {
@@ -1497,6 +1552,7 @@ onMounted(async () => {
 
   .practice-container .main-content :deep(.el-card) {
     width: 100%;
+    border-radius: 14px;
   }
 
   .practice-container .main-content :deep(.el-card__header),
@@ -1523,7 +1579,8 @@ onMounted(async () => {
   }
 
   .filters-section {
-    padding: 16px;
+    padding: 12px;
+    border-radius: 12px;
   }
 
   .header-title {
@@ -1535,10 +1592,21 @@ onMounted(async () => {
     font-size: 13px;
   }
 
+  .action-btn.is-disabled,
+  .action-btn.is-disabled:hover {
+    color: #94a3b8;
+    cursor: not-allowed;
+    background: #eef2f7;
+    border-color: #d8e0ea;
+    box-shadow: none;
+    opacity: 1;
+    transform: none;
+  }
+
   .wrong-item {
     grid-template-columns: 1fr;
     gap: 12px;
-    padding: 16px;
+    padding: 12px;
   }
 
   .wrong-icon {
@@ -1567,10 +1635,6 @@ onMounted(async () => {
   .practice-container .main-content :deep(.el-card__body) {
     padding: 8px;
   }
-}
-
-.history-alert {
-  margin: 0 0 12px;
 }
 </style>
 

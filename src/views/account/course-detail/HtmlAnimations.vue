@@ -113,15 +113,6 @@
           <span class="title">HTML动画预览</span>
         </div>
         <div class="header-actions">
-          <!-- 管理员预览时可见的快照按钮 (示例) -->
-          <div
-            class="action-btn capture-btn"
-            title="截取当前画面为封面"
-            @click="captureAndUpload"
-          >
-            <el-icon size="18"><component :is="Camera" /></el-icon>
-            <span class="btn-text">设为封面</span>
-          </div>
           <div class="action-btn" title="新窗口打开" @click="openHtmlAnimInNew">
             <el-icon size="18"><component :is="ExternalLink" /></el-icon>
           </div>
@@ -159,11 +150,10 @@ import VideoPlay from "~icons/ep/video-play";
 import Close from "~icons/ep/close";
 import ExternalLink from "~icons/ep/link";
 import Loading from "~icons/ep/loading";
-import Camera from "~icons/ep/camera";
 import type { HtmlAnimationDisplayItem } from "./htmlAnimationDisplay";
 
 // Props
-const props = defineProps<{
+defineProps<{
   visible: boolean;
   currentTheme: string;
   loading: boolean;
@@ -204,18 +194,6 @@ const statusText = (item: {
 watch(htmlAnimPreviewVisible, val => {
   if (val) iframeLoading.value = true;
 });
-
-// 模拟快照采集（实际开发中需通过 iframe postMessage 获取或画布截取）
-const captureAndUpload = () => {
-  const chapter = props.animationList.find(
-    a => a.url === htmlAnimPreviewUrl.value
-  );
-  if (!chapter) return;
-
-  // 这里可以具体扩展为调用 html2canvas 或后端接口
-  console.log(`正在为章节 ${chapter.chapterName} 采集画面并设为封面...`);
-  // 后续对接：ElMessage.success("快照已提交，正在生成新封面...");
-};
 
 // 打开 HTML 动画预览
 const openHtmlAnimation = (item: { url: string }) => {

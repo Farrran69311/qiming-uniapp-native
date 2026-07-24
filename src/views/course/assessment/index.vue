@@ -264,7 +264,7 @@ onMounted(() => {
   gap: 12px;
   overflow: visible;
   flex-direction: column;
-  padding: 12px;
+  padding: 0;
 }
 
 @mixin assessment-mobile-panel-layout {

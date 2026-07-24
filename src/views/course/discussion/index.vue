@@ -29,6 +29,7 @@ import {
   type PendingItem
 } from "@/api/discussion-admin";
 import { formatAvatar } from "@/utils/avatar";
+import { renderDiscussionContent } from "@/api/discussionContent";
 import InfoIcon from "@/assets/commentareasrelatedsvgs/information-circle-svgrepo-com.svg?component";
 
 defineOptions({
@@ -42,6 +43,8 @@ type TagType = "danger" | "warning" | "info" | "success" | "primary";
 
 // 状态
 const loading = ref(false);
+const actionPending = ref(false);
+const loadError = ref("");
 const reviewItems = ref<ReviewQueueItem[]>([]);
 const selectedIds = ref<string[]>([]);
 const detailDialogVisible = ref(false);
@@ -51,8 +54,8 @@ const selectedCount = computed(() => selectedIds.value.length);
 // 统计数据
 const stats = ref({
   pending: 0,
-  highPriority: 0,
-  avgWaitTime: "0小时",
+  highPriority: null as number | null,
+  avgWaitTime: null as string | null,
   courses: [] as Array<{
     courseId: string;
     courseName: string;
@@ -64,8 +67,7 @@ const stats = ref({
 
 // 搜索表单
 const searchForm = reactive({
-  courseId: "",
-  priority: "" as "" | "high" | "medium" | "low"
+  courseId: ""
 });
 
 // 分页
@@ -75,18 +77,10 @@ const pagination = reactive({
   total: 0
 });
 
-// 优先级选项
-const priorityOptions = [
-  { label: "全部", value: "" },
-  { label: "高优先级", value: "high" },
-  { label: "中优先级", value: "medium" },
-  { label: "低优先级", value: "low" }
-];
 const activeFilterCount = computed(() => {
   let count = 0;
 
   if (searchForm.courseId) count += 1;
-  if (searchForm.priority) count += 1;
 
   return count;
 });
@@ -96,6 +90,8 @@ const filterBadgeText = computed(() =>
     : "当前展示全部待审内容"
 );
 const queueSummaryText = computed(() => {
+  if (loadError.value) return "待审内容加载失败";
+
   if (loading.value && pagination.total === 0) {
     return "正在同步待审内容...";
   }
@@ -112,7 +108,7 @@ const queueSummaryText = computed(() => {
 });
 
 // 优先级标签样式
-const priorityTagType = (priority: string): TagType => {
+const priorityTagType = (priority?: string): TagType => {
   const map: Record<string, TagType> = {
     high: "danger",
     medium: "warning",
@@ -121,17 +117,17 @@ const priorityTagType = (priority: string): TagType => {
   return map[priority] || "info";
 };
 
-const priorityText = (priority: string): string => {
+const priorityText = (priority?: string): string => {
   const map: Record<string, string> = {
     high: "高",
     medium: "中",
     low: "低"
   };
-  return map[priority] || priority;
+  return (priority && map[priority]) || "未提供";
 };
 
 // 风险等级标签
-const riskLevelType = (level: string): TagType => {
+const riskLevelType = (level?: string): TagType => {
   const map: Record<string, TagType> = {
     low: "success",
     medium: "warning",
@@ -141,24 +137,26 @@ const riskLevelType = (level: string): TagType => {
   return map[level] || "info";
 };
 
-const riskLevelText = (level: string): string => {
+const riskLevelText = (level?: string): string => {
   const map: Record<string, string> = {
     low: "低风险",
     medium: "中风险",
     high: "高风险",
     critical: "严重"
   };
-  return map[level] || level;
+  return (level && map[level]) || "未提供";
 };
+
+const getErrorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error && error.message ? error.message : fallback;
+
+let latestDataRequest = 0;
 
 // 加载数据- 使用 getPendingList获取待审核内容（包括帖子和回复）
 const fetchData = async () => {
-  // 注意：批量操作时 loading 己由外部设置，此处不要重复判断 return
-  // 如果是普通加载且正在加载中，则跳过
-  if (loading.value && reviewItems.value.length === 0) return;
-
+  const requestId = ++latestDataRequest;
   loading.value = true;
-  reviewItems.value = []; // 清空当前列表，防止筛选后由于加载慢导致"没动弹"的错觉
+  loadError.value = "";
   try {
     // 使用待审核列表接口获取待审核内容
     const res = await getPendingList({
@@ -168,9 +166,8 @@ const fetchData = async () => {
       pageSize: pagination.pageSize
     });
 
-    // 兼容后端返回格式
-    const list = res?.list || [];
-    const total = res?.total || 0;
+    const list = res.list;
+    const total = res.total;
 
     // 提取所有用户 ID，获取用户头像
     const userIds = list.map((item: PendingItem) => item.authorId);
@@ -183,7 +180,8 @@ const fetchData = async () => {
       }
     }
 
-    // 转换 PendingItem 为 ReviewQueueItem 格式
+    if (requestId !== latestDataRequest) return;
+
     reviewItems.value = list.map((item: PendingItem) =>
       mapPendingItemToReviewQueueItem(item, avatarMap.get(item.authorId))
     );
@@ -191,9 +189,14 @@ const fetchData = async () => {
     pagination.total = total;
     stats.value.pending = total;
   } catch (error) {
+    if (requestId !== latestDataRequest) return;
     console.error("加载审核队列失败", error);
+    reviewItems.value = [];
+    pagination.total = 0;
+    stats.value.pending = 0;
+    loadError.value = getErrorMessage(error, "加载待审内容失败，请重试");
   } finally {
-    loading.value = false;
+    if (requestId === latestDataRequest) loading.value = false;
   }
 };
 
@@ -226,7 +229,6 @@ const handleSearch = () => {
 // 重置搜索
 const resetSearch = () => {
   searchForm.courseId = "";
-  searchForm.priority = "";
   handleSearch();
 };
 
@@ -270,6 +272,8 @@ const viewDetail = (row: ReviewQueueItem) => {
 
 // 审核通过
 const handleApprove = async (row: ReviewQueueItem) => {
+  if (actionPending.value) return;
+  actionPending.value = true;
   try {
     if (row.itemType === "reply") {
       await reviewReply(row.id, { action: "approve" });
@@ -288,12 +292,16 @@ const handleApprove = async (row: ReviewQueueItem) => {
     // 增加延迟刷新，防止后端同步延迟
     setTimeout(() => fetchData(), 800);
   } catch (error) {
-    ElMessage.error("审核操作失败，请重试");
+    ElMessage.error(getErrorMessage(error, "审核操作失败，请重试"));
+  } finally {
+    actionPending.value = false;
   }
 };
 
 // 审核拒绝
 const handleReject = async (row: ReviewQueueItem) => {
+  if (actionPending.value) return;
+  actionPending.value = true;
   try {
     const { value } = await ElMessageBox.prompt("请输入拒绝原因", "拒绝审核", {
       confirmButtonText: "确定",
@@ -317,42 +325,44 @@ const handleReject = async (row: ReviewQueueItem) => {
     setTimeout(() => fetchData(), 800);
   } catch (error: any) {
     if (error !== "cancel") {
-      ElMessage.error("操作失败，请检查网络");
+      ElMessage.error(getErrorMessage(error, "操作失败，请检查网络"));
     }
+  } finally {
+    actionPending.value = false;
   }
 };
 
 // 置顶逻辑
 const handlePin = async (row: ReviewQueueItem) => {
-  loading.value = true;
+  if (actionPending.value) return;
+  actionPending.value = true;
   try {
     await pinPost(row.id);
-    // HTTP 200 OK 即为成功
     row.isPinned = true;
     ElMessage.success("成功设为置顶");
     // 不自动刷新列表，本地状态已更新，避免后端同步延迟导致状态被覆盖
   } catch (error) {
     console.error("置顶操作失败:", error);
-    ElMessage.error("置顶操作失败");
+    ElMessage.error(getErrorMessage(error, "置顶操作失败"));
   } finally {
-    loading.value = false;
+    actionPending.value = false;
   }
 };
 
 // 取消置顶逻辑
 const handleUnpin = async (row: ReviewQueueItem) => {
-  loading.value = true;
+  if (actionPending.value) return;
+  actionPending.value = true;
   try {
     await unpinPost(row.id);
-    // HTTP 200 OK 即为成功
     row.isPinned = false;
     ElMessage.success("已取消置顶");
     // 不自动刷新列表，本地状态已更新，避免后端同步延迟导致状态被覆盖
   } catch (error) {
     console.error("取消置顶操作失败:", error);
-    ElMessage.error("取消置顶操作失败");
+    ElMessage.error(getErrorMessage(error, "取消置顶操作失败"));
   } finally {
-    loading.value = false;
+    actionPending.value = false;
   }
 };
 
@@ -362,6 +372,8 @@ const handleBatchApprove = async () => {
     ElMessage.warning("请先勾选需要审核的内容");
     return;
   }
+  if (actionPending.value) return;
+  actionPending.value = true;
   try {
     await ElMessageBox.confirm(
       `确定要批量通过选中的 ${selectedIds.value.length} 条内容吗？`,
@@ -414,10 +426,11 @@ const handleBatchApprove = async () => {
     setTimeout(() => fetchData(), 1000);
   } catch (error: any) {
     if (error !== "cancel") {
-      ElMessage.error("批量操作过程中产生错误");
+      ElMessage.error(getErrorMessage(error, "批量操作过程中产生错误"));
     }
   } finally {
     loading.value = false;
+    actionPending.value = false;
   }
 };
 
@@ -427,6 +440,8 @@ const handleBatchReject = async () => {
     ElMessage.warning("请先勾选需要拒绝的内容");
     return;
   }
+  if (actionPending.value) return;
+  actionPending.value = true;
   try {
     const { value } = await ElMessageBox.prompt(
       `确定要批量拒绝选中的 ${selectedIds.value.length} 条内容吗？`,
@@ -479,10 +494,11 @@ const handleBatchReject = async () => {
     setTimeout(() => fetchData(), 1000);
   } catch (error: any) {
     if (error !== "cancel") {
-      ElMessage.error("批量操作失败");
+      ElMessage.error(getErrorMessage(error, "批量操作失败"));
     }
   } finally {
     loading.value = false;
+    actionPending.value = false;
   }
 };
 
@@ -588,8 +604,8 @@ onActivated(() => {
               <el-icon :size="30"><Warning /></el-icon>
             </div>
             <div class="stat-info">
-              <div class="stat-number">{{ stats.highPriority }}</div>
-              <div class="stat-label">高风险预警</div>
+              <div class="stat-number">{{ stats.highPriority ?? "--" }}</div>
+              <div class="stat-label">高风险数据未提供</div>
             </div>
           </div>
         </el-card>
@@ -601,8 +617,8 @@ onActivated(() => {
               <el-icon :size="30"><Clock /></el-icon>
             </div>
             <div class="stat-info">
-              <div class="stat-number">{{ stats.avgWaitTime }}</div>
-              <div class="stat-label">平均处理时效</div>
+              <div class="stat-number">{{ stats.avgWaitTime ?? "--" }}</div>
+              <div class="stat-label">平均时效未提供</div>
             </div>
           </div>
         </el-card>
@@ -653,18 +669,12 @@ onActivated(() => {
         </el-form-item>
         <el-form-item label="优先级">
           <el-select
-            v-model="searchForm.priority"
-            placeholder="内容优先级"
-            clearable
+            model-value=""
+            placeholder="后端暂未提供"
+            disabled
             style="width: 150px"
-            @change="handleSearch"
           >
-            <el-option
-              v-for="opt in priorityOptions"
-              :key="opt.value"
-              :label="opt.label"
-              :value="opt.value"
-            />
+            <el-option label="后端暂未提供" value="" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -686,7 +696,7 @@ onActivated(() => {
         <el-button
           type="success"
           :icon="Check"
-          :disabled="selectedCount === 0"
+          :disabled="selectedCount === 0 || actionPending"
           @click="handleBatchApprove"
         >
           批量通过
@@ -694,7 +704,7 @@ onActivated(() => {
         <el-button
           type="danger"
           :icon="Close"
-          :disabled="selectedCount === 0"
+          :disabled="selectedCount === 0 || actionPending"
           @click="handleBatchReject"
         >
           批量拒绝
@@ -706,7 +716,12 @@ onActivated(() => {
           <el-icon><Warning /></el-icon>
           已选中 {{ selectedCount }} 个待审项
         </div>
-        <el-button :icon="Refresh" text @click="initData(true)">
+        <el-button
+          :icon="Refresh"
+          text
+          :disabled="loading || actionPending"
+          @click="initData(true)"
+        >
           同步数据
         </el-button>
       </div>
@@ -714,6 +729,19 @@ onActivated(() => {
 
     <!-- 数据表格 -->
     <el-card v-loading="loading" shadow="never" class="data-card review-panel">
+      <div v-if="loadError" class="load-error mb-4">
+        <el-alert
+          title="待审内容加载失败"
+          :description="loadError"
+          type="error"
+          show-icon
+          :closable="false"
+        />
+        <el-button type="primary" plain :icon="Refresh" @click="fetchData">
+          重试
+        </el-button>
+      </div>
+
       <div v-if="isMobile" class="mobile-review-list">
         <div
           v-for="row in reviewItems"
@@ -737,7 +765,11 @@ onActivated(() => {
                 round
                 size="small"
               >
-                {{ priorityText(row.priority) }}优先级
+                {{
+                  row.priority
+                    ? `${priorityText(row.priority)}优先级`
+                    : "优先级未提供"
+                }}
               </el-tag>
               <el-tag
                 :type="riskLevelType(row.riskLevel)"
@@ -797,16 +829,27 @@ onActivated(() => {
 
           <div class="mobile-review-card__actions">
             <el-button plain @click="viewDetail(row)">详情审核</el-button>
-            <el-button type="success" plain @click="handleApprove(row)">
+            <el-button
+              type="success"
+              plain
+              :disabled="actionPending"
+              @click="handleApprove(row)"
+            >
               直接通过
             </el-button>
-            <el-button type="danger" plain @click="handleReject(row)">
+            <el-button
+              type="danger"
+              plain
+              :disabled="actionPending"
+              @click="handleReject(row)"
+            >
               违规拒绝
             </el-button>
             <el-button
               v-if="row.itemType === 'post'"
               type="warning"
               plain
+              :disabled="actionPending"
               @click="row.isPinned ? handleUnpin(row) : handlePin(row)"
             >
               {{ row.isPinned ? "取消置顶" : "设为置顶" }}
@@ -815,7 +858,7 @@ onActivated(() => {
         </div>
 
         <el-empty
-          v-if="!loading && reviewItems.length === 0"
+          v-if="!loading && !loadError && reviewItems.length === 0"
           description="暂无待审核内容"
         />
       </div>
@@ -823,6 +866,7 @@ onActivated(() => {
       <el-table
         v-else
         :data="reviewItems"
+        :empty-text="loadError ? '数据加载失败' : '暂无待审核内容'"
         row-class-name="review-table-row"
         @selection-change="handleSelectionChange"
       >
@@ -936,7 +980,7 @@ onActivated(() => {
           fixed="right"
         >
           <template #default="{ row }">
-            <div class="action-btns">
+            <div class="action-btns" :class="{ 'is-disabled': actionPending }">
               <el-tooltip content="进入详情审核" placement="top">
                 <div class="btn-icon-wrapper view" @click="viewDetail(row)">
                   <el-icon :size="18"><InfoIcon /></el-icon>
@@ -977,7 +1021,7 @@ onActivated(() => {
       </el-table>
 
       <!-- 分页 -->
-      <div class="flex justify-end mt-4">
+      <div v-if="!loadError" class="flex justify-end mt-4">
         <el-pagination
           v-model:current-page="pagination.page"
           v-model:page-size="pagination.pageSize"
@@ -1025,7 +1069,7 @@ onActivated(() => {
           </div>
           <div
             class="content-body"
-            v-html="currentDetail.contentHtml || currentDetail.content"
+            v-html="renderDiscussionContent(currentDetail.content)"
           />
         </div>
       </div>
@@ -1033,10 +1077,17 @@ onActivated(() => {
       <template #footer>
         <div class="dialog-footer">
           <el-button @click="detailDialogVisible = false">跳过</el-button>
-          <el-button type="danger" plain @click="handleDetailReject"
+          <el-button
+            type="danger"
+            plain
+            :disabled="actionPending"
+            @click="handleDetailReject"
             >拒绝</el-button
           >
-          <el-button type="primary" @click="handleDetailApprove"
+          <el-button
+            type="primary"
+            :disabled="actionPending"
+            @click="handleDetailApprove"
             >通过</el-button
           >
         </div>
@@ -1047,6 +1098,14 @@ onActivated(() => {
 
 <style lang="scss" scoped>
 .review-queue {
+  .load-error {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    min-width: 0;
+  }
+
   .review-stats-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1517,6 +1576,11 @@ onActivated(() => {
           color: #f59e0b;
         }
       }
+    }
+
+    .action-btns.is-disabled {
+      pointer-events: none;
+      opacity: 0.55;
     }
   }
 

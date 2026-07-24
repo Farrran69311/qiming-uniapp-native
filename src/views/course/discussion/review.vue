@@ -3,7 +3,7 @@
  * 教师端- 课程讨论管理
  *教师可以管理所授课程的讨论内容，包括审核、置顶、删除等操作
  */
-import { computed, ref, reactive, onMounted, onActivated, watch } from "vue";
+import { computed, ref, reactive, onMounted, onActivated } from "vue";
 import { useRoute } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { usePageResponsive } from "@/utils/pageResponsive";
@@ -34,6 +34,7 @@ import {
   type ReviewQueueItem
 } from "@/api/discussion-admin";
 import { updateReply, updateDiscussion } from "@/api/discussion";
+import { renderDiscussionContent } from "@/api/discussionContent";
 import HeartIcon from "@/assets/commentareasrelatedsvgs/heart-svgrepo-com.svg?component";
 import CommentIcon from "@/assets/commentareasrelatedsvgs/comment-lines-svgrepo-com.svg?component";
 import InfoIcon from "@/assets/commentareasrelatedsvgs/information-circle-svgrepo-com.svg?component";
@@ -50,10 +51,15 @@ type TagType = "danger" | "warning" | "info" | "success" | "primary";
 
 // 状态
 const loading = ref(false);
+const actionPending = ref(false);
+const loadError = ref("");
+const statsError = ref("");
+const statsLoaded = ref(false);
 const discussions = ref<ReviewQueueItem[]>([]);
 const selectedIds = ref<string[]>([]);
 const detailDialogVisible = ref(false);
 const currentDetail = ref<ReviewQueueItem | null>(null);
+const detailIsSummary = ref(false);
 const selectedCount = computed(() => selectedIds.value.length);
 
 // 统计数据
@@ -106,6 +112,8 @@ const filterBadgeText = computed(() =>
     : "当前展示全部内容"
 );
 const listSummaryText = computed(() => {
+  if (loadError.value) return "讨论内容加载失败";
+
   if (loading.value && pagination.total === 0) {
     return "正在同步讨论内容...";
   }
@@ -144,7 +152,7 @@ const statusText = (status: string): string => {
 };
 
 // 风险等级标签
-const riskLevelType = (level: string): TagType => {
+const riskLevelType = (level?: string): TagType => {
   const map: Record<string, TagType> = {
     low: "success",
     medium: "warning",
@@ -154,20 +162,26 @@ const riskLevelType = (level: string): TagType => {
   return map[level] || "info";
 };
 
-const riskLevelText = (level: string): string => {
+const riskLevelText = (level?: string): string => {
   const map: Record<string, string> = {
     low: "低风险",
     medium: "中风险",
     high: "高风险",
     critical: "严重"
   };
-  return map[level] || level;
+  return (level && map[level]) || "未提供";
 };
+
+const getErrorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error && error.message ? error.message : fallback;
+
+let latestDataRequest = 0;
 
 // 加载待审核列表
 const fetchData = async () => {
-  if (loading.value && discussions.value.length === 0) return;
+  const requestId = ++latestDataRequest;
   loading.value = true;
+  loadError.value = "";
   try {
     const responseData = await getPendingList({
       courseId: searchForm.courseId || undefined,
@@ -176,29 +190,32 @@ const fetchData = async () => {
       pageSize: pagination.pageSize
     });
     const userIds = Array.from(
-      new Set(
-        (responseData.list || []).map((item: PendingItem) => item.authorId)
-      )
+      new Set(responseData.list.map((item: PendingItem) => item.authorId))
     );
     let avatarMap = new Map<number, string>();
     if (userIds.length > 0) {
       avatarMap = await getUserAvatars(userIds);
     }
-    discussions.value = (responseData.list || []).map((item: PendingItem) =>
+    if (requestId !== latestDataRequest) return;
+
+    discussions.value = responseData.list.map((item: PendingItem) =>
       mapPendingItemToReviewQueueItem(item, avatarMap.get(item.authorId))
     );
-    pagination.total = responseData.total || 0;
+    pagination.total = responseData.total;
   } catch (error) {
+    if (requestId !== latestDataRequest) return;
     console.error("加载讨论列表失败", error);
     discussions.value = [];
     pagination.total = 0;
+    loadError.value = getErrorMessage(error, "加载讨论内容失败，请重试");
   } finally {
-    loading.value = false;
+    if (requestId === latestDataRequest) loading.value = false;
   }
 };
 
 // 加载统计数据
 const fetchStats = async () => {
+  statsError.value = "";
   try {
     const statsData = await getPendingStatistics({
       courseId: searchForm.courseId || undefined
@@ -220,9 +237,12 @@ const fetchStats = async () => {
             pendingTotal: Number(course.pendingTotal || 0)
           }))
         : [];
+      statsLoaded.value = true;
     }
   } catch (error) {
     console.error("加载待审核统计失败", error);
+    statsLoaded.value = false;
+    statsError.value = getErrorMessage(error, "加载统计数据失败，请重试");
   }
 };
 
@@ -274,34 +294,33 @@ const handleSizeChange = (size: number) => {
 
 // 查看详情
 const viewDetail = async (row: ReviewQueueItem) => {
+  detailIsSummary.value = false;
   try {
-    // 调用详情接口获取完整信息
     const res = await getAdminDiscussionDetail(row.id);
-    if (res && res.data) {
-      // 转换为 ReviewQueueItem 格式
-      currentDetail.value = {
-        ...res.data,
-        riskLevel: row.riskLevel || "low",
-        matchedWords: (res.data as any).matchedWords || [],
-        priority: row.priority || "medium",
-        itemType: (res.data as any).type || row.itemType,
-        courseName: res.data.courseName
-      } as ReviewQueueItem;
-    } else {
-      // 如果获取详情失败，使用列表中的数据
-      currentDetail.value = row;
-    }
+    currentDetail.value = {
+      ...res.data,
+      riskLevel: row.riskLevel,
+      matchedWords: row.matchedWords,
+      priority: row.priority,
+      itemType: row.itemType,
+      courseName: res.data.courseName
+    } as ReviewQueueItem;
     detailDialogVisible.value = true;
   } catch (error) {
     console.error("获取讨论详情失败:", error);
-    // 出错时使用列表中的数据
     currentDetail.value = row;
+    detailIsSummary.value = true;
     detailDialogVisible.value = true;
+    ElMessage.warning(
+      `${getErrorMessage(error, "完整详情暂不可用")}，当前仅显示列表摘要`
+    );
   }
 };
 
 // 审核通过
 const handleApprove = async (row: ReviewQueueItem) => {
+  if (actionPending.value) return;
+  actionPending.value = true;
   try {
     if (row.itemType === "reply") {
       await reviewReply(row.id, { action: "approve" });
@@ -320,12 +339,16 @@ const handleApprove = async (row: ReviewQueueItem) => {
     // 延迟刷新以确保后端数据同步
     setTimeout(() => initData(true), 1000);
   } catch (error) {
-    ElMessage.error("操作失败");
+    ElMessage.error(getErrorMessage(error, "操作失败"));
+  } finally {
+    actionPending.value = false;
   }
 };
 
 // 审核拒绝
 const handleReject = async (row: ReviewQueueItem) => {
+  if (actionPending.value) return;
+  actionPending.value = true;
   try {
     const { value } = await ElMessageBox.prompt("请输入拒绝原因", "拒绝审核", {
       confirmButtonText: "确定",
@@ -352,8 +375,10 @@ const handleReject = async (row: ReviewQueueItem) => {
     setTimeout(() => initData(true), 1000);
   } catch (error: any) {
     if (error !== "cancel") {
-      ElMessage.error("操作失败");
+      ElMessage.error(getErrorMessage(error, "操作失败"));
     }
+  } finally {
+    actionPending.value = false;
   }
 };
 
@@ -363,6 +388,8 @@ const handleBatchApprove = async () => {
     ElMessage.warning("请先勾选需要审核的内容");
     return;
   }
+  if (actionPending.value) return;
+  actionPending.value = true;
   try {
     await ElMessageBox.confirm(
       `确定要批量通过选中的 ${selectedIds.value.length} 条内容吗？`,
@@ -413,10 +440,11 @@ const handleBatchApprove = async () => {
     setTimeout(() => initData(true), 1000);
   } catch (error: any) {
     if (error !== "cancel") {
-      ElMessage.error("批量操作过程中产生错误");
+      ElMessage.error(getErrorMessage(error, "批量操作过程中产生错误"));
     }
   } finally {
     loading.value = false;
+    actionPending.value = false;
   }
 };
 
@@ -426,6 +454,8 @@ const handleBatchReject = async () => {
     ElMessage.warning("请先勾选需要拒绝的内容");
     return;
   }
+  if (actionPending.value) return;
+  actionPending.value = true;
   try {
     const { value } = await ElMessageBox.prompt(
       `确定要批量拒绝选中的 ${selectedIds.value.length} 条内容吗？`,
@@ -477,10 +507,11 @@ const handleBatchReject = async () => {
     setTimeout(() => initData(true), 1000);
   } catch (error: any) {
     if (error !== "cancel") {
-      ElMessage.error("批量操作失败");
+      ElMessage.error(getErrorMessage(error, "批量操作失败"));
     }
   } finally {
     loading.value = false;
+    actionPending.value = false;
   }
 };
 
@@ -506,6 +537,8 @@ const submitEdit = async () => {
     ElMessage.warning("内容不能为空");
     return;
   }
+  if (actionPending.value) return;
+  actionPending.value = true;
   try {
     if (editForm.type === "reply") {
       await updateReply(editForm.id, { content: editForm.content });
@@ -520,11 +553,15 @@ const submitEdit = async () => {
     fetchData();
   } catch (error) {
     console.error("编辑失败:", error);
-    ElMessage.error("编辑失败");
+    ElMessage.error(getErrorMessage(error, "编辑失败"));
+  } finally {
+    actionPending.value = false;
   }
 };
 
 const handleDelete = async (row: ReviewQueueItem) => {
+  if (actionPending.value) return;
+  actionPending.value = true;
   try {
     // 管理员删除，支持输入原因以供审计
     const result = await ElMessageBox.prompt(
@@ -561,44 +598,45 @@ const handleDelete = async (row: ReviewQueueItem) => {
   } catch (error) {
     if (error !== "cancel") {
       console.error("删除失败:", error);
-      ElMessage.error("删除失败");
+      ElMessage.error(getErrorMessage(error, "删除失败"));
     }
   } finally {
     loading.value = false;
+    actionPending.value = false;
   }
 };
 
 // 置顶逻辑
 const handlePin = async (row: ReviewQueueItem) => {
-  loading.value = true;
+  if (actionPending.value) return;
+  actionPending.value = true;
   try {
     await pinPost(row.id);
-    // HTTP 200 OK 即为成功
     row.isPinned = true;
     ElMessage.success("成功设为置顶");
     // 不自动刷新列表，本地状态已更新，避免后端同步延迟导致状态被覆盖
   } catch (error) {
     console.error("置顶操作失败:", error);
-    ElMessage.error("置顶操作失败");
+    ElMessage.error(getErrorMessage(error, "置顶操作失败"));
   } finally {
-    loading.value = false;
+    actionPending.value = false;
   }
 };
 
 // 取消置顶逻辑
 const handleUnpin = async (row: ReviewQueueItem) => {
-  loading.value = true;
+  if (actionPending.value) return;
+  actionPending.value = true;
   try {
     await unpinPost(row.id);
-    // HTTP 200 OK 即为成功
     row.isPinned = false;
     ElMessage.success("已取消置顶");
     // 不自动刷新列表，本地状态已更新，避免后端同步延迟导致状态被覆盖
   } catch (error) {
     console.error("取消置顶操作失败:", error);
-    ElMessage.error("取消置顶操作失败");
+    ElMessage.error(getErrorMessage(error, "取消置顶操作失败"));
   } finally {
-    loading.value = false;
+    actionPending.value = false;
   }
 };
 
@@ -650,7 +688,9 @@ onActivated(() => {
       <div class="discussion-stats-grid__item">
         <el-card shadow="hover" class="stat-card">
           <div class="stat-content">
-            <div class="stat-number text-primary">{{ stats.totalPosts }}</div>
+            <div class="stat-number text-primary">
+              {{ statsLoaded ? stats.totalPosts : "--" }}
+            </div>
             <div class="stat-label">库内讨论总量</div>
           </div>
         </el-card>
@@ -658,7 +698,9 @@ onActivated(() => {
       <div class="discussion-stats-grid__item">
         <el-card shadow="hover" class="stat-card">
           <div class="stat-content">
-            <div class="stat-number text-success">{{ stats.totalReplies }}</div>
+            <div class="stat-number text-success">
+              {{ statsLoaded ? stats.totalReplies : "--" }}
+            </div>
             <div class="stat-label">学生互动回复</div>
           </div>
         </el-card>
@@ -667,7 +709,7 @@ onActivated(() => {
         <el-card shadow="hover" class="stat-card">
           <div class="stat-content">
             <div class="stat-number text-warning">
-              {{ stats.pendingTotal }}
+              {{ statsLoaded ? stats.pendingTotal : "--" }}
             </div>
             <div class="stat-label">当前待处理审查</div>
           </div>
@@ -676,11 +718,24 @@ onActivated(() => {
       <div class="discussion-stats-grid__item">
         <el-card shadow="hover" class="stat-card">
           <div class="stat-content">
-            <div class="stat-number text-info">{{ stats.todayPosts }}</div>
+            <div class="stat-number text-info">
+              {{ statsLoaded ? stats.todayPosts : "--" }}
+            </div>
             <div class="stat-label">今日活跃动态</div>
           </div>
         </el-card>
       </div>
+    </div>
+
+    <div v-if="statsError" class="load-error mb-4">
+      <el-alert
+        title="统计数据加载失败"
+        :description="statsError"
+        type="warning"
+        show-icon
+        :closable="false"
+      />
+      <el-button plain :icon="Refresh" @click="fetchStats">重试统计</el-button>
     </div>
 
     <!-- 搜索栏 -->
@@ -695,6 +750,7 @@ onActivated(() => {
         </div>
       </div>
       <el-form
+        class="search-form"
         :inline="!isMobile"
         :label-position="isMobile ? 'top' : 'right'"
         :model="searchForm"
@@ -764,15 +820,42 @@ onActivated(() => {
       </div>
       <div class="flex flex-wrap items-center justify-end gap-2 mb-4">
         <div v-if="selectedCount > 0" class="flex gap-2">
-          <el-button type="success" :icon="Check" @click="handleBatchApprove">
+          <el-button
+            type="success"
+            :icon="Check"
+            :disabled="actionPending"
+            @click="handleBatchApprove"
+          >
             批量通过 ({{ selectedCount }})
           </el-button>
-          <el-button type="danger" :icon="Close" @click="handleBatchReject">
+          <el-button
+            type="danger"
+            :icon="Close"
+            :disabled="actionPending"
+            @click="handleBatchReject"
+          >
             批量拒绝
           </el-button>
         </div>
-        <el-button :icon="Refresh" text @click="initData(true)">
+        <el-button
+          :icon="Refresh"
+          text
+          :disabled="loading || actionPending"
+          @click="initData(true)"
+        >
           同步状态
+        </el-button>
+      </div>
+      <div v-if="loadError" class="load-error mb-4">
+        <el-alert
+          title="讨论内容加载失败"
+          :description="loadError"
+          type="error"
+          show-icon
+          :closable="false"
+        />
+        <el-button type="primary" plain :icon="Refresh" @click="fetchData">
+          重试
         </el-button>
       </div>
       <div v-if="isMobile" class="mobile-discussion-list">
@@ -841,11 +924,11 @@ onActivated(() => {
           <div class="mobile-discussion-card__stats">
             <div class="stat-item">
               <el-icon :size="18"><HeartIcon /></el-icon>
-              <span>{{ row.likeCount }}</span>
+              <span title="待审核接口未提供点赞数">--</span>
             </div>
             <div class="stat-item">
               <el-icon :size="18"><CommentIcon /></el-icon>
-              <span>{{ row.replyCount }}</span>
+              <span title="待审核接口未提供回复数">--</span>
             </div>
             <el-tag
               v-if="row.riskLevel"
@@ -864,6 +947,7 @@ onActivated(() => {
               v-if="row.status === 'pending'"
               type="success"
               plain
+              :disabled="actionPending"
               @click="handleApprove(row)"
             >
               通过
@@ -872,12 +956,14 @@ onActivated(() => {
               v-if="row.status === 'pending'"
               type="warning"
               plain
+              :disabled="actionPending"
               @click="handleReject(row)"
             >
               拒绝
             </el-button>
             <el-dropdown
               trigger="click"
+              :disabled="actionPending"
               popper-class="modern-dropdown"
               class="mobile-card-more"
             >
@@ -918,7 +1004,7 @@ onActivated(() => {
         </div>
 
         <el-empty
-          v-if="!loading && discussions.length === 0"
+          v-if="!loading && !loadError && discussions.length === 0"
           description="暂无匹配内容"
         />
       </div>
@@ -926,6 +1012,7 @@ onActivated(() => {
       <el-table
         v-else
         :data="discussions"
+        :empty-text="loadError ? '数据加载失败' : '暂无匹配内容'"
         row-class-name="discussion-table-row"
         @selection-change="handleSelectionChange"
       >
@@ -1000,30 +1087,30 @@ onActivated(() => {
             >
               {{ riskLevelText(row.riskLevel) }}
             </el-tag>
-            <span v-else class="text-gray-300">-</span>
+            <span v-else class="text-gray-400">未提供</span>
           </template>
         </el-table-column>
         <el-table-column label="内容热度" width="160" align="center">
-          <template #default="{ row }">
+          <template #default>
             <div class="stats-info">
               <div class="stat-item" title="认可度">
                 <el-icon :size="22" class="mr-1 text-red-500"
                   ><HeartIcon
                 /></el-icon>
-                <span>{{ row.likeCount }}</span>
+                <span title="待审核接口未提供点赞数">--</span>
               </div>
               <div class="stat-item" title="研讨数">
                 <el-icon :size="22" class="mr-1 text-blue-500"
                   ><CommentIcon
                 /></el-icon>
-                <span>{{ row.replyCount }}</span>
+                <span title="待审核接口未提供回复数">--</span>
               </div>
             </div>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="220" align="center" fixed="right">
           <template #default="{ row }">
-            <div class="action-btns">
+            <div class="action-btns" :class="{ 'is-disabled': actionPending }">
               <el-tooltip content="查看详情" placement="top">
                 <div class="btn-icon-wrapper view" @click="viewDetail(row)">
                   <el-icon :size="22"><InfoIcon /></el-icon>
@@ -1104,7 +1191,7 @@ onActivated(() => {
       </el-table>
 
       <!-- 分页 -->
-      <div class="flex justify-end mt-4">
+      <div v-if="!loadError" class="flex justify-end mt-4">
         <el-pagination
           v-model:current-page="pagination.page"
           v-model:page-size="pagination.pageSize"
@@ -1144,7 +1231,13 @@ onActivated(() => {
           class="px-6 py-4 border-t border-gray-100 dark:border-gray-700 flex justify-end gap-3"
         >
           <el-button @click="editDialogVisible = false">取消</el-button>
-          <el-button type="primary" @click="submitEdit">保存修改</el-button>
+          <el-button
+            type="primary"
+            :loading="actionPending"
+            @click="submitEdit"
+          >
+            保存修改
+          </el-button>
         </div>
       </template>
     </el-dialog>
@@ -1158,6 +1251,14 @@ onActivated(() => {
       class="simple-review-dialog"
     >
       <div v-if="currentDetail" class="review-detail">
+        <el-alert
+          v-if="detailIsSummary"
+          class="mb-4"
+          title="完整详情暂不可用，当前仅显示列表摘要"
+          type="warning"
+          show-icon
+          :closable="false"
+        />
         <!-- 作者信息 -->
         <div class="author-row">
           <el-avatar
@@ -1183,7 +1284,7 @@ onActivated(() => {
           </div>
           <div
             class="content-body"
-            v-html="currentDetail.contentHtml || currentDetail.content"
+            v-html="renderDiscussionContent(currentDetail.content)"
           />
         </div>
       </div>
@@ -1191,10 +1292,17 @@ onActivated(() => {
       <template #footer>
         <div class="dialog-footer">
           <el-button @click="detailDialogVisible = false">跳过</el-button>
-          <el-button type="danger" plain @click="handleReject(currentDetail)"
+          <el-button
+            type="danger"
+            plain
+            :disabled="actionPending"
+            @click="handleReject(currentDetail)"
             >拒绝</el-button
           >
-          <el-button type="primary" @click="handleApprove(currentDetail)"
+          <el-button
+            type="primary"
+            :disabled="actionPending"
+            @click="handleApprove(currentDetail)"
             >通过</el-button
           >
         </div>
@@ -1205,6 +1313,14 @@ onActivated(() => {
 
 <style lang="scss" scoped>
 .discussion-manage {
+  .load-error {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    min-width: 0;
+  }
+
   .discussion-stats-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1630,6 +1746,11 @@ onActivated(() => {
         }
       }
     }
+  }
+
+  .action-btns.is-disabled {
+    pointer-events: none;
+    opacity: 0.55;
   }
 
   .detail-content {

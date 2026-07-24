@@ -3,7 +3,7 @@
     <div class="todo-header card">
       <div class="header-left">
         <h3>待办事项</h3>
-        <p>共 {{ totalTodos }} 项，已完成 {{ completedTodos }} 项</p>
+        <p>本机保存 · 共 {{ totalTodos }} 项，已完成 {{ completedTodos }} 项</p>
       </div>
       <div class="header-right flex items-center gap-4">
         <el-radio-group v-model="filterStatus" size="default">
@@ -81,7 +81,7 @@
 
     <el-empty
       v-if="filteredTodos.length === 0 && !loading"
-      description="暂无待办事项"
+      description="暂无本机待办"
       class="card"
     />
 
@@ -119,6 +119,7 @@
 import { ref, onMounted, computed } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Plus, User, Clock } from "@element-plus/icons-vue";
+import { readLocalTodos, saveLocalTodos } from "@/utils/localTodos";
 
 defineProps<{
   currentTheme?: string;
@@ -150,35 +151,6 @@ const initialFormState = {
 };
 const form = ref<TodoItem>({ ...initialFormState });
 
-const TODO_STORAGE_KEY = "vue-pure-admin-todos";
-
-const initialTodos: TodoItem[] = [
-  {
-    id: 1,
-    title: "完成高等数学作业",
-    publisher: "王小明",
-    details: "完成第5章习题并上传至学习平台。",
-    time: "2025-07-15 10:00:00",
-    completed: false
-  },
-  {
-    id: 2,
-    title: "准备英语口语考试",
-    publisher: "李晓红",
-    details: "整理考试重点，练习自我介绍和常见问答。",
-    time: "2025-07-20 14:30:00",
-    completed: false
-  },
-  {
-    id: 3,
-    title: "小组项目讨论",
-    publisher: "张伟",
-    details: "与小组成员线上讨论数据库课程设计方案。",
-    time: "2025-07-12 18:00:00",
-    completed: true
-  }
-];
-
 // 过滤后的待办事项
 const filteredTodos = computed(() => {
   if (filterStatus.value === "pending") {
@@ -196,25 +168,19 @@ const completedTodos = computed(
   () => todos.value.filter(todo => todo.completed).length
 );
 
-// 从localStorage加载数据
 const loadTodos = () => {
   loading.value = true;
-  setTimeout(() => {
-    const storedTodos = localStorage.getItem(TODO_STORAGE_KEY);
-    if (storedTodos) {
-      todos.value = JSON.parse(storedTodos);
-    } else {
-      // 如果没有存储数据，则使用初始数据
-      todos.value = initialTodos;
-      saveTodos();
-    }
-    loading.value = false;
-  }, 500); // 模拟加载效果
+  todos.value = readLocalTodos<TodoItem>();
+  loading.value = false;
 };
 
-// 保存数据到localStorage
-const saveTodos = () => {
-  localStorage.setItem(TODO_STORAGE_KEY, JSON.stringify(todos.value));
+const persistTodos = (nextTodos: TodoItem[]) => {
+  if (!saveLocalTodos(nextTodos)) {
+    ElMessage.error("待办保存失败，请确认已登录并检查本机存储空间");
+    return false;
+  }
+  todos.value = nextTodos;
+  return true;
 };
 
 onMounted(() => {
@@ -245,31 +211,39 @@ const resetForm = () => {
 
 // 提交表单
 const handleSubmit = () => {
-  if (!form.value.title || !form.value.publisher) {
+  const title = form.value.title.trim();
+  const publisher = form.value.publisher.trim();
+  if (!title || !publisher) {
     ElMessage.error("标题和发布者不能为空");
     return;
   }
 
+  const nextTodo = {
+    ...form.value,
+    title,
+    publisher,
+    details: form.value.details.trim()
+  };
+
   if (isEditMode.value) {
-    // 编辑模式
     const index = todos.value.findIndex(t => t.id === form.value.id);
     if (index !== -1) {
-      todos.value[index] = { ...form.value };
+      const nextTodos = [...todos.value];
+      nextTodos[index] = nextTodo;
+      if (!persistTodos(nextTodos)) return;
       ElMessage.success("修改成功");
     }
   } else {
-    // 添加模式
     const newTodo: TodoItem = {
-      ...form.value,
+      ...nextTodo,
       id: Date.now(),
       time: new Date().toLocaleString(),
       completed: false
     };
-    todos.value.unshift(newTodo);
+    if (!persistTodos([newTodo, ...todos.value])) return;
     ElMessage.success("添加成功");
   }
 
-  saveTodos();
   dialogVisible.value = false;
 };
 
@@ -281,10 +255,9 @@ const deleteTodo = (row: TodoItem) => {
     type: "warning"
   })
     .then(() => {
-      const index = todos.value.findIndex(t => t.id === row.id);
-      if (index !== -1) {
-        todos.value.splice(index, 1);
-        saveTodos();
+      const nextTodos = todos.value.filter(todo => todo.id !== row.id);
+      if (nextTodos.length !== todos.value.length) {
+        if (!persistTodos(nextTodos)) return;
         ElMessage.success("删除成功");
       }
     })
@@ -297,8 +270,12 @@ const deleteTodo = (row: TodoItem) => {
 const toggleStatus = (row: TodoItem) => {
   const index = todos.value.findIndex(t => t.id === row.id);
   if (index !== -1) {
-    todos.value[index].completed = !todos.value[index].completed;
-    saveTodos();
+    const nextTodos = [...todos.value];
+    nextTodos[index] = {
+      ...nextTodos[index],
+      completed: !nextTodos[index].completed
+    };
+    if (!persistTodos(nextTodos)) return;
     ElMessage.success("状态更新成功");
   }
 };

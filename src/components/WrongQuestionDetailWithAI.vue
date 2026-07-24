@@ -55,10 +55,20 @@
             v-if="!analysis"
             type="primary"
             :loading="analyzing"
+            :disabled="!canAnalyze"
             @click="doAnalyze"
             >立即分析</el-button
           >
         </div>
+
+        <el-alert
+          v-if="!analysis && !canAnalyze"
+          class="course-context-alert"
+          title="请从具体课程进入随练后使用 AI 分析。"
+          type="info"
+          show-icon
+          :closable="false"
+        />
 
         <div v-if="analysis" class="analysis">
           <el-descriptions :column="2" border>
@@ -155,7 +165,7 @@ export interface NormalizedWrongQuestion {
 
 const props = defineProps<{
   modelValue: boolean;
-  courseId: number | string | undefined;
+  courseId?: number | string;
   currentTheme?: string;
   wrong: NormalizedWrongQuestion | null;
   initialAnalysis?: WrongExerciseAnalyzeResponse | null;
@@ -191,6 +201,10 @@ watch(
 );
 
 const titleText = computed(() => props.wrong?.title || "错题详情");
+const canAnalyze = computed(() => {
+  const courseId = Number(props.courseId);
+  return Number.isSafeInteger(courseId) && courseId > 0;
+});
 const isChoice = computed(
   () => props.wrong?.questionType === 1 || props.wrong?.questionType === 2
 );
@@ -242,8 +256,9 @@ const toggleExplain = (i: number) =>
 
 const doAnalyze = async () => {
   if (!props.wrong) return;
-  if (!props.courseId) {
-    ElMessage.warning("当前错题缺少课程上下文，暂不能进行 AI 分析");
+  const courseId = Number(props.courseId);
+  if (!Number.isSafeInteger(courseId) || courseId <= 0) {
+    ElMessage.warning("请从具体课程进入随练后使用 AI 分析");
     return;
   }
   analyzing.value = true;
@@ -252,7 +267,7 @@ const doAnalyze = async () => {
       props.wrong.questionId || props.wrong.id
     );
     const { data } = await analyzeWrongExercise({
-      course_id: props.courseId,
+      course_id: courseId,
       original_exercise_id,
       original_exercise_content: props.wrong.stem,
       student_answer: props.wrong.userAnswer || "",
@@ -291,6 +306,10 @@ const handleClose = () => (visible.value = false);
 
 .block:last-child {
   margin-bottom: 0;
+}
+
+.course-context-alert {
+  margin-bottom: 16px;
 }
 
 .h3 {

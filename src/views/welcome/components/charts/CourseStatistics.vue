@@ -9,9 +9,6 @@ import {
   getCourseUsersExamInfo
 } from "@/api/statistics";
 import { getCourseList } from "@/api/course";
-import { getHomeworkList } from "@/api/homework";
-import { getExamList } from "@/api/exam";
-import { isAdmin } from "@/utils/auth";
 import {
   ElPagination,
   ElSelect,
@@ -36,6 +33,9 @@ interface ExamOption {
 const loading = ref(true);
 const progressLoading = ref(false);
 const examLoading = ref(false);
+const courseLoadError = ref("");
+const progressLoadError = ref("");
+const examLoadError = ref("");
 const courseOptions = ref<CourseOption[]>([]);
 const examOptions = ref<ExamOption[]>([]);
 const selectedCourse = ref<number>();
@@ -94,14 +94,14 @@ const handleExport = () => {
 
   // 2. 成绩分布数据
   const courseExamData = allExamData.value.filter(
-    item => item.courseId === selectedCourse.value
+    item => Number(item.courseId) === Number(selectedCourse.value)
   );
 
-  const examRows = [];
+  const examRows: Array<Record<string, string | number>> = [];
   const levelTexts = { 1: "差", 2: "中等", 3: "良好", 4: "优秀" };
 
   courseExamData.forEach(exam => {
-    exam.examInfo.forEach(info => {
+    (Array.isArray(exam.examInfo) ? exam.examInfo : []).forEach(info => {
       examRows.push({
         考核项目: exam.examName,
         成绩等级: levelTexts[info.level] || `等级${info.level}`,
@@ -110,39 +110,46 @@ const handleExport = () => {
     });
   });
 
-  const wb = utils.book_new();
-  const ws1 = utils.json_to_sheet(progressData);
-  const ws2 = utils.json_to_sheet(examRows);
+  if (progressData.length === 0 && examRows.length === 0) {
+    message("当前课程暂无可导出的分析数据", { type: "warning" });
+    return;
+  }
 
-  utils.book_append_sheet(wb, ws1, "学生进度详情");
-  utils.book_append_sheet(wb, ws2, "成绩分布统计");
+  try {
+    const wb = utils.book_new();
+    const ws1 = utils.json_to_sheet(progressData);
+    const ws2 = utils.json_to_sheet(examRows);
 
-  writeFile(wb, `${courseName}_分析报告_${new Date().getTime()}.xlsx`);
-  message("导出分析报告成功", { type: "success" });
+    utils.book_append_sheet(wb, ws1, "学生进度详情");
+    utils.book_append_sheet(wb, ws2, "成绩分布统计");
+
+    writeFile(wb, `${courseName}_分析报告_${new Date().getTime()}.xlsx`);
+    message("导出分析报告成功", { type: "success" });
+  } catch (error) {
+    console.error("导出分析报告失败:", error);
+    message("分析报告导出失败，请重试", { type: "error" });
+  }
 };
 
 // 获取课程列表
 const fetchCourseList = async () => {
+  courseLoadError.value = "";
   loading.value = true;
   try {
     const res = await getCourseList({ pageNum: 1, pageSize: 100 });
-    console.log("课程列表API响应:", res);
-    if (res?.data?.courseList) {
-      courseOptions.value = res.data.courseList.map(course => ({
-        value: course.courseId,
-        label: course.title
-      }));
-      console.log("解析后的课程选项:", courseOptions.value);
-
-      if (courseOptions.value.length > 0) {
-        selectedCourse.value = courseOptions.value[0].value;
-        console.log("默认选中课程ID:", selectedCourse.value);
-      }
-    } else {
-      console.warn("课程列表为空或格式不正确:", res);
+    if (res?.code !== 200 || !Array.isArray(res.data?.courseList)) {
+      throw new Error(res?.msg || "课程列表接口未返回有效数据");
     }
+    courseOptions.value = res.data.courseList.map(course => ({
+      value: course.courseId,
+      label: course.title
+    }));
+    selectedCourse.value = courseOptions.value[0]?.value;
   } catch (error) {
     console.error("获取课程列表失败:", error);
+    courseOptions.value = [];
+    selectedCourse.value = undefined;
+    courseLoadError.value = "课程列表暂时无法加载";
   } finally {
     loading.value = false;
   }
@@ -150,277 +157,52 @@ const fetchCourseList = async () => {
 
 // 获取所有课程数据（每次进入调用）
 const fetchAllData = async () => {
+  progressLoadError.value = "";
+  examLoadError.value = "";
   progressLoading.value = true;
   examLoading.value = true;
   try {
-    console.log("开始获取所有课程数据...");
-    // 分开处理，防止一个接口失败导致全部失败
-    const [progressRes, examRes, homeworkRes, examListRes] =
-      await Promise.allSettled([
-        getCourseUsersProgress(),
-        getCourseUsersExamInfo(),
-        getHomeworkList({ pageNum: 1, pageSize: 1000 }),
-        getExamList({ pageNum: 1, pageSize: 1000 })
-      ]);
+    const [progressRes, examRes] = await Promise.allSettled([
+      getCourseUsersProgress(),
+      getCourseUsersExamInfo()
+    ]);
 
-    console.log("API调用结果:", {
-      progressRes,
-      examRes,
-      homeworkRes,
-      examListRes
-    });
-
-    // 缓存所有课程的进度数据
     if (progressRes.status === "fulfilled") {
-      console.log("=== 进度API调试信息 ===");
-      console.log(
-        "进度API原始响应完整结构:",
-        JSON.stringify(progressRes.value, null, 2)
-      );
-      console.log("progressRes.value:", progressRes.value);
-      console.log("progressRes.value?.data:", progressRes.value?.data);
-      console.log(
-        "progressRes.value?.data?.courseUsersProgress:",
-        progressRes.value?.data?.courseUsersProgress
-      );
-
-      // 尝试多种可能的数据路径
-      let progressData = null;
-      if (progressRes.value?.data?.courseUsersProgress) {
-        progressData = progressRes.value.data.courseUsersProgress;
-        console.log("使用路径: data.courseUsersProgress");
-      } else if (progressRes.value?.data?.list) {
-        progressData = progressRes.value.data.list;
-        console.log("使用路径: data.list");
-      } else if (
-        progressRes.value?.data &&
-        Array.isArray(progressRes.value.data)
-      ) {
-        progressData = progressRes.value.data;
-        console.log("使用路径: data (直接数组)");
-      } else if (progressRes.value?.list) {
-        progressData = progressRes.value.list;
-        console.log("使用路径: list");
-      } else if (Array.isArray(progressRes.value)) {
-        progressData = progressRes.value;
-        console.log("使用路径: 直接数组");
-      }
-
-      console.log("解析后的progressData:", progressData);
-      console.log("progressData类型:", typeof progressData);
-      console.log("progressData是否为数组:", Array.isArray(progressData));
-
-      if (Array.isArray(progressData) && progressData.length > 0) {
+      const progressData =
+        progressRes.value.data?.courseUsersProgress ??
+        progressRes.value.data?.list;
+      if (progressRes.value.code === 200 && Array.isArray(progressData)) {
         allProgressData.value = progressData;
-        console.log("进度数据已缓存，数量:", allProgressData.value.length);
-        console.log(
-          "第一条进度数据结构:",
-          JSON.stringify(allProgressData.value[0], null, 2)
-        );
       } else {
-        console.warn("进度数据为空或格式不正确");
         allProgressData.value = [];
+        progressLoadError.value = "学生进度暂时无法加载";
       }
-    } else if (progressRes.status === "rejected") {
+    } else {
       console.error("获取进度数据失败:", progressRes.reason);
       allProgressData.value = [];
+      progressLoadError.value = "学生进度暂时无法加载";
     }
 
-    // 获取作业列表数据
-    let homeworkList: any[] = [];
-    if (
-      homeworkRes.status === "fulfilled" &&
-      homeworkRes.value?.data?.homeworkList
-    ) {
-      homeworkList = homeworkRes.value.data.homeworkList;
-      console.log("作业列表:", homeworkList);
-    }
-
-    // 获取考试列表数据
-    let examList: any[] = [];
-    if (
-      examListRes.status === "fulfilled" &&
-      examListRes.value?.data?.examList
-    ) {
-      examList = examListRes.value.data.examList;
-      console.log("考试列表:", examList);
-    }
-
-    // 缓存所有课程的考试/作业成绩数据
     if (examRes.status === "fulfilled") {
-      console.log("=== 考试成绩API调试信息 ===");
-      console.log(
-        "考试成绩API原始响应完整结构:",
-        JSON.stringify(examRes.value, null, 2)
-      );
-      console.log("examRes.value:", examRes.value);
-      console.log("examRes.value?.data:", examRes.value?.data);
-      console.log(
-        "examRes.value?.data?.courseUsersExamInfoList:",
-        examRes.value?.data?.courseUsersExamInfoList
-      );
-
-      // 尝试多种可能的数据路径
-      let examData = null;
-      if (examRes.value?.data?.courseUsersExamInfoList) {
-        examData = examRes.value.data.courseUsersExamInfoList;
-        console.log("使用路径: data.courseUsersExamInfoList");
-      } else if (examRes.value?.data?.courseUsersExamInfo) {
-        examData = examRes.value.data.courseUsersExamInfo;
-        console.log("使用路径: data.courseUsersExamInfo");
-      } else if (examRes.value?.data?.list) {
-        examData = examRes.value.data.list;
-        console.log("使用路径: data.list");
-      } else if (examRes.value?.data && Array.isArray(examRes.value.data)) {
-        examData = examRes.value.data;
-        console.log("使用路径: data (直接数组)");
-      } else if (examRes.value?.list) {
-        examData = examRes.value.list;
-        console.log("使用路径: list");
-      } else if (Array.isArray(examRes.value)) {
-        examData = examRes.value;
-        console.log("使用路径: 直接数组");
-      }
-
-      console.log("解析后的examData:", examData);
-      console.log("examData类型:", typeof examData);
-      console.log("examData是否为数组:", Array.isArray(examData));
-
-      if (Array.isArray(examData) && examData.length > 0) {
-        // 使用真实的考试成绩数据
-        allExamData.value = examData.map(item => ({
-          ...item,
-          type: "exam"
-        }));
-        console.log("考试成绩数据已缓存，数量:", allExamData.value.length);
-        console.log(
-          "第一条考试数据结构:",
-          JSON.stringify(allExamData.value[0], null, 2)
-        );
-
-        // 从考试数据中提取课程信息，补充到课程选项列表中（解决课程ID不匹配问题）
-        const existingCourseIds = new Set(
-          courseOptions.value.map(c => Number(c.value))
-        );
-        const coursesFromExamData = new Map<number, string>();
-        examData.forEach(item => {
-          const cid = Number(item.courseId);
-          if (!existingCourseIds.has(cid) && !coursesFromExamData.has(cid)) {
-            coursesFromExamData.set(cid, item.courseName);
-          }
-        });
-
-        // 将考试数据中的课程添加到课程选项
-        if (coursesFromExamData.size > 0) {
-          console.log("发现考试数据中有额外课程，正在补充:", [
-            ...coursesFromExamData.entries()
-          ]);
-          coursesFromExamData.forEach((name, id) => {
-            courseOptions.value.push({
-              value: id,
-              label: name
-            });
-          });
-
-          // 如果当前没有选中课程或选中的课程没有考试数据，选择第一个有考试数据的课程
-          if (
-            !selectedCourse.value ||
-            !examData.some(
-              item => Number(item.courseId) === Number(selectedCourse.value)
-            )
-          ) {
-            const firstExamCourseId = Number(examData[0].courseId);
-            selectedCourse.value = firstExamCourseId;
-            console.log("自动切换到有考试数据的课程ID:", firstExamCourseId);
-          }
-        }
+      const examData =
+        examRes.value.data?.courseUsersExamInfoList ??
+        examRes.value.data?.courseUsersExamInfo ??
+        examRes.value.data?.list;
+      if (examRes.value.code === 200 && Array.isArray(examData)) {
+        allExamData.value = examData;
       } else {
-        console.warn("考试成绩数据为空或格式不正确，尝试从作业和考试列表获取");
-        // 从作业和考试列表构建数据（使用真实数据，不是模拟数据）
-        const combinedData: any[] = [];
-
-        // 从作业列表构建数据 - 使用真实的作业信息
-        console.log("=== 作业列表调试信息 ===");
-        console.log("作业列表数量:", homeworkList.length);
-        if (homeworkList.length > 0) {
-          console.log(
-            "第一条作业数据结构:",
-            JSON.stringify(homeworkList[0], null, 2)
-          );
-        }
-
-        // 按课程分组作业数据
-        const homeworkByCourse = new Map<number, any[]>();
-        homeworkList.forEach(hw => {
-          if (!homeworkByCourse.has(hw.courseId)) {
-            homeworkByCourse.set(hw.courseId, []);
-          }
-          homeworkByCourse.get(hw.courseId)?.push(hw);
-        });
-
-        // 为每个作业创建条目（即使没有成绩统计数据也添加，以便在下拉框中显示）
-        homeworkList.forEach(hw => {
-          combinedData.push({
-            courseId: hw.courseId,
-            courseName: hw.courseName,
-            examId: hw.homeworkId,
-            examName: `[作业] ${hw.title || "未命名作业"}`,
-            type: "homework",
-            // 保留基本信息字段，用于在没有成绩分布时展示
-            questionNum: hw.questionNum,
-            totalPoints: hw.totalPoints,
-            // 如果有成绩统计数据则使用，否则使用空数组
-            examInfo: hw.scoreDistribution || hw.examInfo || []
-          });
-        });
-
-        // 从考试列表构建数据 - 使用真实的考试信息
-        console.log("=== 考试列表调试信息 ===");
-        console.log("考试列表数量:", examList.length);
-        if (examList.length > 0) {
-          console.log(
-            "第一条考试数据结构:",
-            JSON.stringify(examList[0], null, 2)
-          );
-        }
-
-        // 为每个考试创建条目（即使没有成绩统计数据也添加）
-        examList.forEach(exam => {
-          combinedData.push({
-            courseId: exam.courseId,
-            courseName: exam.courseName,
-            examId: exam.examId,
-            examName: `[考试] ${exam.title || "未命名考试"}`,
-            type: "exam",
-            // 保留基本信息字段，用于在没有成绩分布时展示
-            questionNum: exam.questionNum,
-            totalPoints: exam.totalPoints,
-            timeLimit: exam.timeLimit,
-            // 如果有成绩统计数据则使用，否则使用空数组
-            examInfo: exam.scoreDistribution || exam.examInfo || []
-          });
-        });
-
-        allExamData.value = combinedData;
-        console.log(
-          "从作业/考试列表构建的数据，数量:",
-          allExamData.value.length
-        );
-        if (combinedData.length > 0) {
-          console.log(
-            "第一条构建的数据:",
-            JSON.stringify(combinedData[0], null, 2)
-          );
-        }
+        allExamData.value = [];
+        examLoadError.value = "考试成绩暂时无法加载";
       }
-    } else if (examRes.status === "rejected") {
+    } else {
       console.error("获取考试数据失败:", examRes.reason);
       allExamData.value = [];
+      examLoadError.value = "考试成绩暂时无法加载";
     }
   } catch (error) {
     console.error("获取课程数据中发生错误:", error);
-    renderEmptyProgressChart();
-    renderEmptyExamChart();
+    progressLoadError.value = "学生进度暂时无法加载";
+    examLoadError.value = "考试成绩暂时无法加载";
   } finally {
     progressLoading.value = false;
     examLoading.value = false;
@@ -434,37 +216,22 @@ const fetchAllData = async () => {
 
 // 根据选择的课程ID渲染对应的数据
 const renderCourseData = (courseId: number) => {
-  console.log("=== renderCourseData 调试信息 ===");
-  console.log("当前选择的课程ID:", courseId);
-  console.log("allExamData 总数量:", allExamData.value.length);
-  console.log("allExamData 中的所有 courseId:", [
-    ...new Set(allExamData.value.map(item => item.courseId))
-  ]);
-
   try {
-    // 从缓存中查找对应课程的进度数据
-    const progressData = allProgressData.value.find(
-      item => Number(item.courseId) === Number(courseId)
-    );
-    if (progressData) {
-      renderProgressChart(progressData);
-    } else {
-      renderEmptyProgressChart("该课程暂无学生进度数据");
+    if (!progressLoadError.value) {
+      const progressData = allProgressData.value.find(
+        item => Number(item.courseId) === Number(courseId)
+      );
+      if (progressData) {
+        renderProgressChart(progressData);
+      } else {
+        renderEmptyProgressChart("该课程暂无学生进度数据");
+      }
     }
 
-    // 从缓存中查找对应课程的所有考试数据
     const courseExamData = allExamData.value.filter(
       item => Number(item.courseId) === Number(courseId)
     );
-    console.log("过滤后的 courseExamData 数量:", courseExamData.length);
-    if (courseExamData.length > 0) {
-      console.log(
-        "第一条 courseExamData:",
-        JSON.stringify(courseExamData[0], null, 2)
-      );
-    }
-
-    if (courseExamData && courseExamData.length > 0) {
+    if (!examLoadError.value && courseExamData.length > 0) {
       // 更新考试选项
       examOptions.value = courseExamData.map(item => ({
         value: item.examId,
@@ -483,7 +250,7 @@ const renderCourseData = (courseId: number) => {
           renderExamChart(selectedExamData);
         }
       }
-    } else {
+    } else if (!examLoadError.value) {
       examOptions.value = [];
       selectedExam.value = undefined;
       renderEmptyExamChart("该课程暂无考试成绩数据");
@@ -522,12 +289,6 @@ const currentCourseUsers = computed(() => {
   const courseData = allProgressData.value.find(
     item => Number(item.courseId) === Number(selectedCourse.value)
   );
-  console.log(
-    "currentCourseUsers - selectedCourse:",
-    selectedCourse.value,
-    "找到的课程数据:",
-    courseData
-  );
   return courseData?.usersProgress || [];
 });
 
@@ -540,6 +301,17 @@ const sortedUsers = computed(() => {
     return users.sort((a, b) => Number(b.progress) - Number(a.progress));
   }
   return users;
+});
+
+const hasExportData = computed(() => {
+  if (sortedUsers.value.length > 0) return true;
+  if (!selectedCourse.value) return false;
+  return allExamData.value.some(
+    item =>
+      Number(item.courseId) === Number(selectedCourse.value) &&
+      Array.isArray(item.examInfo) &&
+      item.examInfo.length > 0
+  );
 });
 
 // 分页后的学生数据
@@ -644,7 +416,6 @@ const renderProgressChart = courseData => {
     0,
     progressPageSize.value
   );
-  console.log("renderProgressChart - 准备渲染的用户数据:", usersToRender);
   if (usersToRender.length > 0) {
     updateProgressChart(usersToRender);
   } else {
@@ -673,27 +444,6 @@ const renderEmptyProgressChart = (message = "暂无课程进度数据") => {
 
 // 渲染考试成绩图表
 const renderExamChart = courseData => {
-  console.log("=== renderExamChart 调试信息 ===");
-  console.log("传入的 courseData:", JSON.stringify(courseData, null, 2));
-  console.log(
-    "questionNum:",
-    courseData.questionNum,
-    "类型:",
-    typeof courseData.questionNum
-  );
-  console.log(
-    "totalPoints:",
-    courseData.totalPoints,
-    "类型:",
-    typeof courseData.totalPoints
-  );
-  console.log(
-    "examInfo:",
-    courseData.examInfo,
-    "长度:",
-    courseData.examInfo?.length
-  );
-
   // 如果有成绩分布数据，显示饼图
   if (courseData.examInfo && courseData.examInfo.length > 0) {
     // 转换等级为文字说明
@@ -778,115 +528,6 @@ const renderExamChart = courseData => {
     return;
   }
 
-  // 如果没有成绩分布数据，但有基本信息（questionNum, totalPoints），显示基本信息图表
-  if (
-    courseData.questionNum !== undefined ||
-    courseData.totalPoints !== undefined
-  ) {
-    const chartData = [];
-    const colors = ["#5B8FF9", "#5AD8A6", "#F6BD16", "#E8684A"];
-
-    if (courseData.questionNum !== undefined && courseData.questionNum > 0) {
-      chartData.push({
-        name: "题目数量",
-        value: courseData.questionNum,
-        itemStyle: { color: colors[0] }
-      });
-    }
-    if (courseData.totalPoints !== undefined && courseData.totalPoints > 0) {
-      chartData.push({
-        name: "总分",
-        value: courseData.totalPoints,
-        itemStyle: { color: colors[1] }
-      });
-    }
-    if (courseData.timeLimit !== undefined && courseData.timeLimit > 0) {
-      chartData.push({
-        name: "时限(分钟)",
-        value: courseData.timeLimit,
-        itemStyle: { color: colors[2] }
-      });
-    }
-
-    if (chartData.length > 0) {
-      setExamOptions({
-        title: {
-          text: courseData.examName,
-          subtext: "基本信息统计",
-          left: "center",
-          top: 10,
-          textStyle: {
-            fontSize: 16,
-            fontWeight: "bold",
-            color: isDark.value ? "#ffffff" : "#1e293b"
-          },
-          subtextStyle: {
-            fontSize: 12,
-            color: isDark.value ? "#94a3b8" : "#64748b"
-          }
-        },
-        tooltip: {
-          trigger: "axis",
-          axisPointer: {
-            type: "shadow"
-          }
-        },
-        grid: {
-          left: 20,
-          right: 40,
-          top: 80,
-          bottom: 40,
-          containLabel: true
-        },
-        xAxis: {
-          type: "category",
-          data: chartData.map(item => item.name),
-          axisLabel: {
-            color: isDark.value ? "#cbd5e1" : "#64748b",
-            fontSize: 13
-          },
-          axisLine: {
-            lineStyle: {
-              color: isDark.value ? "#475569" : "#e5e7eb"
-            }
-          }
-        },
-        yAxis: {
-          type: "value",
-          axisLabel: {
-            color: isDark.value ? "#cbd5e1" : "#64748b"
-          },
-          splitLine: {
-            lineStyle: {
-              color: isDark.value ? "#475569" : "#f1f5f9",
-              type: "dashed"
-            }
-          }
-        },
-        series: [
-          {
-            name: "数值",
-            type: "bar",
-            data: chartData,
-            barMaxWidth: 60,
-            label: {
-              show: true,
-              position: "top",
-              color: isDark.value ? "#ffffff" : "#4b5563",
-              fontWeight: "bold",
-              fontSize: 14
-            },
-            itemStyle: {
-              borderRadius: [6, 6, 0, 0]
-            }
-          }
-        ]
-      });
-      return;
-    }
-  }
-
-  // 如果什么数据都没有，显示空图表
   renderEmptyExamChart("该考试暂无成绩数据");
 };
 
@@ -947,17 +588,20 @@ watch(
   }
 );
 
-onMounted(async () => {
-  // 先获取课程列表，再获取统计数据
+const refreshDashboardData = async () => {
   await fetchCourseList();
   await fetchAllData();
 
-  // 确保在数据加载完成后渲染
   if (selectedCourse.value) {
-    nextTick(() => {
+    await nextTick();
+    if (selectedCourse.value) {
       renderCourseData(selectedCourse.value);
-    });
+    }
   }
+};
+
+onMounted(() => {
+  void refreshDashboardData();
 });
 </script>
 
@@ -1028,8 +672,9 @@ onMounted(async () => {
               <el-button
                 color="#6366f1"
                 size="large"
+                :loading="loading || progressLoading || examLoading"
                 class="analysis-action-btn !rounded-xl shadow-md shadow-blue-200/50 dark:shadow-none hover:translate-y-[-2px] transition-all"
-                @click="fetchAllData"
+                @click="refreshDashboardData"
               >
                 <template #icon>
                   <IconifyIconOnline icon="ep:refresh" />
@@ -1039,6 +684,7 @@ onMounted(async () => {
               <el-button
                 type="primary"
                 size="large"
+                :disabled="!hasExportData"
                 class="analysis-action-btn !rounded-xl shadow-md shadow-blue-200/50 dark:shadow-none hover:translate-y-[-2px] transition-all"
                 @click="handleExport"
               >
@@ -1051,6 +697,22 @@ onMounted(async () => {
           </div>
 
           <div
+            v-if="courseLoadError"
+            class="analysis-course-state flex min-h-[260px] items-center justify-center"
+          >
+            <el-empty :description="courseLoadError" :image-size="72">
+              <el-button type="primary" plain @click="refreshDashboardData">
+                重新加载
+              </el-button>
+            </el-empty>
+          </div>
+          <el-empty
+            v-else-if="courseOptions.length === 0"
+            description="暂无可分析的课程"
+            class="analysis-course-state min-h-[260px]"
+          />
+          <div
+            v-else
             class="analysis-panel-grid grid grid-cols-1 md:grid-cols-2 gap-8 mt-4"
           >
             <!-- 课程进度图表 -->
@@ -1090,14 +752,27 @@ onMounted(async () => {
                   </div>
                 </div>
               </div>
+              <el-empty
+                v-if="progressLoadError"
+                :description="progressLoadError"
+                :image-size="64"
+                class="analysis-chart-state"
+              >
+                <el-button type="primary" plain @click="fetchAllData">
+                  重新加载
+                </el-button>
+              </el-empty>
               <div
+                v-show="!progressLoadError"
                 ref="progressChartRef"
                 class="chart-container progress-chart"
                 style="width: 100%"
               />
               <!-- 学生进度分页器 -->
               <div
-                v-if="sortedUsers.length > progressPageSize"
+                v-if="
+                  !progressLoadError && sortedUsers.length > progressPageSize
+                "
                 class="mt-6 flex justify-center"
               >
                 <el-pagination
@@ -1148,7 +823,18 @@ onMounted(async () => {
                   </el-select>
                 </div>
               </div>
+              <el-empty
+                v-if="examLoadError"
+                :description="examLoadError"
+                :image-size="64"
+                class="analysis-chart-state"
+              >
+                <el-button type="primary" plain @click="fetchAllData">
+                  重新加载
+                </el-button>
+              </el-empty>
               <div
+                v-show="!examLoadError"
                 ref="examChartRef"
                 class="chart-container exam-chart"
                 style="width: 100%"
@@ -1193,6 +879,10 @@ onMounted(async () => {
 .progress-chart,
 .exam-chart {
   height: 550px;
+}
+
+.analysis-chart-state {
+  min-height: 550px;
 }
 
 :deep(.el-select) {
@@ -1283,6 +973,10 @@ onMounted(async () => {
   .progress-chart,
   .exam-chart {
     height: 360px;
+  }
+
+  .analysis-chart-state {
+    min-height: 360px;
   }
 
   :deep(.custom-radio-group) {

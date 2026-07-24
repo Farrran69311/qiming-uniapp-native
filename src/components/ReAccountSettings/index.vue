@@ -38,6 +38,7 @@ const router = useRouter();
 const editProfileVisible = ref(false);
 const loading = ref(false);
 const formRef = ref<FormInstance>();
+const profileOriginalInfo = ref("");
 
 const profileForm = reactive({
   nickname: "",
@@ -333,27 +334,54 @@ const croppingImage = ref("");
 const cropperRef = ref();
 const avatarUrl = ref("");
 
-const handleEditProfile = () => {
+const handleEditProfile = async () => {
   const cachedUser = storageLocal().getItem(userKey) as any;
   if (!cachedUser) {
     ElMessage.warning("请先登录");
     return;
   }
 
-  profileForm.nickname = cachedUser.nickname || cachedUser.username || "";
-  profileForm.avatar = cachedUser.avatar || "";
-  profileForm.info = cachedUser.info || "";
-  profileForm.username = cachedUser.username || "ID: 未知";
-  profileForm.sex = cachedUser.sex ?? 0;
-  // 增强日期获取兼容性
-  const rawDate =
-    cachedUser.createtime ||
-    cachedUser.createdAt ||
-    cachedUser.createTime ||
-    cachedUser["create-time"] ||
-    "";
-  profileForm.createdAt = rawDate ? rawDate.split(" ")[0] : "--";
-  profileForm.roleType = cachedUser.roleType ?? 0;
+  let freshUser: any;
+  loading.value = true;
+  try {
+    const detailRes = await getUserDetail();
+    freshUser = detailRes?.data?.userInfo;
+    if (detailRes?.code !== 200 || !freshUser) {
+      throw new Error(detailRes?.msg || "个人资料暂时无法加载");
+    }
+
+    const mergedUser = {
+      ...cachedUser,
+      ...freshUser,
+      username: freshUser.mobile || cachedUser.username
+    };
+    storageLocal().setItem(userKey, mergedUser);
+    localStorage.setItem("userSex", String(freshUser.sex ?? 0));
+    localStorage.setItem("userInfo", freshUser.info || "");
+    useUserStoreHook().SET_NICKNAME(freshUser.nickname || "");
+    useUserStoreHook().SET_AVATAR(freshUser.avatar || "");
+    window.dispatchEvent(
+      new CustomEvent("userInfoUpdated", { detail: mergedUser })
+    );
+  } catch (error: any) {
+    ElMessage.error(
+      error?.response?.data?.msg ||
+        error?.message ||
+        "个人资料加载失败，请稍后重试"
+    );
+    return;
+  } finally {
+    loading.value = false;
+  }
+
+  profileForm.nickname = freshUser.nickname || freshUser.mobile || "";
+  profileForm.avatar = freshUser.avatar || "";
+  profileForm.info = freshUser.info || "";
+  profileOriginalInfo.value = freshUser.info || "";
+  profileForm.username = freshUser.mobile || "ID: 未知";
+  profileForm.sex = Number(freshUser.sex ?? 0);
+  profileForm.createdAt = "--";
+  profileForm.roleType = Number(freshUser.roleType ?? 0);
 
   // 角色展示判断
   isStudent.value = profileForm.roleType === 1;
@@ -413,6 +441,11 @@ const handleConfirmCrop = () => {
           ElMessage.error(res.msg || "上传失败");
         }
       })
+      .catch((error: any) => {
+        ElMessage.error(
+          error?.response?.data?.msg || error?.message || "头像上传失败"
+        );
+      })
       .finally(() => {
         loading.value = false;
       });
@@ -423,12 +456,17 @@ const submitProfile = async () => {
   if (!formRef.value) return;
   await formRef.value.validate(async valid => {
     if (valid) {
+      const info = profileForm.info.trim();
+      if (profileOriginalInfo.value.trim() && !info) {
+        ElMessage.warning("当前服务暂不支持清空签名，请保留或修改签名内容");
+        return;
+      }
       loading.value = true;
       try {
         const res = await updateFrontendUserInfo({
           nickname: profileForm.nickname,
           avatar: profileForm.avatar,
-          info: profileForm.info,
+          info,
           sex: profileForm.sex
         });
         if (res.code === 200 || (res as any).success) {
@@ -449,6 +487,9 @@ const submitProfile = async () => {
               const updatedUser = { ...cachedUser, ...newUser };
               storageLocal().setItem(userKey, updatedUser);
             }
+            localStorage.setItem("userSex", String(newUser.sex ?? 0));
+            localStorage.setItem("userInfo", newUser.info || "");
+            profileOriginalInfo.value = newUser.info || "";
 
             userStore.SET_NICKNAME(newUser.nickname);
             userStore.SET_AVATAR(newUser.avatar);

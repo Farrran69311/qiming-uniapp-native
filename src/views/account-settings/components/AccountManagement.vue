@@ -1,48 +1,61 @@
 <script setup lang="ts">
-import { ref } from "vue";
-import { message } from "@/utils/message";
-import { deviceDetection } from "@pureadmin/utils";
+import { computed, onMounted, ref } from "vue";
+import { emitter } from "@/utils/mitt";
+import { getMine } from "@/api/user";
 
 defineOptions({
   name: "AccountManagement"
 });
 
-const list = ref([
+const mobile = ref("");
+
+const maskedMobile = computed(() => {
+  if (!/^1\d{10}$/.test(mobile.value)) return "当前登录账号";
+  return `${mobile.value.slice(0, 3)}****${mobile.value.slice(-4)}`;
+});
+
+const list = computed(() => [
   {
     title: "账户密码",
-    illustrate: "当前密码强度：强",
-    button: "修改"
+    illustrate: "定期更新密码可以提升账户安全性",
+    button: "修改",
+    available: true
   },
   {
-    title: "密保手机",
-    illustrate: "已经绑定手机：158****6789",
-    button: "修改"
+    title: "登录手机",
+    illustrate: `当前账号：${maskedMobile.value}`,
+    button: "暂不可改",
+    available: false
   },
   {
     title: "密保问题",
-    illustrate: "未设置密保问题，密保问题可有效保护账户安全",
-    button: "修改"
+    illustrate: "服务器尚未提供密保问题设置能力",
+    button: "暂不可用",
+    available: false
   },
   {
     title: "备用邮箱",
-    illustrate: "已绑定邮箱：pure***@163.com",
-    button: "修改"
+    illustrate: "服务器尚未提供备用邮箱设置能力",
+    button: "暂不可用",
+    available: false
   }
 ]);
 
 function onClick(item) {
-  console.log("onClick", item.title);
-  message("请根据具体业务自行实现", { type: "success" });
+  if (item.available) emitter.emit("openChangePassword");
 }
+
+onMounted(async () => {
+  try {
+    mobile.value = (await getMine()).data.phone;
+  } catch {
+    mobile.value = "";
+  }
+});
 </script>
 
 <template>
-  <div
-    :class="[
-      'min-w-[180px]',
-      deviceDetection() ? 'max-w-[100%]' : 'max-w-[70%]'
-    ]"
-  >
+  <div class="min-w-[180px] w-full max-w-full min-[769px]:max-w-[70%]">
     <h3 class="my-8">账户管理</h3>
     <div v-for="(item, index) in list" :key="index">
       <div class="flex items-center">
@@ -50,7 +63,12 @@ function onClick(item) {
           <p>{{ item.title }}</p>
           <el-text class="mx-1" type="info">{{ item.illustrate }}</el-text>
         </div>
-        <el-button type="primary" text @click="onClick(item)">
+        <el-button
+          type="primary"
+          text
+          :disabled="!item.available"
+          @click="onClick(item)"
+        >
           {{ item.button }}
         </el-button>
       </div>

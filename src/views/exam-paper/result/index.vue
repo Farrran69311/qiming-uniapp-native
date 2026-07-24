@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ElMessage } from "element-plus";
 import { useDark } from "@pureadmin/utils";
 import { getExamResult, type StudentSubmission } from "@/api/examPaper";
 
@@ -15,25 +14,37 @@ const { isDark } = useDark();
 
 const loading = ref(false);
 const result = ref<StudentSubmission | null>(null);
+const loadError = ref("");
+let latestResultRequest = 0;
 
 const submissionId = computed(() => Number(route.params.submissionId));
+const hasValidSubmissionId = computed(
+  () => Number.isInteger(submissionId.value) && submissionId.value > 0
+);
 
 const totalAnswerCount = computed(() => result.value?.answers?.length || 0);
 
 const answeredCount = computed(() => {
   if (!result.value?.answers?.length) return 0;
-  return result.value.answers.filter(item => {
-    if (Array.isArray(item.answer)) return item.answer.length > 0;
-    return (
-      item.answer !== "" && item.answer !== null && item.answer !== undefined
-    );
-  }).length;
+  return result.value.answers.filter(item => isAnsweredValue(item.answer))
+    .length;
 });
+
+const isAnsweredValue = (answer: unknown): boolean => {
+  if (answer === null || answer === undefined) return false;
+  if (typeof answer === "string") return answer.trim().length > 0;
+  if (typeof answer === "number") return Number.isFinite(answer);
+  if (Array.isArray(answer)) return answer.some(item => isAnsweredValue(item));
+  if (typeof answer === "object") {
+    return Object.values(answer).some(item => isAnsweredValue(item));
+  }
+  return false;
+};
 
 const objectiveAccuracy = computed(() => {
   if (!result.value?.answers?.length) return "-";
   const objective = result.value.answers.filter(
-    item => item.isCorrect !== undefined
+    item => typeof item.isCorrect === "boolean"
   );
   if (!objective.length) return "-";
   const correctCount = objective.filter(item => item.isCorrect).length;
@@ -48,10 +59,12 @@ const formatDateTime = (value?: string) => {
 };
 
 const formatDuration = (seconds?: number) => {
-  if (!seconds || seconds <= 0) return "-";
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const remain = seconds % 60;
+  const totalSeconds = Number(seconds);
+  if (!Number.isFinite(totalSeconds) || totalSeconds < 0) return "-";
+  const normalizedSeconds = Math.floor(totalSeconds);
+  const hours = Math.floor(normalizedSeconds / 3600);
+  const minutes = Math.floor((normalizedSeconds % 3600) / 60);
+  const remain = normalizedSeconds % 60;
   if (hours > 0) {
     return `${hours}小时${minutes}分${remain}秒`;
   }
@@ -69,35 +82,49 @@ const formatAnswer = (answer: unknown) => {
 };
 
 const goBack = () => {
-  router.push("/student-exam-center/list");
+  void router.push("/student-exam-center/list");
 };
 
 const fetchResult = async () => {
-  if (!submissionId.value) {
-    ElMessage.error("参数错误：缺少 submissionId");
-    goBack();
+  const requestId = ++latestResultRequest;
+  result.value = null;
+  loadError.value = "";
+  if (!hasValidSubmissionId.value) {
+    loadError.value = "考试结果链接无效";
+    loading.value = false;
     return;
   }
 
   loading.value = true;
   try {
     const res = await getExamResult(submissionId.value);
+    if (requestId !== latestResultRequest) return;
     if (res.code !== 0 || !res.data) {
-      ElMessage.error(res.msg || "获取考试结果失败");
-      return;
+      throw new Error(res.msg || "获取考试结果失败");
+    }
+    if (Number(res.data.submissionId) !== submissionId.value) {
+      throw new Error("考试结果与当前链接不一致");
     }
     result.value = res.data;
   } catch (error) {
+    if (requestId !== latestResultRequest) return;
     console.error("获取考试结果失败:", error);
-    ElMessage.error("获取考试结果失败");
+    const responseMessage = (
+      error as { response?: { data?: { msg?: string } } }
+    )?.response?.data?.msg;
+    loadError.value =
+      responseMessage ||
+      (error instanceof Error && error.message
+        ? error.message
+        : "获取考试结果失败，请稍后重试");
   } finally {
-    loading.value = false;
+    if (requestId === latestResultRequest) {
+      loading.value = false;
+    }
   }
 };
 
-onMounted(() => {
-  fetchResult();
-});
+watch(submissionId, () => void fetchResult(), { immediate: true });
 </script>
 
 <template>
@@ -110,6 +137,26 @@ onMounted(() => {
         </div>
         <el-button type="primary" @click="goBack">返回试卷中心</el-button>
       </div>
+
+      <section
+        v-if="loadError && !loading"
+        class="result-error"
+        role="alert"
+        aria-live="assertive"
+      >
+        <el-empty :description="loadError" :image-size="96">
+          <div class="result-error-actions">
+            <el-button @click="goBack">返回试卷中心</el-button>
+            <el-button
+              v-if="hasValidSubmissionId"
+              type="primary"
+              @click="fetchResult"
+            >
+              重新加载
+            </el-button>
+          </div>
+        </el-empty>
+      </section>
 
       <template v-if="result">
         <div class="score-card">
@@ -174,7 +221,7 @@ onMounted(() => {
               <el-table-column label="判题" width="120">
                 <template #default="scope">
                   <el-tag
-                    v-if="scope.row.isCorrect !== undefined"
+                    v-if="typeof scope.row.isCorrect === 'boolean'"
                     :type="scope.row.isCorrect ? 'success' : 'danger'"
                     size="small"
                   >
@@ -254,6 +301,16 @@ onMounted(() => {
   .subtitle {
     margin: 8px 0 0;
     color: #475569;
+  }
+}
+
+.result-error {
+  padding: 48px 16px;
+
+  .result-error-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
   }
 }
 
@@ -438,6 +495,22 @@ onMounted(() => {
     min-width: 0;
     padding: 8px;
     border-radius: 10px;
+  }
+
+  .result-error {
+    padding: 32px 8px;
+
+    .result-error-actions {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+
+    :deep(.el-button) {
+      width: 100%;
+      min-height: 44px;
+      margin: 0;
+    }
   }
 
   .answer-table-scroll {

@@ -27,8 +27,8 @@
             <span class="stat-label">小游戏</span>
           </div>
           <div class="stat-item">
-            <span class="stat-value">{{ stats.completed }}</span>
-            <span class="stat-label">已完成</span>
+            <span class="stat-value">{{ stats.total }}</span>
+            <span class="stat-label">实验总数</span>
           </div>
         </div>
       </div>
@@ -150,12 +150,6 @@ const activeCategory = ref("all");
 const labDialogVisible = ref(false);
 const currentLab = ref<LabItem | null>(null);
 
-const stats = ref({
-  animations: 12,
-  games: 8,
-  completed: 5
-});
-
 const labItems = ref<LabItem[]>([
   {
     id: 1,
@@ -249,6 +243,13 @@ const labItems = ref<LabItem[]>([
     url: "/demos/typing-game.html"
   }
 ]);
+
+const stats = computed(() => ({
+  animations: labItems.value.filter(item => item.category === "animation")
+    .length,
+  games: labItems.value.filter(item => item.category === "game").length,
+  total: labItems.value.length
+}));
 
 const filteredItems = computed(() => {
   if (activeCategory.value === "all") {

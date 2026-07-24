@@ -10,7 +10,7 @@
       class="course-sidebar w-[320px] flex flex-col bg-white dark:bg-[#1d1d1d] rounded-3xl shadow-sm border-2 border-slate-100 dark:border-slate-800 overflow-hidden transition-colors duration-300"
     >
       <div
-        class="pt-8 px-8 pb-4 border-b-2 border-slate-100 dark:border-slate-800 bg-[#f8fafc] dark:bg-[#252525]/50"
+        class="course-sidebar-header pt-8 px-8 pb-4 border-b-2 border-slate-100 dark:border-slate-800 bg-[#f8fafc] dark:bg-[#252525]/50"
       >
         <h3
           class="text-xl font-extrabold text-slate-800 dark:text-slate-100 flex items-center tracking-tight"
@@ -578,7 +578,7 @@ onMounted(() => {
   gap: 12px;
   overflow: visible;
   flex-direction: column;
-  padding: 12px;
+  padding: 0;
 }
 
 @mixin teacher-plan-mobile-panel-layout {
@@ -754,6 +754,10 @@ onMounted(() => {
   .course-item {
     padding: 10px;
     border-radius: 14px;
+  }
+
+  .course-sidebar-header {
+    padding: 16px;
   }
 
   .teacher-plan-tabs {

@@ -48,6 +48,8 @@ export type UserInfo = {
   phone: string;
   /** 简介 */
   description: string;
+  /** 性别，更新资料时必须原样回传，避免后端按缺省值覆盖 */
+  sex: number;
 };
 
 export type UserInfoResult = {
@@ -190,20 +192,6 @@ export type UserListResult = {
   };
 };
 
-type ResultTable = {
-  success: boolean;
-  data?: {
-    /** 列表数据 */
-    list: Array<any>;
-    /** 总条目数 */
-    total?: number;
-    /** 每页显示条目个数 */
-    pageSize?: number;
-    /** 当前页数 */
-    currentPage?: number;
-  };
-};
-
 /** 登录 */
 export const getLogin = (data?: object) => {
   return http.request<UserResult>("post", "/login", { data });
@@ -212,11 +200,6 @@ export const getLogin = (data?: object) => {
 /** 刷新`token` */
 export const refreshTokenApi = (data?: object) => {
   return http.request<RefreshTokenResult>("post", "/refresh-token", { data });
-};
-
-/** 账户设置-个人安全日志 */
-export const getMineLogs = (data?: object) => {
-  return http.request<ResultTable>("get", "/mine-logs", { data });
 };
 
 // 新增用户中心接口
@@ -252,7 +235,23 @@ export const getUserDetail = () => {
  * sourcing the data from the canonical user-detail endpoint.
  */
 export const getMine = (_data?: object): Promise<UserInfoResult> => {
-  return getUserDetail().then(adaptUserDetailToMine);
+  return getUserDetail().then(response => {
+    const user = response?.data?.userInfo;
+    if ((response?.code !== 0 && response?.code !== 200) || !user) {
+      throw new Error(response?.msg || "个人资料暂时无法加载");
+    }
+
+    const adapted = adaptUserDetailToMine(response);
+    return {
+      ...adapted,
+      success: true,
+      data: {
+        ...adapted.data,
+        nickname: user.nickname || user.mobile || "",
+        sex: Number(user.sex ?? 0)
+      }
+    };
+  });
 };
 
 /** 文件上传 */

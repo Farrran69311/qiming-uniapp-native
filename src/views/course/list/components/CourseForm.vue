@@ -243,6 +243,7 @@
                               hourIndex +
                               '.duration'
                             "
+                            :rules="videoDurationRules"
                           >
                             <el-input-number
                               v-model="hour.duration"
@@ -438,6 +439,7 @@
                     <el-form-item
                       :label="'时长(秒)'"
                       :prop="'hourList.' + hourIndex + '.duration'"
+                      :rules="videoDurationRules"
                     >
                       <el-input-number
                         v-model="hour.duration"
@@ -700,6 +702,7 @@ import { completeStsUpload, initStsUpload } from "@/api/user";
 import { getCategoryList } from "@/api/category";
 import { Plus, Loading } from "@element-plus/icons-vue";
 import { openPlatformUrl } from "@/utils/platformCapability";
+import { getVideoDuration } from "../utils/course-package";
 
 const props = defineProps({
   modelValue: {
@@ -763,6 +766,15 @@ const formRules = {
     { required: true, message: "请输入课时标题", trigger: "blur" }
   ]
 };
+const videoDurationRules = [
+  {
+    required: true,
+    type: "number" as const,
+    min: 1,
+    message: "无法读取视频时长，请重新上传有效视频",
+    trigger: "change"
+  }
+];
 
 // 分类选项
 const categoryOptions = ref([]);
@@ -1252,7 +1264,7 @@ const removeChapter = index => {
 const addHour = () => {
   formData.hourList.push({
     title: "", // 自动填充，由视频文件名决定
-    duration: 0, // 自动填充，由视频时长决定
+    duration: null, // 自动填充，由视频时长决定
     rType: "video", // 默认视频类型
     resourceId: 0,
     fileUrl: "",
@@ -1281,7 +1293,7 @@ const removeHour = index => {
 const addHourToChapter = chapterIndex => {
   formData.chapterList[chapterIndex].hourList.push({
     title: "", // 自动填充，由视频文件名决定
-    duration: 0, // 自动填充，由视频时长决定
+    duration: null, // 自动填充，由视频时长决定
     rType: "video", // 默认视频类型
     resourceId: 0,
     fileUrl: "",
@@ -1311,29 +1323,47 @@ const removeHourFromChapter = (chapterIndex, hourIndex) => {
 
 // 处理资源上传
 const handleResourceUpload = async (file, list, index) => {
+  const hour = list[index];
+  const rawFile = file?.raw as File | undefined;
+  if (!hour || !rawFile) {
+    if (hour) hour.isUploading = false;
+    ElMessage.error("无法读取所选视频，请重新选择");
+    return;
+  }
+
   try {
+    hour.isUploading = true;
     // 检查文件类型是否为视频
     const acceptedTypes = ["video/mp4", "video/webm", "video/ogg"];
+    const acceptedExtensions = ["mp4", "webm", "ogg"];
+    const extension = rawFile.name.split(".").pop()?.toLowerCase() || "";
 
-    if (!acceptedTypes.includes(file.raw.type)) {
-      list[index].isUploading = false;
+    if (
+      !acceptedTypes.includes(rawFile.type.toLowerCase()) &&
+      !acceptedExtensions.includes(extension)
+    ) {
       ElMessage.error("请上传视频文件（MP4、WebM、Ogg格式）");
       return;
     }
 
+    const duration = await getVideoDuration(rawFile);
+    if (!Number.isFinite(duration) || duration <= 0) {
+      hour.duration = null;
+      ElMessage.error("无法读取视频时长，请重新选择可正常播放的视频");
+      return;
+    }
+
     // 获取原始文件名
-    const originalFileName = file.name;
+    const originalFileName = rawFile.name;
     // 不含扩展名的文件名用于标题
     const titleWithoutExt =
       originalFileName.substring(0, originalFileName.lastIndexOf(".")) ||
       originalFileName;
 
     // 创建进度跟踪器
-    const tracker = createProgressTracker(list[index]);
+    const tracker = createProgressTracker(hour);
 
-    const res = await uploadWithSts(file.raw, "resource_upload", tracker);
-    // 上传完成后结束上传状态
-    list[index].isUploading = false;
+    const res = await uploadWithSts(rawFile, "resource_upload", tracker);
 
     if (
       res &&
@@ -1343,25 +1373,28 @@ const handleResourceUpload = async (file, list, index) => {
       res.data.fileId
     ) {
       // 更新表单数据
-      list[index].resourceId = res.data.fileId;
-      list[index].fileUrl = res.data.url;
-      list[index].originalFileName = originalFileName; // 保存原始文件名
-      list[index].title = titleWithoutExt; // 设置标题为不含扩展名的文件名
+      hour.resourceId = res.data.fileId;
+      hour.fileUrl = res.data.url;
+      hour.originalFileName = originalFileName; // 保存原始文件名
+      hour.title = titleWithoutExt; // 设置标题为不含扩展名的文件名
+      hour.duration = duration;
+      hour.rType = "video"; // 设置为视频类型
 
-      // 模拟从视频中提取时长（实际项目中可能需要服务端支持）
-      // 这里简单设置一个随机时长，实际应用中应该从视频文件中提取
-      list[index].duration = Math.floor(Math.random() * 600) + 60; // 60-660秒
-      list[index].rType = "video"; // 设置为视频类型
-
-      ElMessage.success("视频上传成功，已自动设置标题和时长");
+      ElMessage.success("视频上传成功，已读取标题和时长");
     } else {
+      hour.resourceId = 0;
+      hour.fileUrl = "";
+      hour.duration = null;
       ElMessage.error("资源上传失败：无法获取文件信息");
     }
   } catch (error) {
-    // 发生错误时也要结束上传状态
-    list[index].isUploading = false;
+    hour.resourceId = 0;
+    hour.fileUrl = "";
+    hour.duration = null;
     console.error("资源上传失败:", error);
     ElMessage.error("资源上传失败");
+  } finally {
+    hour.isUploading = false;
   }
 };
 
@@ -1369,7 +1402,7 @@ const removeResource = (list, index) => {
   list[index].resourceId = 0;
   list[index].fileUrl = "";
   list[index].title = ""; // 清空标题
-  list[index].duration = 0; // 重置时长
+  list[index].duration = null; // 重置时长
   list[index].originalFileName = ""; // 清空原始文件名
   resetProgressTracker(list[index]);
 };
@@ -1442,6 +1475,27 @@ const removeAttrResource = index => {
 const validate = async () => {
   try {
     lastInvalidFields.value = null;
+    const allHours = [
+      ...(Array.isArray(formData.hourList) ? formData.hourList : []),
+      ...(Array.isArray(formData.chapterList)
+        ? formData.chapterList.flatMap(chapter => chapter.hourList || [])
+        : [])
+    ];
+    if (allHours.some(hour => hour.isUploading)) {
+      ElMessage.warning("视频仍在上传，请等待上传完成");
+      throw new Error("视频仍在上传");
+    }
+    if (
+      allHours.some(
+        hour =>
+          Number(hour.resourceId || 0) > 0 &&
+          (!Number.isFinite(Number(hour.duration)) ||
+            Number(hour.duration) <= 0)
+      )
+    ) {
+      ElMessage.error("存在无法读取时长的视频，请重新上传后再提交");
+      throw new Error("视频时长无效");
+    }
     return await formRef.value.validate();
   } catch (error: any) {
     lastInvalidFields.value = error?.fields || error || null;

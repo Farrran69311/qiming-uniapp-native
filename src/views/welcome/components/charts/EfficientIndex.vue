@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, computed, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useDark, useECharts, useResizeObserver } from "@pureadmin/utils";
 import { useAppStoreHook } from "@/store/modules/app";
 import { getEfficientIndex } from "@/api/statistics";
@@ -19,6 +19,7 @@ defineOptions({
 });
 
 const loading = ref(true);
+const loadError = ref("");
 const efficientData = ref<any[]>([]);
 const selectedCourses = ref<number[]>([]);
 const showOptimizePanel = ref(false); // 默认折叠优化建议面板
@@ -84,9 +85,20 @@ const fetchActiveCourseIndex = async (): Promise<ActiveCourseIndex> => {
       )
     );
 
+    if (
+      restPages.some(
+        result =>
+          result.status === "rejected" ||
+          result.value?.code !== 200 ||
+          !Array.isArray(result.value?.data?.courseList)
+      )
+    ) {
+      throw new Error("课程列表分页加载不完整");
+    }
+
     restPages.forEach(result => {
       if (result.status === "fulfilled") {
-        courseList = courseList.concat(result.value?.data?.courseList || []);
+        courseList = courseList.concat(result.value.data.courseList);
       }
     });
   }
@@ -134,6 +146,7 @@ const normalizeEfficientList = (
 
 // 获取教学效率指数数据
 const fetchData = async () => {
+  loadError.value = "";
   loading.value = true;
   try {
     const [efficientResponse, activeCourseResponse] = await Promise.allSettled([
@@ -146,30 +159,33 @@ const fetchData = async () => {
     }
 
     const response = efficientResponse.value;
-    const activeCourses =
-      activeCourseResponse.status === "fulfilled"
-        ? activeCourseResponse.value
-        : {
-            ready: false,
-            ids: new Set<number>(),
-            names: new Set<string>()
-          };
-
-    if (response?.data?.efficientIndexList) {
-      efficientData.value = normalizeEfficientList(
-        response.data.efficientIndexList,
-        activeCourses
-      );
-      // 默认选中所有课程
-      selectedCourses.value = efficientData.value.map((_, index) => index);
-      currentPage.value = 1;
+    if (
+      response?.code !== 200 ||
+      !Array.isArray(response.data?.efficientIndexList)
+    ) {
+      throw new Error(response?.msg || "效率评价接口未返回有效数据");
     }
+    if (activeCourseResponse.status !== "fulfilled") {
+      throw activeCourseResponse.reason;
+    }
+    const activeCourses = activeCourseResponse.value;
 
-    renderChart();
+    efficientData.value = normalizeEfficientList(
+      response.data.efficientIndexList,
+      activeCourses
+    );
+    // 默认选中所有课程
+    selectedCourses.value = efficientData.value.map((_, index) => index);
+    currentPage.value = 1;
   } catch (error) {
     console.error("获取教学效率指数数据失败:", error);
+    efficientData.value = [];
+    selectedCourses.value = [];
+    loadError.value = "效率评价指标暂时无法加载";
   } finally {
     loading.value = false;
+    await nextTick();
+    if (!loadError.value && efficientData.value.length > 0) renderChart();
   }
 };
 
@@ -380,6 +396,9 @@ const optimizeSuggestions = computed(() => {
       difficulty: item.difficulty
     }));
 });
+const pagedSuggestions = computed(() =>
+  pagedData.value.filter(item => item.optimizeDirection?.trim())
+);
 
 const dialogVisible = ref(false);
 const selectedSuggestion = ref(null);
@@ -419,8 +438,13 @@ onMounted(() => {
   <div class="w-full">
     <el-skeleton :loading="loading" animated :rows="6">
       <template #default>
+        <el-empty v-if="loadError" :description="loadError" class="py-16">
+          <el-button type="primary" plain @click="fetchData">
+            重新加载
+          </el-button>
+        </el-empty>
         <el-empty
-          v-if="!efficientData.length"
+          v-else-if="!efficientData.length"
           description="暂无可展示的课程效率指标"
           class="py-16"
         />
@@ -503,7 +527,7 @@ onMounted(() => {
 
           <!-- 智能建议板块 -->
           <div
-            v-if="optimizeSuggestions.length"
+            v-if="optimizeSuggestions.length && pagedSuggestions.length"
             class="optimize-suggestions mt-4"
           >
             <div class="flex items-center justify-between mb-6">
@@ -530,7 +554,7 @@ onMounted(() => {
               <div v-show="showOptimizePanel">
                 <el-row :gutter="20" class="suggestion-row">
                   <el-col
-                    v-for="(item, index) in pagedData"
+                    v-for="(item, index) in pagedSuggestions"
                     :key="index"
                     :xs="24"
                     :sm="12"
@@ -587,7 +611,7 @@ onMounted(() => {
         <el-dialog
           v-model="dialogVisible"
           :title="selectedSuggestion?.courseName + ' 提效方案'"
-          width="500px"
+          width="min(500px, calc(100vw - 24px))"
           destroy-on-close
           class="rounded-2xl"
           append-to-body

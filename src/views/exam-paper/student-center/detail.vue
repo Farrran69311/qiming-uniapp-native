@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue";
+import { ref, computed, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useDark } from "@pureadmin/utils";
-import { ElMessage } from "element-plus";
 import { ArrowLeft } from "@element-plus/icons-vue";
 import {
   getStudentPaperDetail,
@@ -23,22 +22,43 @@ const { isDark } = useDark();
 const paperId = computed(() => Number(route.params.id));
 const loading = ref(false);
 const paper = ref<StudentPaperDetail | null>(null);
+const loadError = ref("");
+let latestDetailRequest = 0;
 
 // 获取试卷详情
 const fetchPaperDetail = async () => {
+  const requestId = ++latestDetailRequest;
   loading.value = true;
+  loadError.value = "";
+  paper.value = null;
   try {
-    const res = await getStudentPaperDetail(paperId.value);
-    if (res.code === 0) {
-      paper.value = res.data;
-    } else {
-      ElMessage.error(res.msg || "获取试卷详情失败");
+    if (!Number.isInteger(paperId.value) || paperId.value <= 0) {
+      throw new Error("试卷 ID 无效");
     }
+    const res = await getStudentPaperDetail(paperId.value);
+    if (requestId !== latestDetailRequest) return;
+    if (res.code !== 0 || !res.data) {
+      throw new Error(res.msg || "获取试卷详情失败");
+    }
+    if (Number(res.data.paperId) !== paperId.value) {
+      throw new Error("试卷详情与当前链接不一致");
+    }
+    paper.value = res.data;
   } catch (error) {
+    if (requestId !== latestDetailRequest) return;
     console.error("获取试卷详情失败:", error);
-    ElMessage.error("获取试卷详情失败");
+    const responseMessage = (
+      error as { response?: { data?: { msg?: string } } }
+    )?.response?.data?.msg;
+    loadError.value =
+      responseMessage ||
+      (error instanceof Error && error.message
+        ? error.message
+        : "获取试卷详情失败，请稍后重试");
   } finally {
-    loading.value = false;
+    if (requestId === latestDetailRequest) {
+      loading.value = false;
+    }
   }
 };
 
@@ -54,17 +74,17 @@ const formatTime = (time: string): string => {
 
 // 返回列表
 const goBack = () => {
-  router.back();
+  void router.push("/student-exam-center/list");
 };
 
 // 开始答题
 const startExam = () => {
-  router.push(`/student-exam-center/do/${paperId.value}`);
+  if (!paper.value || !Number.isInteger(paperId.value) || paperId.value <= 0)
+    return;
+  void router.push(`/student-exam-center/do/${paperId.value}`);
 };
 
-onMounted(() => {
-  fetchPaperDetail();
-});
+watch(paperId, () => void fetchPaperDetail(), { immediate: true });
 </script>
 
 <template>
@@ -73,13 +93,29 @@ onMounted(() => {
       <!-- 页面头部 -->
       <div class="page-header">
         <el-button :icon="ArrowLeft" @click="goBack">返回</el-button>
-        <div class="header-actions">
+        <div v-if="paper && !loadError" class="header-actions">
           <el-button type="primary" size="large" @click="startExam">
             <el-icon><Edit /></el-icon>
             开始答题
           </el-button>
         </div>
       </div>
+
+      <section
+        v-if="loadError && !loading"
+        class="detail-error"
+        role="alert"
+        aria-live="assertive"
+      >
+        <el-empty :description="loadError" :image-size="96">
+          <div class="detail-error-actions">
+            <el-button @click="goBack">返回试卷中心</el-button>
+            <el-button type="primary" @click="fetchPaperDetail">
+              重新加载
+            </el-button>
+          </div>
+        </el-empty>
+      </section>
 
       <template v-if="paper">
         <!-- 试卷基本信息 -->
@@ -321,6 +357,16 @@ $primary-color: #739cf9;
     margin: 0 auto;
   }
 
+  .detail-error {
+    padding: 48px 16px;
+
+    .detail-error-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+    }
+  }
+
   .page-header {
     display: flex;
     justify-content: space-between;
@@ -535,7 +581,8 @@ $primary-color: #739cf9;
   }
 
   .student-paper-detail .page-header :deep(.el-button),
-  .student-paper-detail .bottom-actions :deep(.el-button) {
+  .student-paper-detail .bottom-actions :deep(.el-button),
+  .student-paper-detail .detail-error :deep(.el-button) {
     min-height: 44px;
     margin: 0;
   }
@@ -627,6 +674,16 @@ $primary-color: #739cf9;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
     padding: 8px 0;
+  }
+
+  .student-paper-detail .detail-error {
+    padding: 32px 8px;
+
+    .detail-error-actions {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
   }
 
   .student-paper-detail .bottom-actions :deep(.el-button) {

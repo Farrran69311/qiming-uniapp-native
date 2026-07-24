@@ -32,6 +32,8 @@ defineOptions({
 const { isMobile, paginationLayout, getDialogWidth } = usePageResponsive();
 
 const loading = ref(false);
+const operationPending = ref(false);
+const loadError = ref("");
 const words = ref<SensitiveWord[]>([]);
 const selectedRows = ref<SensitiveWord[]>([]);
 const dialogVisible = ref(false);
@@ -49,16 +51,14 @@ const stats = ref({
 const searchForm = reactive({
   keyword: "",
   level: "" as SensitiveWordLevel | "",
-  category: "",
-  isEnabled: undefined as boolean | undefined
+  category: ""
 });
 
 const formData = reactive({
   word: "",
   level: 2 as SensitiveWordLevel,
   category: "",
-  replacement: "***",
-  isEnabled: true
+  replacement: "***"
 });
 
 const importData = reactive({
@@ -96,7 +96,6 @@ const activeFilterCount = computed(() => {
   if (searchForm.keyword.trim()) count += 1;
   if (searchForm.level) count += 1;
   if (searchForm.category) count += 1;
-  if (typeof searchForm.isEnabled === "boolean") count += 1;
 
   return count;
 });
@@ -108,6 +107,8 @@ const filterBadgeText = computed(() =>
 );
 
 const listSummaryText = computed(() => {
+  if (loadError.value) return "敏感词库加载失败";
+
   if (loading.value && pagination.total === 0) {
     return "正在同步敏感词库...";
   }
@@ -141,16 +142,20 @@ const getLevelText = (level: SensitiveWordLevel) => {
   return map[level] || String(level);
 };
 
-const getEnabledText = (isEnabled: boolean) =>
-  isEnabled ? "已启用" : "已禁用";
-
 const getContentPreview = (text: string, limit = 20) => {
   if (!text) return "-";
   return text.length > limit ? `${text.slice(0, limit)}...` : text;
 };
 
+const getErrorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error && error.message ? error.message : fallback;
+
+let latestDataRequest = 0;
+
 const fetchData = async () => {
+  const requestId = ++latestDataRequest;
   loading.value = true;
+  loadError.value = "";
   try {
     const params: {
       pageNum: number;
@@ -158,7 +163,6 @@ const fetchData = async () => {
       keyword?: string;
       level?: SensitiveWordLevel;
       category?: string;
-      isEnabled?: number;
     } = {
       pageNum: pagination.page,
       pageSize: pagination.pageSize
@@ -168,32 +172,10 @@ const fetchData = async () => {
     if (searchForm.level) params.level = searchForm.level;
     if (searchForm.category) params.category = searchForm.category;
 
-    if (searchForm.isEnabled === true) {
-      params.isEnabled = 1;
-    } else if (searchForm.isEnabled === false) {
-      params.isEnabled = 0;
-    } else {
-      params.isEnabled = -1;
-    }
-
     const res = await getSensitiveWords(params);
-    const resData = (res as any).data || res;
-
-    if (resData && typeof resData === "object") {
-      if (Array.isArray(resData.list)) {
-        words.value = resData.list;
-        pagination.total = resData.total || resData.list.length;
-      } else if (Array.isArray(resData)) {
-        words.value = resData;
-        pagination.total = resData.length;
-      } else {
-        words.value = [];
-        pagination.total = 0;
-      }
-    } else {
-      words.value = [];
-      pagination.total = 0;
-    }
+    if (requestId !== latestDataRequest) return;
+    words.value = res.list;
+    pagination.total = res.total;
 
     stats.value = {
       total: pagination.total,
@@ -202,10 +184,14 @@ const fetchData = async () => {
       low: words.value.filter(item => item.level === 1).length
     };
   } catch (error) {
+    if (requestId !== latestDataRequest) return;
     console.error("加载敏感词失败", error);
-    ElMessage.error("加载数据失败，请检查控制台");
+    words.value = [];
+    pagination.total = 0;
+    stats.value = { total: 0, high: 0, medium: 0, low: 0 };
+    loadError.value = getErrorMessage(error, "加载敏感词库失败，请重试");
   } finally {
-    loading.value = false;
+    if (requestId === latestDataRequest) loading.value = false;
   }
 };
 
@@ -218,7 +204,6 @@ const resetSearch = () => {
   searchForm.keyword = "";
   searchForm.level = "";
   searchForm.category = "";
-  searchForm.isEnabled = undefined;
   handleSearch();
 };
 
@@ -248,7 +233,6 @@ const openAddDialog = () => {
   formData.level = 2;
   formData.category = "";
   formData.replacement = "***";
-  formData.isEnabled = true;
   dialogVisible.value = true;
 };
 
@@ -259,7 +243,6 @@ const openEditDialog = (row: SensitiveWord) => {
   formData.level = row.level;
   formData.category = row.category || "";
   formData.replacement = row.replacement || "***";
-  formData.isEnabled = row.isEnabled;
   dialogVisible.value = true;
 };
 
@@ -268,6 +251,8 @@ const submitForm = async () => {
     ElMessage.warning("请输入敏感词");
     return;
   }
+  if (operationPending.value) return;
+  operationPending.value = true;
 
   try {
     const isEditMode = isEdit.value && currentWord.value;
@@ -276,7 +261,6 @@ const submitForm = async () => {
       level: SensitiveWordLevel;
       category?: string;
       replacement?: string;
-      isEnabled?: number;
     } = {
       word: formData.word,
       level: formData.level,
@@ -285,59 +269,40 @@ const submitForm = async () => {
     };
 
     if (isEditMode) {
-      payload.isEnabled = formData.isEnabled ? 1 : 0;
-    }
-
-    if (isEditMode) {
-      const res = await updateSensitiveWord(currentWord.value.id, payload);
-      if (
-        (res as any)?.code === 0 ||
-        (res && typeof (res as any)?.code === "undefined")
-      ) {
-        ElMessage.success("更新成功");
-        dialogVisible.value = false;
-        await fetchData();
-      } else {
-        ElMessage.error((res as any).msg || "更新失败");
-      }
+      await updateSensitiveWord(currentWord.value.id, payload);
+      ElMessage.success("更新成功");
     } else {
-      const res = await addSensitiveWord(payload);
-      if (
-        (res as any)?.code === 0 ||
-        (res && typeof (res as any)?.code === "undefined")
-      ) {
-        ElMessage.success("添加成功");
-        dialogVisible.value = false;
-        await fetchData();
-      } else {
-        ElMessage.error((res as any).msg || "添加失败");
-      }
+      await addSensitiveWord(payload);
+      ElMessage.success("添加成功");
     }
+    dialogVisible.value = false;
+    await fetchData();
   } catch (error) {
     console.error("操作失败:", error);
-    ElMessage.error(isEdit.value ? "更新失败" : "添加失败");
+    ElMessage.error(
+      getErrorMessage(error, isEdit.value ? "更新失败" : "添加失败")
+    );
+  } finally {
+    operationPending.value = false;
   }
 };
 
 const handleDelete = async (row: SensitiveWord) => {
+  if (operationPending.value) return;
+  operationPending.value = true;
   try {
     await ElMessageBox.confirm(`确定要删除敏感词「${row.word}」吗？`, "提示", {
       type: "warning"
     });
-    const res = await deleteSensitiveWord(row.id);
-    if (
-      (res as any)?.code === 0 ||
-      (res && typeof (res as any)?.code === "undefined")
-    ) {
-      ElMessage.success("删除成功");
-      await fetchData();
-    } else {
-      ElMessage.error((res as any).msg || "删除失败");
-    }
+    await deleteSensitiveWord(row.id);
+    ElMessage.success("删除成功");
+    await fetchData();
   } catch (error: any) {
     if (error !== "cancel") {
-      ElMessage.error("删除失败");
+      ElMessage.error(getErrorMessage(error, "删除失败"));
     }
+  } finally {
+    operationPending.value = false;
   }
 };
 
@@ -346,6 +311,8 @@ const batchDelete = async () => {
     ElMessage.warning("请选择要删除的敏感词");
     return;
   }
+  if (operationPending.value) return;
+  operationPending.value = true;
 
   try {
     await ElMessageBox.confirm(
@@ -354,39 +321,26 @@ const batchDelete = async () => {
       { type: "warning" }
     );
 
-    await Promise.all(
+    const results = await Promise.allSettled(
       selectedRows.value.map(row => deleteSensitiveWord(row.id))
     );
-    ElMessage.success("批量删除成功");
+    const succeeded = results.filter(result => result.status === "fulfilled");
+    const failed = results.length - succeeded.length;
+    if (failed === 0) {
+      ElMessage.success(`批量删除成功，共删除 ${succeeded.length} 个敏感词`);
+    } else {
+      ElMessage.warning(
+        `批量删除完成：成功 ${succeeded.length} 个，失败 ${failed} 个`
+      );
+    }
     selectedRows.value = [];
     await fetchData();
   } catch (error: any) {
     if (error !== "cancel") {
-      ElMessage.error("批量删除失败");
+      ElMessage.error(getErrorMessage(error, "批量删除失败"));
     }
-  }
-};
-
-const toggleEnabled = async (row: SensitiveWord) => {
-  const oldStatus = row.isEnabled;
-  try {
-    const newStatus = !row.isEnabled;
-    row.isEnabled = newStatus;
-    const res = await updateSensitiveWord(row.id, {
-      isEnabled: newStatus ? 1 : 0
-    });
-
-    if (
-      (res as any)?.code === 0 ||
-      (res && typeof (res as any)?.code === "undefined")
-    ) {
-      ElMessage.success(row.isEnabled ? "已启用" : "已禁用");
-    } else {
-      throw new Error((res as any).msg || "操作失败");
-    }
-  } catch (error: any) {
-    row.isEnabled = oldStatus;
-    ElMessage.error(error.message || "操作失败");
+  } finally {
+    operationPending.value = false;
   }
 };
 
@@ -402,6 +356,8 @@ const submitImport = async () => {
     ElMessage.warning("请输入要导入的敏感词");
     return;
   }
+  if (operationPending.value) return;
+  operationPending.value = true;
 
   try {
     const wordsToImport = importData.content
@@ -414,7 +370,7 @@ const submitImport = async () => {
       return;
     }
 
-    await importSensitiveWords({
+    const result = await importSensitiveWords({
       words: wordsToImport.map(word => ({
         word,
         level: importData.level,
@@ -422,15 +378,27 @@ const submitImport = async () => {
       }))
     });
 
-    ElMessage.success("导入完成");
+    if (result.failCount > 0) {
+      ElMessage.warning(
+        `导入完成：成功 ${result.successCount} 个，失败 ${result.failCount} 个`
+      );
+    } else {
+      ElMessage.success(`导入完成，共导入 ${result.successCount} 个敏感词`);
+    }
     importDialogVisible.value = false;
     await fetchData();
   } catch (error) {
-    ElMessage.error("导入失败");
+    ElMessage.error(getErrorMessage(error, "导入失败"));
+  } finally {
+    operationPending.value = false;
   }
 };
 
 const handleExport = () => {
+  if (words.value.length === 0) {
+    ElMessage.warning("当前没有可导出的敏感词");
+    return;
+  }
   const content = words.value.map(item => item.word).join("\n");
   const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -457,7 +425,7 @@ onMounted(() => {
 
 <template>
   <div
-    class="sensitive-words-page p-4"
+    class="sensitive-words-page p-4 max-[769px]:p-0"
     :class="{ 'sensitive-words-page--mobile': isMobile }"
   >
     <div class="sensitive-stats-grid mb-4">
@@ -473,7 +441,7 @@ onMounted(() => {
         <el-card shadow="hover" class="stat-card">
           <div class="stat-content">
             <div class="stat-number text-danger">{{ stats.high }}</div>
-            <div class="stat-label">高风险</div>
+            <div class="stat-label">本页高风险</div>
           </div>
         </el-card>
       </div>
@@ -481,7 +449,7 @@ onMounted(() => {
         <el-card shadow="hover" class="stat-card">
           <div class="stat-content">
             <div class="stat-number text-warning">{{ stats.medium }}</div>
-            <div class="stat-label">中风险</div>
+            <div class="stat-label">本页中风险</div>
           </div>
         </el-card>
       </div>
@@ -489,7 +457,7 @@ onMounted(() => {
         <el-card shadow="hover" class="stat-card">
           <div class="stat-content">
             <div class="stat-number text-info">{{ stats.low }}</div>
-            <div class="stat-label">低风险</div>
+            <div class="stat-label">本页低风险</div>
           </div>
         </el-card>
       </div>
@@ -549,13 +517,12 @@ onMounted(() => {
         </el-form-item>
         <el-form-item label="状态">
           <el-select
-            v-model="searchForm.isEnabled"
-            placeholder="全部状态"
-            clearable
+            model-value=""
+            placeholder="后端暂未提供"
+            disabled
             :style="{ width: isMobile ? '100%' : '140px' }"
           >
-            <el-option label="已启用" :value="true" />
-            <el-option label="已禁用" :value="false" />
+            <el-option label="后端暂未提供" value="" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -567,17 +534,27 @@ onMounted(() => {
       </el-form>
 
       <div class="toolbar-actions">
-        <el-button type="primary" :icon="Plus" @click="openAddDialog">
+        <el-button
+          type="primary"
+          :icon="Plus"
+          :disabled="operationPending"
+          @click="openAddDialog"
+        >
           添加敏感词
         </el-button>
-        <el-button type="success" :icon="Upload" @click="openImportDialog">
+        <el-button
+          type="success"
+          :icon="Upload"
+          :disabled="operationPending"
+          @click="openImportDialog"
+        >
           批量导入
         </el-button>
         <el-button :icon="Download" @click="handleExport">导出</el-button>
         <el-button
           type="danger"
           :icon="Delete"
-          :disabled="selectedCount === 0"
+          :disabled="selectedCount === 0 || operationPending"
           @click="batchDelete"
         >
           批量删除
@@ -591,8 +568,26 @@ onMounted(() => {
         <div class="text-sm text-gray-500">{{ listSummaryText }}</div>
       </div>
       <div class="flex justify-end mb-4">
-        <el-button :icon="Refresh" text @click="refreshData">
+        <el-button
+          :icon="Refresh"
+          text
+          :disabled="loading || operationPending"
+          @click="refreshData"
+        >
           同步数据
+        </el-button>
+      </div>
+
+      <div v-if="loadError" class="load-error mb-4">
+        <el-alert
+          title="敏感词库加载失败"
+          :description="loadError"
+          type="error"
+          show-icon
+          :closable="false"
+        />
+        <el-button type="primary" plain :icon="Refresh" @click="fetchData">
+          重试
         </el-button>
       </div>
 
@@ -600,9 +595,7 @@ onMounted(() => {
         <div v-for="row in words" :key="row.id" class="mobile-word-card">
           <div class="mobile-word-card__header">
             <div class="mobile-word-card__title">
-              <span :class="{ 'is-disabled': !row.isEnabled }">
-                {{ getContentPreview(row.word, 28) }}
-              </span>
+              <span>{{ getContentPreview(row.word, 28) }}</span>
             </div>
             <el-tag :type="getLevelType(row.level)" effect="dark" size="small">
               {{ getLevelText(row.level) }}
@@ -616,7 +609,7 @@ onMounted(() => {
             </div>
             <div class="mobile-word-card__meta-item">
               <span class="label">状态</span>
-              <span class="value">{{ getEnabledText(row.isEnabled) }}</span>
+              <span class="value">未提供</span>
             </div>
             <div class="mobile-word-card__meta-item">
               <span class="label">替换文本</span>
@@ -624,7 +617,7 @@ onMounted(() => {
             </div>
             <div class="mobile-word-card__meta-item">
               <span class="label">命中次数</span>
-              <span class="value">{{ row.hitCount || 0 }}</span>
+              <span class="value">--</span>
             </div>
             <div
               class="mobile-word-card__meta-item mobile-word-card__meta-item--full"
@@ -636,23 +629,30 @@ onMounted(() => {
 
           <div class="mobile-word-card__status">
             <span class="mobile-word-card__status-label">启用状态</span>
-            <el-switch
-              :model-value="row.isEnabled"
-              size="small"
-              @click.stop="toggleEnabled(row)"
-            />
+            <el-tag type="info" effect="plain" size="small">未提供</el-tag>
           </div>
 
           <div class="mobile-word-card__actions">
-            <el-button plain @click="openEditDialog(row)">编辑</el-button>
-            <el-button type="danger" plain @click="handleDelete(row)">
+            <el-button
+              plain
+              :disabled="operationPending"
+              @click="openEditDialog(row)"
+            >
+              编辑
+            </el-button>
+            <el-button
+              type="danger"
+              plain
+              :disabled="operationPending"
+              @click="handleDelete(row)"
+            >
               删除
             </el-button>
           </div>
         </div>
 
         <el-empty
-          v-if="!loading && words.length === 0"
+          v-if="!loading && !loadError && words.length === 0"
           description="暂无敏感词记录"
         />
       </div>
@@ -661,15 +661,14 @@ onMounted(() => {
         v-else
         v-loading="loading"
         :data="words"
+        :empty-text="loadError ? '数据加载失败' : '暂无敏感词记录'"
         stripe
         @selection-change="handleSelectionChange"
       >
         <el-table-column type="selection" width="55" />
         <el-table-column label="敏感词" prop="word" min-width="150">
           <template #default="{ row }">
-            <span :class="{ 'text-gray-400 line-through': !row.isEnabled }">
-              {{ row.word }}
-            </span>
+            <span>{{ row.word }}</span>
           </template>
         </el-table-column>
         <el-table-column label="风险级别" width="100" align="center">
@@ -705,20 +704,13 @@ onMounted(() => {
           width="100"
           align="center"
         >
-          <template #default="{ row }">
-            <el-badge
-              :value="row.hitCount || 0"
-              :type="row.hitCount > 10 ? 'warning' : 'info'"
-            />
+          <template #default>
+            <span class="text-gray-400">--</span>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="90" align="center">
-          <template #default="{ row }">
-            <el-switch
-              :model-value="row.isEnabled"
-              size="small"
-              @click.stop="toggleEnabled(row)"
-            />
+          <template #default>
+            <el-tag type="info" effect="plain" size="small">未提供</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="创建时间" width="120" align="center">
@@ -734,6 +726,7 @@ onMounted(() => {
               link
               type="primary"
               :icon="Edit"
+              :disabled="operationPending"
               @click="openEditDialog(row)"
             >
               编辑
@@ -742,6 +735,7 @@ onMounted(() => {
               link
               type="danger"
               :icon="Delete"
+              :disabled="operationPending"
               @click="handleDelete(row)"
             >
               删除
@@ -750,7 +744,7 @@ onMounted(() => {
         </el-table-column>
       </el-table>
 
-      <div class="pagination-bar">
+      <div v-if="!loadError" class="pagination-bar">
         <el-pagination
           v-model:current-page="pagination.page"
           v-model:page-size="pagination.pageSize"
@@ -815,13 +809,17 @@ onMounted(() => {
           />
         </el-form-item>
         <el-form-item label="启用状态">
-          <el-switch v-model="formData.isEnabled" />
+          <el-tag type="info" effect="plain">当前接口未提供状态</el-tag>
         </el-form-item>
       </el-form>
 
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitForm">
+        <el-button
+          type="primary"
+          :loading="operationPending"
+          @click="submitForm"
+        >
           {{ isEdit ? "更新" : "添加" }}
         </el-button>
       </template>
@@ -884,7 +882,13 @@ onMounted(() => {
 
       <template #footer>
         <el-button @click="importDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitImport">导入</el-button>
+        <el-button
+          type="primary"
+          :loading="operationPending"
+          @click="submitImport"
+        >
+          导入
+        </el-button>
       </template>
     </el-dialog>
   </div>
@@ -892,6 +896,14 @@ onMounted(() => {
 
 <style lang="scss" scoped>
 .sensitive-words-page {
+  .load-error {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    min-width: 0;
+  }
+
   .sensitive-stats-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));

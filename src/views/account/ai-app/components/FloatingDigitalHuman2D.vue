@@ -5,6 +5,8 @@ import listeningVideo from "@/assets/ai-app/digital-human-2d/listening_circle.we
 import sayingVideo from "@/assets/ai-app/digital-human-2d/saying_circle.webm";
 import standbyVideo from "@/assets/ai-app/digital-human-2d/standby_circle.webm";
 import thinkingVideo from "@/assets/ai-app/digital-human-2d/thinking_circle.webm";
+import fallbackPoster from "@/assets/ai-app/assistant-avatar.png";
+import embeddedStandbyVideo from "@/assets/生成数字人待机视频.mp4";
 
 defineOptions({ name: "FloatingDigitalHuman2D" });
 
@@ -56,6 +58,8 @@ const storageKey = computed(
 const videoRef = ref<HTMLVideoElement | null>(null);
 const isReady = ref(false);
 const isPaused = ref(false);
+const forceMp4Playback = ref(false);
+const isEmbeddedMobile = ref(false);
 const localSpeaking = ref(false);
 const speechAmplitude = ref(0);
 const position = ref({ x: 0, y: 0 });
@@ -74,6 +78,12 @@ const currentState = computed<DigitalHumanState>(() =>
   localSpeaking.value ? "saying" : props.state
 );
 const currentVideo = computed(() => stateAssets[currentState.value]);
+const usesMp4Playback = computed(
+  () => isEmbeddedMobile.value || forceMp4Playback.value
+);
+const playbackVideo = computed(() =>
+  usesMp4Playback.value ? embeddedStandbyVideo : currentVideo.value
+);
 const statusLabel = computed(() => stateLabels[currentState.value]);
 const ariaLabel = computed(
   () =>
@@ -169,8 +179,31 @@ const playVideo = async () => {
   try {
     await video.play();
   } catch {
-    // Muted autoplay can still be blocked by strict browser settings.
+    if (!usesMp4Playback.value) forceMp4Playback.value = true;
   }
+};
+
+const detectEmbeddedMobile = () => {
+  const locationText = `${window.location.search}&${window.location.hash}`;
+  return (
+    /(?:qimingMiniProgram|qimingNative)=1/.test(locationText) ||
+    window.localStorage.getItem("qimingMiniProgramWebView") === "1" ||
+    window.localStorage.getItem("qimingNativeWebView") === "1" ||
+    window.sessionStorage.getItem("qimingMiniProgramWebView") === "1" ||
+    window.sessionStorage.getItem("qimingNativeWebView") === "1"
+  );
+};
+
+const handleVideoReady = () => {
+  isReady.value = true;
+};
+
+const handleVideoError = () => {
+  if (!usesMp4Playback.value) {
+    forceMp4Playback.value = true;
+    return;
+  }
+  isReady.value = true;
 };
 
 const handlePointerDown = (event: PointerEvent) => {
@@ -254,7 +287,8 @@ function resetSpeech() {
   speechAmplitude.value = 0;
 }
 
-watch(currentVideo, () => {
+watch(playbackVideo, () => {
+  isReady.value = false;
   void playVideo();
 });
 
@@ -273,6 +307,7 @@ watch(
 );
 
 onMounted(() => {
+  isEmbeddedMobile.value = detectEmbeddedMobile();
   restorePosition();
   isReady.value = true;
   window.addEventListener("resize", handleResize);
@@ -310,13 +345,18 @@ defineExpose({
     @pointercancel="handlePointerUp"
   >
     <video
+      :key="playbackVideo"
       ref="videoRef"
-      :src="currentVideo"
+      :src="playbackVideo"
+      :poster="fallbackPoster"
+      :data-playback-format="usesMp4Playback ? 'mp4' : 'webm'"
       muted
       autoplay
       loop
       playsinline
-      preload="metadata"
+      preload="auto"
+      @loadeddata="handleVideoReady"
+      @error="handleVideoError"
     />
     <span class="floating-human-2d__dot" />
   </div>

@@ -42,6 +42,7 @@ const paperId = computed(() => Number(route.params.id));
 const loading = ref(true);
 const loadError = ref("");
 const submitting = ref(false);
+const confirmingSubmit = ref(false);
 const activeSaveCount = ref(0);
 const pendingSaveCount = ref(0);
 const saveRetrying = ref(false);
@@ -610,12 +611,14 @@ const submitPaper = async (automatic: boolean) => {
   if (submitting.value || submitCompleted || !examData.submissionId) return;
 
   if (!automatic) {
+    if (confirmingSubmit.value) return;
     const unansweredCount = allQuestions.value.length - answeredCount.value;
     const confirmMessage =
       unansweredCount > 0
         ? `还有 ${unansweredCount} 道题未作答，确定要提交吗？`
         : "确定要提交试卷吗？";
 
+    confirmingSubmit.value = true;
     try {
       await ElMessageBox.confirm(confirmMessage, "提交确认", {
         confirmButtonText: "确定提交",
@@ -624,9 +627,13 @@ const submitPaper = async (automatic: boolean) => {
       });
     } catch {
       return;
+    } finally {
+      confirmingSubmit.value = false;
     }
   }
 
+  // 确认框打开期间可能已触发到时自动交卷，必须在真正提交前再次加锁。
+  if (submitting.value || submitCompleted || !examData.submissionId) return;
   submitting.value = true;
   clearAutomaticSubmitRetryTimer();
   automaticSubmitPending = false;
@@ -1042,7 +1049,17 @@ const loadExamData = async () => {
       throw new Error(res.msg || "加载考试失败");
     }
 
-    examData.submissionId = Number(res.data.submissionId);
+    const submissionId = Number(res.data.submissionId);
+    if (
+      !Number.isInteger(submissionId) ||
+      submissionId <= 0 ||
+      !res.data.paper ||
+      Number(res.data.paper.paperId) !== paperId.value
+    ) {
+      throw new Error("考试数据与当前链接不一致");
+    }
+
+    examData.submissionId = submissionId;
     examData.paper = res.data.paper;
     resetExamClock(
       Math.max(0, Math.floor(Number(res.data.remainingTime) || 0)),
@@ -1182,6 +1199,7 @@ onBeforeUnmount(() => {
           type="primary"
           class="submit-btn"
           :loading="submitting"
+          :disabled="confirmingSubmit"
           @click="handleSubmit"
         >
           <el-icon><Check /></el-icon>
@@ -1651,6 +1669,7 @@ onBeforeUnmount(() => {
               class="nav-btn"
               type="primary"
               :loading="submitting"
+              :disabled="confirmingSubmit"
               @click="handleSubmit"
             >
               <el-icon><Check /></el-icon>

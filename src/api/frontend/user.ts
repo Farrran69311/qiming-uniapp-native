@@ -6,7 +6,6 @@ export interface UpdateUserInfoParams {
   sex?: number; // 性别（可选）
   avatar?: string; // 头像地址（可选）
   info?: string; // 个性签名（可选）
-  bannerUrl?: string; // 横幅图片地址（可选）
 }
 
 export interface UpdatePasswordParams {

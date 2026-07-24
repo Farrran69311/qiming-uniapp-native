@@ -21,6 +21,9 @@ defineOptions({
 const { isMobile, paginationLayout, getDialogWidth } = usePageResponsive();
 
 const loading = ref(false);
+const adjusting = ref(false);
+const loadError = ref("");
+const dataLoaded = ref(false);
 const users = ref<UserReputation[]>([]);
 const detailDialogVisible = ref(false);
 const adjustDialogVisible = ref(false);
@@ -81,6 +84,8 @@ const filterBadgeText = computed(() =>
 );
 
 const listSummaryText = computed(() => {
+  if (loadError.value) return "用户信誉数据加载失败";
+
   if (loading.value && pagination.total === 0) {
     return "正在同步用户信誉数据...";
   }
@@ -120,8 +125,15 @@ const getLevelText = (level: string) => {
 const getReportedText = (count: number) =>
   count > 0 ? `${count} 次举报` : "暂无举报";
 
+const getErrorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error && error.message ? error.message : fallback;
+
+let latestDataRequest = 0;
+
 const fetchData = async () => {
+  const requestId = ++latestDataRequest;
   loading.value = true;
+  loadError.value = "";
   try {
     const params: Record<string, any> = {
       page: pagination.page,
@@ -133,18 +145,22 @@ const fetchData = async () => {
     if (searchForm.keyword) params.keyword = searchForm.keyword;
     if (searchForm.level) params.level = searchForm.level;
 
-    const res: any = await getUserReputationList(params);
-    const data = res.data || res;
-    users.value = data.list || [];
-    pagination.total = data.pagination?.total || 0;
-
-    if (data.stats) {
-      stats.value = data.stats;
-    }
+    const data = await getUserReputationList(params);
+    if (requestId !== latestDataRequest) return;
+    users.value = data.list;
+    pagination.total = data.pagination.total;
+    stats.value = data.stats;
+    dataLoaded.value = true;
   } catch (error) {
+    if (requestId !== latestDataRequest) return;
     console.error("加载用户信誉列表失败", error);
+    users.value = [];
+    pagination.total = 0;
+    stats.value = { trusted: 0, normal: 0, restricted: 0 };
+    dataLoaded.value = false;
+    loadError.value = getErrorMessage(error, "加载用户信誉数据失败，请重试");
   } finally {
-    loading.value = false;
+    if (requestId === latestDataRequest) loading.value = false;
   }
 };
 
@@ -195,6 +211,8 @@ const submitAdjust = async () => {
     ElMessage.warning("请输入调整原因");
     return;
   }
+  if (adjusting.value) return;
+  adjusting.value = true;
 
   try {
     await updateUserReputation(currentUser.value.userId.toString(), {
@@ -205,7 +223,9 @@ const submitAdjust = async () => {
     adjustDialogVisible.value = false;
     await fetchData();
   } catch (error) {
-    ElMessage.error("操作失败");
+    ElMessage.error(getErrorMessage(error, "操作失败"));
+  } finally {
+    adjusting.value = false;
   }
 };
 
@@ -226,7 +246,7 @@ onMounted(() => {
 
 <template>
   <div
-    class="user-reputation-page p-4"
+    class="user-reputation-page p-4 max-[769px]:p-0"
     :class="{ 'user-reputation-page--mobile': isMobile }"
   >
     <el-card shadow="never" class="mb-4 reputation-panel">
@@ -304,7 +324,7 @@ onMounted(() => {
           <div class="status-card__content">
             <div class="status-card__label">良好用户</div>
             <div class="status-card__value text-success">
-              {{ stats.trusted }}
+              {{ dataLoaded ? stats.trusted : "--" }}
             </div>
           </div>
         </el-card>
@@ -314,7 +334,7 @@ onMounted(() => {
           <div class="status-card__content">
             <div class="status-card__label">普通用户</div>
             <div class="status-card__value text-primary">
-              {{ stats.normal }}
+              {{ dataLoaded ? stats.normal : "--" }}
             </div>
           </div>
         </el-card>
@@ -324,7 +344,7 @@ onMounted(() => {
           <div class="status-card__content">
             <div class="status-card__label">受限用户</div>
             <div class="status-card__value text-warning">
-              {{ stats.restricted }}
+              {{ dataLoaded ? stats.restricted : "--" }}
             </div>
           </div>
         </el-card>
@@ -337,8 +357,26 @@ onMounted(() => {
         <div class="text-sm text-gray-500">{{ listSummaryText }}</div>
       </div>
       <div class="flex justify-end mb-4">
-        <el-button :icon="Refresh" text @click="refreshData">
+        <el-button
+          :icon="Refresh"
+          text
+          :disabled="loading || adjusting"
+          @click="refreshData"
+        >
           同步数据
+        </el-button>
+      </div>
+
+      <div v-if="loadError" class="load-error mb-4">
+        <el-alert
+          title="用户信誉数据加载失败"
+          :description="loadError"
+          type="error"
+          show-icon
+          :closable="false"
+        />
+        <el-button type="primary" plain :icon="Refresh" @click="fetchData">
+          重试
         </el-button>
       </div>
 
@@ -391,14 +429,19 @@ onMounted(() => {
 
           <div class="mobile-user-card__actions">
             <el-button plain @click="viewDetail(row)">详情</el-button>
-            <el-button type="primary" plain @click="openAdjustDialog(row)">
+            <el-button
+              type="primary"
+              plain
+              :disabled="adjusting"
+              @click="openAdjustDialog(row)"
+            >
               调整
             </el-button>
           </div>
         </div>
 
         <el-empty
-          v-if="!loading && users.length === 0"
+          v-if="!loading && !loadError && users.length === 0"
           description="暂无用户信誉记录"
         />
       </div>
@@ -407,6 +450,7 @@ onMounted(() => {
         v-else
         v-loading="loading"
         :data="users"
+        :empty-text="loadError ? '数据加载失败' : '暂无用户信誉记录'"
         stripe
         class="reputation-table"
       >
@@ -507,7 +551,7 @@ onMounted(() => {
         </el-table-column>
       </el-table>
 
-      <div class="pagination-bar">
+      <div v-if="!loadError" class="pagination-bar">
         <el-pagination
           v-model:current-page="pagination.page"
           v-model:page-size="pagination.pageSize"
@@ -654,7 +698,9 @@ onMounted(() => {
           :class="{ 'dialog-footer--mobile': isMobile }"
         >
           <el-button @click="adjustDialogVisible = false">取消</el-button>
-          <el-button type="primary" @click="submitAdjust">确认</el-button>
+          <el-button type="primary" :loading="adjusting" @click="submitAdjust">
+            确认
+          </el-button>
         </div>
       </template>
     </el-dialog>
@@ -663,6 +709,14 @@ onMounted(() => {
 
 <style lang="scss" scoped>
 .user-reputation-page {
+  .load-error {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    min-width: 0;
+  }
+
   .reputation-stats-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));

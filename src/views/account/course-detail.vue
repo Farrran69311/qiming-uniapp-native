@@ -82,12 +82,15 @@
           :course-id="resolvedCourseId"
           :homework-list="homeworkList"
           :exam-list="examList"
+          :loading="homeworkExamLoading"
+          :load-error="homeworkExamError"
           :user-avatar="userAvatar"
           :user-nickname="userNickname"
           @go-back="goBack"
           @toggle-theme="e => toggleTheme(e)"
           @go-to-account="goToAccount"
           @logout="handleLogout"
+          @retry="loadHomeworkExamData"
         />
 
         <!-- 课程资料 -->
@@ -247,8 +250,7 @@ watch(activeMenu, newVal => {
   );
   // 切换菜单时加载对应数据
   if (newVal === "homework-exam") {
-    fetchHomeworkList();
-    fetchExamList();
+    loadHomeworkExamData();
   } else if (newVal === "grades") {
     fetchCourseScores();
   } else if (newVal === "html-animations") {
@@ -295,8 +297,7 @@ watch(
       if (activeMenu.value !== "course-learn") {
         const menuName = activeMenu.value;
         if (menuName === "homework-exam") {
-          fetchHomeworkList();
-          fetchExamList();
+          loadHomeworkExamData();
         } else if (menuName === "grades") {
           fetchCourseScores();
         } else if (menuName === "html-animations") {
@@ -396,18 +397,12 @@ const studyEffectData = ref<any>({
   chapterList: []
 });
 
-// 课程问答相关
-const qaStats = ref({
-  totalQuestions: 12,
-  solvedQuestions: 10,
-  solveRate: "83%",
-  avgResponseTime: "5分钟"
-});
-const qaHistoryList = ref<any[]>([]);
-
 // 作业考试相关
 const homeworkList = ref<any[]>([]);
 const examList = ref<any[]>([]);
+const homeworkExamLoading = ref(false);
+const homeworkExamError = ref("");
+let homeworkExamRequestId = 0;
 
 // 课程资料相关
 const courseAttrList = ref<any[]>([]);
@@ -818,24 +813,69 @@ const clearChat = () => {
 };
 
 // 数据获取方法
-const fetchHomeworkList = async () => {
-  if (!courseId.value) return;
-  try {
-    const { code, data } = await getUserCourseHomeworkList({
-      courseId: courseId.value
-    });
-    if (code === 200) homeworkList.value = (data as any).list || [];
-  } catch (e) {}
-};
+const loadHomeworkExamData = async () => {
+  const requestedCourseId = courseId.value;
+  const requestId = ++homeworkExamRequestId;
 
-const fetchExamList = async () => {
-  if (!courseId.value) return;
+  if (!requestedCourseId) {
+    homeworkList.value = [];
+    examList.value = [];
+    homeworkExamError.value = "课程信息不完整，暂时无法加载作业和考试";
+    homeworkExamLoading.value = false;
+    return;
+  }
+
+  homeworkExamLoading.value = true;
+  homeworkExamError.value = "";
   try {
-    const { code, data } = await getUserCourseExamList({
-      courseId: courseId.value
-    });
-    if (code === 200) examList.value = (data as any).list || [];
-  } catch (e) {}
+    const [homeworkResponse, examResponse] = await Promise.all([
+      getUserCourseHomeworkList({ courseId: requestedCourseId }),
+      getUserCourseExamList({ courseId: requestedCourseId })
+    ]);
+
+    if (
+      requestId !== homeworkExamRequestId ||
+      requestedCourseId !== courseId.value
+    ) {
+      return;
+    }
+
+    if (
+      homeworkResponse?.code !== 200 ||
+      !Array.isArray((homeworkResponse.data as any)?.list)
+    ) {
+      throw new Error(homeworkResponse?.msg || "作业列表返回异常");
+    }
+    if (
+      examResponse?.code !== 200 ||
+      !Array.isArray((examResponse.data as any)?.list)
+    ) {
+      throw new Error(examResponse?.msg || "考试列表返回异常");
+    }
+
+    homeworkList.value = (homeworkResponse.data as any).list;
+    examList.value = (examResponse.data as any).list;
+  } catch (error) {
+    if (
+      requestId !== homeworkExamRequestId ||
+      requestedCourseId !== courseId.value
+    ) {
+      return;
+    }
+
+    homeworkList.value = [];
+    examList.value = [];
+    const source = error as any;
+    homeworkExamError.value =
+      source?.response?.data?.msg ||
+      source?.message ||
+      "作业和考试加载失败，请稍后重试";
+    console.error("加载课程作业和考试失败:", error);
+  } finally {
+    if (requestId === homeworkExamRequestId) {
+      homeworkExamLoading.value = false;
+    }
+  }
 };
 
 const fetchHtmlAnimations = async () => {
@@ -1046,30 +1086,6 @@ const fetchCourseStudyEffect = async () => {
   }
 };
 
-// 初始化课程问答历史数据
-const initQAHistory = () => {
-  qaHistoryList.value = [
-    {
-      question: "这门课程的考核方式是什么？",
-      answer:
-        "本课程采用线上考试的方式进行考核，总成绩由平时作业（30%）、课堂表现（20%）和期末考试（50%）三部分构成。",
-      timestamp: "2025-08-13T16:30:00Z"
-    },
-    {
-      question: "这门课程的成绩构成是怎么样的？",
-      answer:
-        "课程成绩由平时作业（30%）、课堂表现（20%）和期末考试（50%）三部分构成。平时作业包括每周的课后练习和项目作业，课堂表现包括课堂参与度和小组讨论。",
-      timestamp: "2025-08-13T15:45:00Z"
-    },
-    {
-      question: "期末考试的范围是什么？",
-      answer:
-        "期末考试范围包括课程的所有章节内容，特别关注第3、4、7章的核心概念和应用案例。考试形式为线上闭卷，时间为90分钟。",
-      timestamp: "2025-08-12T09:15:00Z"
-    }
-  ];
-};
-
 onMounted(async () => {
   document.body.classList.add("course-page");
   courseRootEl.value = document.querySelector(
@@ -1100,14 +1116,12 @@ onMounted(async () => {
   }
 
   await fetchCourseDetail();
-  initQAHistory();
 
   // 初始化加载对应数据（如果不是默认页）
   if (activeMenu.value !== "course-learn") {
     const menuName = activeMenu.value;
     if (menuName === "homework-exam") {
-      fetchHomeworkList();
-      fetchExamList();
+      loadHomeworkExamData();
     } else if (menuName === "grades") {
       fetchCourseScores();
     } else if (menuName === "html-animations") {
@@ -1130,7 +1144,9 @@ onMounted(async () => {
     try {
       const res = await getConversationHistory(storedId);
       if (res?.history) chatMessages.value = res.history || [];
-    } catch (e) {}
+    } catch (error) {
+      console.warn("课程 AI 对话历史加载失败:", error);
+    }
   } else {
     conversationId.value =
       Date.now().toString() + Math.random().toString(36).substring(2);

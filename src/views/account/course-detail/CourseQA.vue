@@ -24,17 +24,8 @@
       <div class="board-main-content">
         <!-- 左侧：留言列表 -->
         <div class="board-left-panel">
-          <!-- 搜索和筛选栏 -->
+          <!-- 筛选栏 -->
           <div class="board-toolbar">
-            <div class="search-box">
-              <el-input
-                v-model="searchKeyword"
-                placeholder="搜索讨论内容..."
-                :prefix-icon="Search"
-                clearable
-                @keyup.enter="handleSearch"
-              />
-            </div>
             <div class="filter-tabs">
               <button
                 v-for="tab in filterTabs"
@@ -182,10 +173,7 @@
                     :class="{
                       collapsed: message.isCollapsed && !message.expanded
                     }"
-                    v-html="
-                      message.contentHtml ||
-                      parseMarkdownContent(message.content)
-                    "
+                    v-html="renderDiscussionContent(message.content)"
                   />
                   <button
                     v-if="message.isCollapsed"
@@ -286,10 +274,7 @@
                           </div>
                           <div
                             class="reply-text"
-                            v-html="
-                              reply.contentHtml ||
-                              parseMarkdownContent(reply.content)
-                            "
+                            v-html="renderDiscussionContent(reply.content)"
                           />
                           <div class="reply-actions">
                             <button
@@ -377,8 +362,21 @@
               </div>
             </TransitionGroup>
 
+            <div v-if="isLoading" class="list-loading-state">
+              <el-skeleton :rows="6" animated />
+            </div>
+
+            <div v-else-if="listError" class="list-error-state">
+              <el-icon><Warning /></el-icon>
+              <h3>讨论加载失败</h3>
+              <p>{{ listError }}</p>
+              <el-button type="primary" @click="refreshData">
+                重新加载
+              </el-button>
+            </div>
+
             <!-- 空状态 -->
-            <div v-if="filteredMessages.length === 0" class="empty-state">
+            <div v-else-if="filteredMessages.length === 0" class="empty-state">
               <div class="empty-icon">
                 <svg viewBox="0 0 24 24" width="80" height="80" fill="none">
                   <path
@@ -444,35 +442,10 @@
                   v-model="newPost.content"
                   type="textarea"
                   :autosize="{ minRows: 4, maxRows: 12 }"
-                  placeholder="请详细描述你的问题或想法...&#10;&#10;支持 Markdown 语法"
+                  placeholder="请详细描述你的问题或想法..."
                   maxlength="5000"
                   show-word-limit
                 />
-                <div class="editor-toolbar">
-                  <el-tooltip content="粗体 (Ctrl+B)" placement="top">
-                    <button class="toolbar-btn" @click="insertMarkdown('bold')">
-                      <strong>B</strong>
-                    </button>
-                  </el-tooltip>
-                  <el-tooltip content="斜体 (Ctrl+I)" placement="top">
-                    <button
-                      class="toolbar-btn"
-                      @click="insertMarkdown('italic')"
-                    >
-                      <em>I</em>
-                    </button>
-                  </el-tooltip>
-                  <el-tooltip content="代码" placement="top">
-                    <button class="toolbar-btn" @click="insertMarkdown('code')">
-                      <code>&lt;/&gt;</code>
-                    </button>
-                  </el-tooltip>
-                  <el-tooltip content="链接" placement="top">
-                    <button class="toolbar-btn" @click="insertMarkdown('link')">
-                      🔗
-                    </button>
-                  </el-tooltip>
-                </div>
               </div>
 
               <div class="tags-input">
@@ -511,73 +484,6 @@
                 <el-icon><Position /></el-icon>
                 发布讨论
               </el-button>
-            </div>
-          </div>
-
-          <!-- 统计数据 -->
-          <div class="stats-card">
-            <h3 class="card-title">
-              <el-icon><DataAnalysis /></el-icon>
-              讨论统计
-            </h3>
-            <div class="stats-grid">
-              <div class="stat-item">
-                <div class="stat-icon primary">
-                  <el-icon><ChatDotSquare /></el-icon>
-                </div>
-                <div class="stat-info">
-                  <span class="stat-value">{{ stats.totalPosts }}</span>
-                  <span class="stat-label">总讨论</span>
-                </div>
-              </div>
-              <div class="stat-item">
-                <div class="stat-icon success">
-                  <el-icon><ChatLineRound /></el-icon>
-                </div>
-                <div class="stat-info">
-                  <span class="stat-value">{{ stats.totalReplies }}</span>
-                  <span class="stat-label">总回复</span>
-                </div>
-              </div>
-              <div class="stat-item">
-                <div class="stat-icon warning">
-                  <el-icon><UserFilled /></el-icon>
-                </div>
-                <div class="stat-info">
-                  <span class="stat-value">{{ stats.activeUsers }}</span>
-                  <span class="stat-label">参与人数</span>
-                </div>
-              </div>
-              <div class="stat-item">
-                <div class="stat-icon info">
-                  <el-icon><Checked /></el-icon>
-                </div>
-                <div class="stat-info">
-                  <span class="stat-value">{{ stats.resolvedRate }}</span>
-                  <span class="stat-label">解决率</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- 热门标签 -->
-          <div class="hot-tags-card">
-            <h3 class="card-title">
-              <el-icon><CollectionTag /></el-icon>
-              热门标签
-            </h3>
-            <div class="tags-cloud">
-              <el-tag
-                v-for="tag in hotTags"
-                :key="tag.name"
-                :type="tag.type"
-                effect="plain"
-                class="cloud-tag"
-                @click="filterByTag(tag.name)"
-              >
-                {{ tag.name }}
-                <span class="tag-count">{{ tag.count }}</span>
-              </el-tag>
             </div>
           </div>
 
@@ -622,7 +528,7 @@
             v-model="editingContent.content"
             type="textarea"
             :autosize="{ minRows: 6, maxRows: 15 }"
-            placeholder="请输入内容，支持 Markdown 语法"
+            placeholder="请输入内容"
             maxlength="5000"
             show-word-limit
           />
@@ -738,10 +644,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, onMounted } from "vue";
-import { ElMessage, ElMessageBox, type TagProps } from "element-plus";
+import { ref, reactive, computed, watch } from "vue";
+import { ElMessage, ElMessageBox } from "element-plus";
 import {
-  Search,
   Clock,
   Top,
   MoreFilled,
@@ -756,24 +661,15 @@ import {
   ArrowUp,
   ArrowDown,
   InfoFilled,
-  DataAnalysis,
-  ChatDotSquare,
-  ChatLineRound,
-  UserFilled,
-  Checked,
-  CollectionTag,
   Warning,
   CircleClose,
   Refresh,
-  Document,
-  QuestionFilled
+  Document
 } from "@element-plus/icons-vue";
 import CourseHeader from "./CourseHeader.vue";
 import { formatAvatar } from "@/utils/avatar";
 import {
   getDiscussions,
-  getDiscussionStats,
-  getHotTags,
   createDiscussion,
   updateDiscussion,
   deleteDiscussion,
@@ -791,9 +687,9 @@ import {
   unpinPost,
   DiscussionPost,
   Reply,
-  DiscussionStats,
   ReportParams
 } from "@/api/discussion";
+import { renderDiscussionContent } from "@/api/discussionContent";
 
 // 为了兼容原有模板，我们可以扩展类型或者使用 API 返回的类型
 interface Message extends DiscussionPost {
@@ -803,15 +699,13 @@ interface Message extends DiscussionPost {
   showReplyInput: boolean;
   replyContent: string;
   replyPlaceholder: string;
+  replyTarget: {
+    parentReplyId: string;
+    replyToUserId: string;
+  } | null;
 }
 
-type CourseQaFilter = "latest" | "hot" | "unanswered" | "all" | "mine";
-type HotTagItem = {
-  name: string;
-  count: number;
-  type?: TagProps["type"];
-};
-
+type CourseQaFilter = "latest" | "hot" | "all";
 // Props
 const props = defineProps<{
   visible: boolean;
@@ -839,10 +733,10 @@ const emit = defineEmits<{
 }>();
 
 // 响应式状态
-const searchKeyword = ref("");
 const activeFilter = ref<CourseQaFilter>("all");
 const isLoading = ref(false);
 const isLoadingMore = ref(false);
+const listError = ref("");
 const hasMore = ref(true);
 const isSubmitting = ref(false);
 const editDialogVisible = ref(false);
@@ -855,25 +749,11 @@ const filterTabs = computed<
 >(() => [
   { label: "全部", value: "all", icon: Document },
   { label: "最新", value: "latest", icon: Clock },
-  { label: "热门", value: "hot", icon: StarFilled },
-  { label: "我的", value: "mine", icon: UserFilled },
-  { label: "待回复", value: "unanswered", icon: QuestionFilled }
+  { label: "热门", value: "hot", icon: StarFilled }
 ]);
 
-// 热门标签
-const hotTags = ref<HotTagItem[]>([]);
-
-// 可用标签（用于发帖时选择）
-const availableTags = computed(() => hotTags.value.map(tag => tag.name));
-
-// 统计数据
-const stats = ref<DiscussionStats>({
-  totalPosts: 0,
-  totalReplies: 0,
-  activeUsers: 0,
-  resolvedRate: "0%",
-  hotTags: []
-});
+// 后端尚未提供热门标签，输入框仍允许用户自行创建标签。
+const availableTags: string[] = [];
 
 // 新帖子数据
 const newPost = ref({
@@ -910,11 +790,27 @@ const editingReply = ref({
 // 消息列表
 const messages = ref<Message[]>([]);
 
+const getRequestErrorMessage = (error: unknown, fallbackMessage: string) => {
+  const source = error as any;
+  const serverMessage = source?.response?.data?.msg;
+  if (typeof serverMessage === "string" && serverMessage.trim()) {
+    return serverMessage;
+  }
+  if (
+    source?.name === "DiscussionResponseError" &&
+    typeof source.message === "string" &&
+    source.message.trim()
+  ) {
+    return source.message;
+  }
+  return fallbackMessage;
+};
+
 const refreshData = async () => {
   currentPage.value = 1;
   messages.value = [];
   hasMore.value = true;
-  await Promise.all([fetchDiscussions(), fetchStats(), fetchTags()]);
+  await fetchDiscussions();
 };
 
 defineExpose({
@@ -936,21 +832,17 @@ const fetchDiscussions = async (append = false) => {
     isLoadingMore.value = true;
   } else {
     isLoading.value = true;
+    listError.value = "";
   }
 
   try {
     const params: any = {
       page: currentPage.value,
-      pageSize: pageSize.value,
-      keyword: searchKeyword.value || undefined
+      pageSize: pageSize.value
     };
 
-    if (activeFilter.value !== "all" && activeFilter.value !== "mine") {
+    if (activeFilter.value !== "all") {
       params.sort = activeFilter.value;
-    }
-
-    if (activeFilter.value === "mine") {
-      params.authorId = props.userId;
     }
 
     const { data } = await getDiscussions(normalizedCourseId.value, params);
@@ -960,13 +852,14 @@ const fetchDiscussions = async (append = false) => {
       return {
         ...item,
         content: safeContent,
-        contentHtml: item.contentHtml || safeContent,
+        contentHtml: "",
         isCollapsed: safeContent.length > 200,
         expanded: false,
         showReplies: false,
         showReplyInput: false,
         replyContent: "",
         replyPlaceholder: "",
+        replyTarget: null,
         replies: item.replies || []
       };
     });
@@ -980,34 +873,20 @@ const fetchDiscussions = async (append = false) => {
     hasMore.value = data.pagination.page < data.pagination.totalPages;
   } catch (error) {
     console.error("加载讨论列表失败", error);
+    if (append) {
+      currentPage.value = Math.max(1, currentPage.value - 1);
+      ElMessage.error("更多讨论加载失败，请稍后重试");
+    } else {
+      listError.value = getRequestErrorMessage(
+        error,
+        "讨论列表加载失败，请稍后重试"
+      );
+      hasMore.value = false;
+    }
   } finally {
     isLoading.value = false;
     isLoadingMore.value = false;
   }
-};
-
-const fetchStats = async () => {
-  try {
-    const { data } = await getDiscussionStats(normalizedCourseId.value);
-    stats.value = data;
-  } catch (error) {}
-};
-
-const fetchTags = async () => {
-  try {
-    const { data } = await getHotTags(normalizedCourseId.value);
-    const types: Array<NonNullable<TagProps["type"]>> = [
-      "primary",
-      "success",
-      "warning",
-      "info",
-      "danger"
-    ];
-    hotTags.value = data.map((tag, index) => ({
-      ...tag,
-      type: types[index % types.length]
-    }));
-  } catch (error) {}
 };
 
 // 统一监听 visible 和 courseId，只要两者都准备好且 visible 为 true 就加载
@@ -1029,13 +908,42 @@ watch(activeFilter, () => {
   }
 });
 
-// 监听搜索
-watch(searchKeyword, () => {
-  // 可以在这里做防抖搜索
-});
-
 // 计算属性
 const isTeacherOrAdmin = computed(() => props.isTeacher || props.isAdmin);
+
+type DiscussionActionResult = {
+  code?: number | string;
+  msg?: string;
+  success?: boolean;
+  data?: { success?: boolean; likeCount?: number };
+};
+
+const ensureDiscussionActionSucceeded = (
+  result: unknown,
+  fallbackMessage: string
+) => {
+  if (!result || typeof result !== "object") return;
+
+  const response = result as DiscussionActionResult;
+  if (response.code !== undefined) {
+    const code = Number(response.code);
+    if (!Number.isFinite(code) || (code !== 0 && code !== 200)) {
+      throw new Error(response.msg || fallbackMessage);
+    }
+  }
+
+  if (response.success === false || response.data?.success === false) {
+    throw new Error(response.msg || fallbackMessage);
+  }
+};
+
+const getActionErrorMessage = (error: unknown, fallbackMessage: string) => {
+  const source = error as any;
+  return source?.response?.data?.msg || source?.message || fallbackMessage;
+};
+
+const isConfirmationDismissed = (error: unknown) =>
+  error === "cancel" || error === "close";
 
 const filteredMessages = computed(() => {
   if (!messages.value) return [];
@@ -1049,11 +957,6 @@ const filteredMessages = computed(() => {
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
 });
-
-// 方法
-const handleSearch = () => {
-  refreshData();
-};
 
 const formatRelativeTime = (dateString: string) => {
   if (!dateString) return "";
@@ -1071,21 +974,6 @@ const formatRelativeTime = (dateString: string) => {
   if (days < 7) return `${days} 天前`;
 
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-};
-
-/**
- * 前端简易Markdown 解析（作为后端未返回 contentHtml 时的回退方案）
- * 后端已实现完整的 Markdown 渲染，会返回 contentHtml 字段，更安全
- */
-const parseMarkdownContent = (text: string) => {
-  if (!text) return "";
-  // 简易的前端 markdown 解析，作为后端未返回 contentHtml 时的回退
-  let formatted = text
-    .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*(.*?)\*/g, "<em>$1</em>")
-    .replace(/`(.*?)`/g, "<code>$1</code>")
-    .replace(/\n/g, "<br>");
-  return formatted;
 };
 
 const canManageMessage = (message: Message) => {
@@ -1110,6 +998,7 @@ const handleLike = async (message: Message) => {
     } else {
       result = await likePost(message.id);
     }
+    ensureDiscussionActionSucceeded(result, "点赞操作失败");
 
     // 如果后端返回了新的数量，以此为准同步，否则保持乐观更新的数量
     // 兼容可能的不同返回结构
@@ -1122,6 +1011,7 @@ const handleLike = async (message: Message) => {
     message.isLiked = oldIsLiked;
     message.likeCount = oldLikeCount;
     console.error("点赞操作失败:", error);
+    ElMessage.error(getActionErrorMessage(error, "点赞操作失败"));
   }
 };
 
@@ -1144,34 +1034,48 @@ const handleShowReplies = async (message: Message, force = false) => {
         message.replies.length < (result.data.total || 0);
     } catch (error) {
       console.error("获取回复列表失败:", error);
+      message.showReplies = false;
+      ElMessage.error(
+        getRequestErrorMessage(error, "回复加载失败，请稍后重试")
+      );
     }
   }
 };
 
 const handleReply = (message: Message) => {
   message.showReplyInput = !message.showReplyInput;
-  message.replyPlaceholder = `回复 ${message.author.name}...`;
+  message.replyTarget = null;
+  message.replyPlaceholder = message.showReplyInput
+    ? `回复 ${message.author.name}...`
+    : "";
 };
 
 const handleReplyToReply = (message: Message, reply: Reply) => {
   message.showReplyInput = true;
   message.replyPlaceholder = `回复 @${reply.author.name}...`;
+  message.replyTarget = {
+    parentReplyId: reply.id,
+    replyToUserId: reply.author.id
+  };
 };
 
 const submitReply = async (message: Message) => {
   if (!message.replyContent?.trim()) return;
 
   try {
-    await createReply(message.id, { content: message.replyContent });
+    const result = await createReply(message.id, {
+      content: message.replyContent,
+      ...(message.replyTarget || {})
+    });
+    ensureDiscussionActionSucceeded(result, "提交回复失败");
     ElMessage.success("回复已提交，内容将在审核后显示");
     message.replyContent = "";
     message.showReplyInput = false;
+    message.replyTarget = null;
     // 提交回复后强制重新获取该帖子的回复列表
     await handleShowReplies(message, true);
-    // 同时也刷新一下全局统计数据
-    fetchStats();
   } catch (error) {
-    ElMessage.error("提交失败");
+    ElMessage.error(getActionErrorMessage(error, "提交失败"));
   }
 };
 
@@ -1193,6 +1097,7 @@ const handleLikeReply = async (message: Message, reply: Reply) => {
     } else {
       result = await likeReply(reply.id);
     }
+    ensureDiscussionActionSucceeded(result, "回复点赞失败");
 
     // 如果后端返回了新的数量，以此为准同步
     const newCount = result?.likeCount ?? result?.data?.likeCount;
@@ -1204,6 +1109,7 @@ const handleLikeReply = async (message: Message, reply: Reply) => {
     reply.isLiked = oldIsLiked;
     reply.likeCount = oldLikeCount;
     console.error("回复点赞操作失败:", error);
+    ElMessage.error(getActionErrorMessage(error, "回复点赞失败"));
   }
 };
 
@@ -1218,7 +1124,11 @@ const loadMoreReplies = async (message: Message) => {
     if (result?.data && typeof result.data.total === "number") {
       message.replyCount = result.data.total;
     }
-  } catch (error) {}
+  } catch (error) {
+    ElMessage.error(
+      getRequestErrorMessage(error, "更多回复加载失败，请稍后重试")
+    );
+  }
 };
 
 const handleEditMessage = (message: Message) => {
@@ -1244,9 +1154,10 @@ const submitEditReply = async () => {
   if (!editingReply.value.content?.trim()) return;
 
   try {
-    await updateReply(editingReply.value.id, {
+    const result = await updateReply(editingReply.value.id, {
       content: editingReply.value.content
     });
+    ensureDiscussionActionSucceeded(result, "更新回复失败");
     ElMessage.success("回复已更新");
     editReplyDialogVisible.value = false;
 
@@ -1262,7 +1173,7 @@ const submitEditReply = async () => {
       }
     }
   } catch (error) {
-    ElMessage.error("更新失败");
+    ElMessage.error(getActionErrorMessage(error, "更新失败"));
   }
 };
 
@@ -1275,7 +1186,8 @@ const handleDeleteReply = async (message: Message, reply: Reply) => {
       customClass: "custom-message-box"
     });
 
-    await deleteReply(reply.id);
+    const result = await deleteReply(reply.id);
+    ensureDiscussionActionSucceeded(result, "删除回复失败");
     ElMessage.success("删除成功");
 
     // 从本地数据中移除，保证界面立即更新
@@ -1287,8 +1199,8 @@ const handleDeleteReply = async (message: Message, reply: Reply) => {
       fetchDiscussions(false); // 刷新当前页
     }, 1000);
   } catch (error) {
-    if (error !== "cancel") {
-      ElMessage.error("删除失败");
+    if (!isConfirmationDismissed(error)) {
+      ElMessage.error(getActionErrorMessage(error, "删除失败"));
     }
   }
 };
@@ -1329,11 +1241,11 @@ const confirmReport = async () => {
       params
     });
 
-    if (reportForm.type === "post") {
-      await reportPost(reportForm.targetId, params);
-    } else {
-      await reportReply(reportForm.targetId, params);
-    }
+    const result =
+      reportForm.type === "post"
+        ? await reportPost(reportForm.targetId, params)
+        : await reportReply(reportForm.targetId, params);
+    ensureDiscussionActionSucceeded(result, "举报提交失败");
 
     ElMessage.success("举报已提交，我们将尽快处理");
     reportDialogVisible.value = false;
@@ -1356,16 +1268,17 @@ const handleSaveEdit = async () => {
     return;
   }
   try {
-    await updateDiscussion(editingContent.value.id, {
+    const result = await updateDiscussion(editingContent.value.id, {
       title: editingContent.value.title,
       content: editingContent.value.content,
       tags: editingContent.value.tags
     });
+    ensureDiscussionActionSucceeded(result, "保存讨论失败");
     ElMessage.success("已保存，审核通过后生效");
     editDialogVisible.value = false;
     refreshData();
   } catch (error) {
-    ElMessage.error("保存失败");
+    ElMessage.error(getActionErrorMessage(error, "保存失败"));
   }
 };
 
@@ -1378,7 +1291,8 @@ const handleDeleteMessage = async (message: Message) => {
       draggable: true,
       customClass: "custom-message-box"
     });
-    await deleteDiscussion(message.id);
+    const result = await deleteDiscussion(message.id);
+    ensureDiscussionActionSucceeded(result, "删除讨论失败");
     // 从本地立即移除
     messages.value = messages.value.filter(m => m.id !== message.id);
     ElMessage.success("已删除");
@@ -1387,60 +1301,35 @@ const handleDeleteMessage = async (message: Message) => {
     setTimeout(() => {
       fetchDiscussions(false);
     }, 1000);
-  } catch {
-    // 取消删除
+  } catch (error) {
+    if (!isConfirmationDismissed(error)) {
+      ElMessage.error(getActionErrorMessage(error, "删除失败"));
+    }
   }
 };
 
 const handleTogglePin = async (message: Message) => {
   try {
     if (message.isPinned) {
-      await unpinPost(message.id);
+      const result = await unpinPost(message.id);
+      ensureDiscussionActionSucceeded(result, "取消置顶失败");
       message.isPinned = false;
       ElMessage.success("已取消置顶");
     } else {
-      await pinPost(message.id);
+      const result = await pinPost(message.id);
+      ensureDiscussionActionSucceeded(result, "置顶失败");
       message.isPinned = true;
       ElMessage.success("已置顶");
     }
-  } catch (error) {}
+  } catch (error) {
+    ElMessage.error(getActionErrorMessage(error, "置顶操作失败"));
+  }
 };
 
 const loadMore = async () => {
   if (isLoadingMore.value || !hasMore.value) return;
   currentPage.value++;
   await fetchDiscussions(true);
-};
-
-const insertMarkdown = (type: string) => {
-  const textarea = document.querySelector(
-    ".content-editor textarea"
-  ) as HTMLTextAreaElement;
-  if (!textarea) return;
-
-  const start = textarea.selectionStart;
-  const end = textarea.selectionEnd;
-  const text = newPost.value.content;
-  const selected = text.substring(start, end);
-
-  let insert = "";
-  switch (type) {
-    case "bold":
-      insert = `**${selected || "粗体文本"}**`;
-      break;
-    case "italic":
-      insert = `*${selected || "斜体文本"}*`;
-      break;
-    case "code":
-      insert = `\`${selected || "代码"}\``;
-      break;
-    case "link":
-      insert = `[${selected || "链接文本"}](url)`;
-      break;
-  }
-
-  newPost.value.content =
-    text.substring(0, start) + insert + text.substring(end);
 };
 
 const handleSubmitPost = async () => {
@@ -1452,25 +1341,21 @@ const handleSubmitPost = async () => {
   isSubmitting.value = true;
 
   try {
-    await createDiscussion(normalizedCourseId.value, {
+    const result = await createDiscussion(normalizedCourseId.value, {
       title: newPost.value.title,
       content: newPost.value.content,
       tags: newPost.value.tags
     });
+    ensureDiscussionActionSucceeded(result, "发布讨论失败");
 
     ElMessage.success("发布成功，内容将在审核后显示");
     newPost.value = { title: "", content: "", tags: [] };
     refreshData();
   } catch (error) {
-    ElMessage.error("发布失败，请重试");
+    ElMessage.error(getActionErrorMessage(error, "发布失败，请重试"));
   } finally {
     isSubmitting.value = false;
   }
-};
-
-const filterByTag = (tagName: string) => {
-  searchKeyword.value = tagName;
-  refreshData();
 };
 </script>
 
@@ -2480,13 +2365,9 @@ const filterByTag = (tagName: string) => {
   padding: 0 12px;
   font-size: 13px;
   line-height: 26px;
-  cursor: pointer;
+  cursor: default;
   border-radius: 6px;
   transition: all 0.3s ease;
-}
-
-.tag-item:hover {
-  transform: scale(1.05);
 }
 
 /* 消息底部 */
@@ -2761,6 +2642,41 @@ const filterByTag = (tagName: string) => {
   padding: 60px 20px;
   color: #909399;
   text-align: center;
+}
+
+.list-loading-state,
+.list-error-state {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 32px 24px;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgb(0 0 0 / 5%);
+}
+
+.dark .list-loading-state,
+.dark .list-error-state {
+  background: #242428;
+  box-shadow: 0 4px 20px rgb(0 0 0 / 30%);
+}
+
+.list-error-state {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  color: #909399;
+  text-align: center;
+}
+
+.list-error-state > .el-icon {
+  font-size: 40px;
+  color: #e6a23c;
+}
+
+.list-error-state h3,
+.list-error-state p {
+  margin: 0;
 }
 
 .empty-icon {
@@ -3686,6 +3602,33 @@ const filterByTag = (tagName: string) => {
   color: #1d1d1f !important;
   background-color: #f8fafc !important;
   border-color: #cbd5e1 !important;
+}
+
+@media (width <= 768px) {
+  .message-board-container {
+    padding: var(--course-mobile-top-offset, 156px) 8px
+      calc(20px + env(safe-area-inset-bottom));
+  }
+
+  .board-main-content {
+    gap: 16px;
+  }
+
+  .board-toolbar,
+  .message-card,
+  .post-composer,
+  .stats-card,
+  .hot-tags-card,
+  .rules-card {
+    padding: 12px;
+  }
+
+  .post-composer,
+  .stats-card,
+  .hot-tags-card,
+  .rules-card {
+    border-radius: 14px;
+  }
 }
 
 :global(.custom-report-dialog .el-button--primary) {

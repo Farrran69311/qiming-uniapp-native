@@ -563,7 +563,7 @@ watch(() => [props.courseId, props.targetStudentId], loadAssessment);
     class="assessment-page h-full flex flex-col bg-transparent overflow-y-auto"
   >
     <div
-      class="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-[18px] border border-gray-100 bg-white px-6 py-5 shadow-sm"
+      class="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-[18px] border border-gray-100 bg-white px-4 py-4 shadow-sm md:px-6 md:py-5"
     >
       <div class="min-w-0">
         <h2 class="text-xl font-semibold text-text_color_primary">
@@ -578,7 +578,9 @@ watch(() => [props.courseId, props.targetStudentId], loadAssessment);
           </span>
         </div>
       </div>
-      <div class="flex items-center gap-3">
+      <div
+        class="assessment-toolbar-actions flex min-w-0 max-w-full flex-wrap items-center gap-3"
+      >
         <el-tag effect="plain" round size="large" class="!bg-bg_color">
           章节 {{ courseInfo.finished_chapters }} /
           {{ courseInfo.total_chapters }}
@@ -616,7 +618,7 @@ watch(() => [props.courseId, props.targetStudentId], loadAssessment);
     </div>
 
     <section
-      class="mb-6 rounded-[18px] border border-blue-100 bg-white p-6 shadow-sm"
+      class="mb-6 rounded-[18px] border border-blue-100 bg-white p-4 shadow-sm md:p-6"
     >
       <div class="mb-5 flex items-center justify-between gap-3">
         <h4 class="text-base font-semibold text-text_color_primary">
@@ -631,7 +633,7 @@ watch(() => [props.courseId, props.targetStudentId], loadAssessment);
         <div
           v-for="(tip, i) in suggestions"
           :key="tip"
-          class="flex items-start gap-3 rounded-xl border border-gray-100 bg-gray-50/70 px-4 py-3 transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:bg-white hover:shadow-sm"
+          class="flex items-start gap-3 rounded-xl border border-gray-100 bg-gray-50/70 px-3 py-3 transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:bg-white hover:shadow-sm md:px-4"
         >
           <span
             class="mt-0.5 flex h-7 w-7 flex-none items-center justify-center rounded-lg bg-blue-50 text-sm font-semibold text-primary"
@@ -1054,3 +1056,23 @@ watch(() => [props.courseId, props.targetStudentId], loadAssessment);
     </div>
   </div>
 </template>
+
+<style scoped>
+.assessment-page > * {
+  flex-shrink: 0;
+}
+
+.assessment-toolbar-actions :deep(.el-tag),
+.assessment-toolbar-actions :deep(.el-tag__content) {
+  max-width: 100%;
+  height: auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.assessment-toolbar-actions :deep(.el-tag) {
+  min-height: 32px;
+  padding-block: 5px;
+  line-height: 1.45;
+}
+</style>

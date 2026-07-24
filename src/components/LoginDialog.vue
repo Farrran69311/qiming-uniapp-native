@@ -8,7 +8,12 @@
       >
         <div class="login-card" :class="{ shake: isShaking }">
           <!--   关闭按钮   -->
-          <button class="close-btn" @click="emit('update:visible', false)">
+          <button
+            type="button"
+            class="close-btn"
+            aria-label="关闭登录窗口"
+            @click="emit('update:visible', false)"
+          >
             <svg viewBox="0 0 24 24" width="18" height="18">
               <path
                 fill="currentColor"
@@ -20,24 +25,6 @@
           <!-- 登录表单 -->
           <template v-if="!isRegister">
             <h2 class="card-title">欢迎登录</h2>
-
-            <!-- 登录方式切换 -->
-            <div class="login-tabs">
-              <button
-                class="tab-btn"
-                :class="{ active: loginType === 'password' }"
-                @click="loginType = 'password'"
-              >
-                密码登录
-              </button>
-              <button
-                class="tab-btn"
-                :class="{ active: loginType === 'sms' }"
-                @click="loginType = 'sms'"
-              >
-                验证码登录
-              </button>
-            </div>
 
             <!-- 账号输入 -->
             <div class="input-group">
@@ -66,140 +53,88 @@
                   type="text"
                   inputmode="text"
                   autocomplete="username"
+                  aria-label="账号或手机号"
                   placeholder=""
                   maxlength="30"
                   @focus="isPhoneFocused = true"
                   @blur="isPhoneFocused = false"
-                  @keyup.enter="
-                    loginType === 'sms' ? sendSmsCode() : handlePasswordLogin()
-                  "
+                  @keyup.enter="handlePasswordLogin"
                 />
-                <label class="floating-label">{{
-                  loginType === "sms" ? "请输入手机号" : "请输入账号或手机号"
-                }}</label>
+                <label class="floating-label">请输入账号或手机号</label>
               </div>
               <p v-if="errors.phone" class="error-text">{{ errors.phone }}</p>
             </div>
 
             <!-- 密码登录 -->
-            <template v-if="loginType === 'password'">
-              <div class="input-group">
-                <div
-                  class="input-wrapper password-wrapper"
-                  :class="{
-                    focus: isPasswordFocused,
-                    error: errors.password,
-                    'has-value': !!loginForm.password
-                  }"
+            <div class="input-group">
+              <div
+                class="input-wrapper password-wrapper"
+                :class="{
+                  focus: isPasswordFocused,
+                  error: errors.password,
+                  'has-value': !!loginForm.password
+                }"
+              >
+                <svg
+                  class="input-icon"
+                  viewBox="0 0 24 24"
+                  width="20"
+                  height="20"
+                >
+                  <path
+                    fill="currentColor"
+                    d="M12,17A2,2 0 0,0 14,15C14,13.89 13.1,13 12,13A2,2 0 0,0 10,15A2,2 0 0,0 12,17M18,8A2,2 0 0,1 20,10V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V10C4,8.89 4.9,8 6,8H7V6A5,5 0 0,1 12,1A5,5 0 0,1 17,6V8H18M12,3A3,3 0 0,0 9,6V8H15V6A3,3 0 0,0 12,3Z"
+                  />
+                </svg>
+                <input
+                  ref="passwordInputRef"
+                  v-model="loginForm.password"
+                  :type="showLoginPassword ? 'text' : 'password'"
+                  autocomplete="current-password"
+                  aria-label="密码"
+                  placeholder=""
+                  @focus="isPasswordFocused = true"
+                  @blur="isPasswordFocused = false"
+                  @keyup.enter="handlePasswordLogin"
+                />
+                <label class="floating-label">请输入密码</label>
+                <button
+                  type="button"
+                  class="eye-btn"
+                  :aria-label="showLoginPassword ? '隐藏密码' : '显示密码'"
+                  @click="showLoginPassword = !showLoginPassword"
                 >
                   <svg
-                    class="input-icon"
+                    v-if="showLoginPassword"
                     viewBox="0 0 24 24"
                     width="20"
                     height="20"
                   >
                     <path
                       fill="currentColor"
-                      d="M12,17A2,2 0 0,0 14,15C14,13.89 13.1,13 12,13A2,2 0 0,0 10,15A2,2 0 0,0 12,17M18,8A2,2 0 0,1 20,10V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V10C4,8.89 4.9,8 6,8H7V6A5,5 0 0,1 12,1A5,5 0 0,1 17,6V8H18M12,3A3,3 0 0,0 9,6V8H15V6A3,3 0 0,0 12,3Z"
+                      d="M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17M12,4.5C7,4.5 2.73,7.61 1,12C2.73,16.39 7,19.5 12,19.5C17,19.5 21.27,16.39 23,12C21.27,7.61 17,4.5 12,4.5Z"
                     />
                   </svg>
-                  <input
-                    ref="passwordInputRef"
-                    v-model="loginForm.password"
-                    :type="showLoginPassword ? 'text' : 'password'"
-                    autocomplete="current-password"
-                    placeholder=""
-                    @focus="isPasswordFocused = true"
-                    @blur="isPasswordFocused = false"
-                    @keyup.enter="handlePasswordLogin"
-                  />
-                  <label class="floating-label">请输入密码</label>
-                  <button
-                    type="button"
-                    class="eye-btn"
-                    @click="showLoginPassword = !showLoginPassword"
-                  >
-                    <svg
-                      v-if="showLoginPassword"
-                      viewBox="0 0 24 24"
-                      width="20"
-                      height="20"
-                    >
-                      <path
-                        fill="currentColor"
-                        d="M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17M12,4.5C7,4.5 2.73,7.61 1,12C2.73,16.39 7,19.5 12,19.5C17,19.5 21.27,16.39 23,12C21.27,7.61 17,4.5 12,4.5Z"
-                      />
-                    </svg>
-                    <svg v-else viewBox="0 0 24 24" width="20" height="20">
-                      <path
-                        fill="currentColor"
-                        d="M11.83,9L15,12.16C15,12.11 15,12.05 15,12A3,3 0 0,0 12,9C11.94,9 11.89,9 11.83,9M7.53,9.8L9.08,11.35C9.03,11.56 9,11.77 9,12A3,3 0 0,0 12,15C12.22,15 12.44,14.97 12.65,14.92L14.2,16.47C13.53,16.8 12.79,17 12,17A5,5 0 0,1 7,12C7,11.21 7.2,10.47 7.53,9.8M2,4.27L4.28,6.55L4.73,7C3.08,8.3 1.78,10 1,12C2.73,16.39 7,19.5 12,19.5C13.55,19.5 15.03,19.2 16.38,18.66L16.81,19.08L19.73,22L21,20.73L3.27,3M12,7A5,5 0 0,1 17,12C17,12.64 16.87,13.26 16.64,13.82L19.57,16.75C21.07,15.5 22.27,13.86 23,12C21.27,7.61 17,4.5 12,4.5C10.6,4.5 9.26,4.75 8,5.2L10.17,7.35C10.74,7.13 11.35,7 12,7Z"
-                      />
-                    </svg>
-                  </button>
-                </div>
-                <p v-if="errors.password" class="error-text">
-                  {{ errors.password }}
-                </p>
-              </div>
-            </template>
-
-            <!-- 验证码登录 -->
-            <template v-else>
-              <div class="input-group">
-                <div class="sms-row">
-                  <div
-                    class="input-wrapper sms-input"
-                    :class="{
-                      focus: isCodeFocused,
-                      error: errors.code,
-                      'has-value': !!loginForm.smsCode
-                    }"
-                  >
-                    <svg
-                      class="input-icon"
-                      viewBox="0 0 24 24"
-                      width="20"
-                      height="20"
-                    >
-                      <path
-                        fill="currentColor"
-                        d="M17,3H7A2,2 0 0,0 5,5V21L12,18L19,21V5A2,2 0 0,0 17,3M12,13L9,10H11V6H13V10H15L12,13Z"
-                      />
-                    </svg>
-                    <input
-                      v-model="loginForm.smsCode"
-                      type="text"
-                      inputmode="numeric"
-                      autocomplete="one-time-code"
-                      placeholder=""
-                      maxlength="6"
-                      @focus="isCodeFocused = true"
-                      @blur="isCodeFocused = false"
-                      @keyup.enter="handleSmsLogin"
+                  <svg v-else viewBox="0 0 24 24" width="20" height="20">
+                    <path
+                      fill="currentColor"
+                      d="M11.83,9L15,12.16C15,12.11 15,12.05 15,12A3,3 0 0,0 12,9C11.94,9 11.89,9 11.83,9M7.53,9.8L9.08,11.35C9.03,11.56 9,11.77 9,12A3,3 0 0,0 12,15C12.22,15 12.44,14.97 12.65,14.92L14.2,16.47C13.53,16.8 12.79,17 12,17A5,5 0 0,1 7,12C7,11.21 7.2,10.47 7.53,9.8M2,4.27L4.28,6.55L4.73,7C3.08,8.3 1.78,10 1,12C2.73,16.39 7,19.5 12,19.5C13.55,19.5 15.03,19.2 16.38,18.66L16.81,19.08L19.73,22L21,20.73L3.27,3M12,7A5,5 0 0,1 17,12C17,12.64 16.87,13.26 16.64,13.82L19.57,16.75C21.07,15.5 22.27,13.86 23,12C21.27,7.61 17,4.5 12,4.5C10.6,4.5 9.26,4.75 8,5.2L10.17,7.35C10.74,7.13 11.35,7 12,7Z"
                     />
-                    <label class="floating-label">请输入验证码</label>
-                  </div>
-                  <button
-                    class="sms-btn"
-                    :disabled="smsCooldown > 0"
-                    @click="sendSmsCode"
-                  >
-                    {{ smsCooldown > 0 ? `${smsCooldown}s` : "获取验证码" }}
-                  </button>
-                </div>
-                <p v-if="errors.code" class="error-text">{{ errors.code }}</p>
+                  </svg>
+                </button>
               </div>
-            </template>
+              <p v-if="errors.password" class="error-text">
+                {{ errors.password }}
+              </p>
+            </div>
 
             <!-- 登录按钮 -->
             <button
+              type="button"
               class="submit-btn"
               :class="{ loading: loading }"
               :disabled="loading"
-              @click="
-                loginType === 'sms' ? handleSmsLogin() : handlePasswordLogin()
-              "
+              @click="handlePasswordLogin"
             >
               <svg
                 v-if="loading"
@@ -222,50 +157,21 @@
               <span v-else>登 录</span>
             </button>
 
-            <!-- 第三方登录 -->
-            <div class="third-party">
-              <div class="divider">
-                <span>其他登录方式</span>
-              </div>
-              <div class="social-btns">
-                <button
-                  class="social-btn wechat"
-                  title="微信登录"
-                  @click="handleWechatLogin"
-                >
-                  <svg viewBox="0 0 24 24" width="24" height="24">
-                    <path
-                      fill="currentColor"
-                      d="M9.5,4C5.36,4 2,6.69 2,10C2,11.89 3.08,13.56 4.78,14.66L4,17L6.5,15.5C7.39,15.81 8.37,16 9.41,16C9.15,15.37 9,14.7 9,14C9,10.69 12.13,8 16,8C16.19,8 16.38,8 16.56,8.03C15.54,5.69 12.78,4 9.5,4M6.5,6.5A1,1 0 0,1 7.5,7.5A1,1 0 0,1 6.5,8.5A1,1 0 0,1 5.5,7.5A1,1 0 0,1 6.5,6.5M11.5,6.5A1,1 0 0,1 12.5,7.5A1,1 0 0,1 11.5,8.5A1,1 0 0,1 10.5,7.5A1,1 0 0,1 11.5,6.5M16,9C12.69,9 10,11.24 10,14C10,16.76 12.69,19 16,19C16.67,19 17.31,18.92 17.91,18.75L20,20L19.38,18.13C20.95,17.22 22,15.71 22,14C22,11.24 19.31,9 16,9M14,11.5A1,1 0 0,1 15,12.5A1,1 0 0,1 14,13.5A1,1 0 0,1 13,12.5A1,1 0 0,1 14,11.5M18,11.5A1,1 0 0,1 19,12.5A1,1 0 0,1 18,13.5A1,1 0 0,1 17,12.5A1,1 0 0,1 18,11.5Z"
-                    />
-                  </svg>
-                </button>
-                <button
-                  class="social-btn qq"
-                  title="QQ登录"
-                  @click="handleQQLogin"
-                >
-                  <svg viewBox="0 0 1024 1024" width="24" height="24">
-                    <path
-                      fill="currentColor"
-                      d="M824.8 613.2c-16-51.4-34.4-94.6-62.7-165.3C766.5 262.2 689.3 112 511.5 112 331.7 112 256.2 265.2 261 447.9c-28.4 70.8-46.7 113.7-62.7 165.3-34 109.5-23 154.8-14.6 155.8 18 2.2 70.1-82.4 70.1-82.4 0 49 25.2 112.9 79.8 159-26.4 8.1-85.7 29.9-71.6 53.8 11.4 19.3 196.2 12.3 249.5 6.3 53.3 6 238.1 13 249.5-6.3 14.1-23.8-45.3-45.7-71.6-53.8 54.6-46.2 79.8-110.1 79.8-159 0 0 52.1 84.6 70.1 82.4 8.5-1.1 19.5-46.4-14.5-155.8z"
-                    />
-                  </svg>
-                </button>
-              </div>
-            </div>
-
             <!-- 注册链接 -->
             <div class="footer-link">
-              还没有账号？<a href="javascript:;" @click="isRegister = true"
-                >立即注册</a
+              还没有账号？<button
+                type="button"
+                class="link-btn"
+                @click="isRegister = true"
               >
+                立即注册
+              </button>
             </div>
           </template>
 
           <!-- 注册表单 -->
           <template v-else>
-            <button class="back-btn" @click="isRegister = false">
+            <button type="button" class="back-btn" @click="isRegister = false">
               <svg viewBox="0 0 24 24" width="18" height="18">
                 <path
                   fill="currentColor"
@@ -303,6 +209,7 @@
                   type="text"
                   inputmode="tel"
                   autocomplete="tel"
+                  aria-label="注册手机号"
                   placeholder=""
                   maxlength="11"
                   @focus="registerPhoneFocused = true"
@@ -312,57 +219,6 @@
               </div>
               <p v-if="errors.registerPhone" class="error-text">
                 {{ errors.registerPhone }}
-              </p>
-            </div>
-
-            <!-- 验证码 -->
-            <div class="input-group">
-              <div class="sms-row">
-                <div
-                  class="input-wrapper sms-input"
-                  :class="{
-                    focus: registerCodeFocused,
-                    error: errors.registerCode,
-                    'has-value': !!registerForm.code
-                  }"
-                >
-                  <svg
-                    class="input-icon"
-                    viewBox="0 0 24 24"
-                    width="20"
-                    height="20"
-                  >
-                    <path
-                      fill="currentColor"
-                      d="M17,3H7A2,2 0 0,0 5,5V21L12,18L19,21V5A2,2 0 0,0 17,3M12,13L9,10H11V6H13V10H15L12,13Z"
-                    />
-                  </svg>
-                  <input
-                    v-model="registerForm.code"
-                    type="text"
-                    inputmode="numeric"
-                    autocomplete="one-time-code"
-                    placeholder=""
-                    maxlength="6"
-                    @focus="registerCodeFocused = true"
-                    @blur="registerCodeFocused = false"
-                  />
-                  <label class="floating-label">请输入验证码</label>
-                </div>
-                <button
-                  class="sms-btn"
-                  :disabled="registerSmsCooldown > 0"
-                  @click="sendRegisterSmsCode"
-                >
-                  {{
-                    registerSmsCooldown > 0
-                      ? `${registerSmsCooldown}s`
-                      : "获取验证码"
-                  }}
-                </button>
-              </div>
-              <p v-if="errors.registerCode" class="error-text">
-                {{ errors.registerCode }}
               </p>
             </div>
 
@@ -391,6 +247,7 @@
                   v-model="registerForm.password"
                   :type="showRegisterPassword ? 'text' : 'password'"
                   autocomplete="new-password"
+                  aria-label="注册密码"
                   placeholder=""
                   @focus="registerPasswordFocused = true"
                   @blur="registerPasswordFocused = false"
@@ -399,6 +256,7 @@
                 <button
                   type="button"
                   class="eye-btn"
+                  :aria-label="showRegisterPassword ? '隐藏密码' : '显示密码'"
                   @click="showRegisterPassword = !showRegisterPassword"
                 >
                   <svg
@@ -450,6 +308,7 @@
                   v-model="registerForm.confirmPassword"
                   :type="showConfirmPassword ? 'text' : 'password'"
                   autocomplete="new-password"
+                  aria-label="确认密码"
                   placeholder=""
                   @focus="confirmPasswordFocused = true"
                   @blur="confirmPasswordFocused = false"
@@ -459,6 +318,7 @@
                 <button
                   type="button"
                   class="eye-btn"
+                  :aria-label="showConfirmPassword ? '隐藏密码' : '显示密码'"
                   @click="showConfirmPassword = !showConfirmPassword"
                 >
                   <svg
@@ -487,6 +347,7 @@
 
             <!-- 注册按钮 -->
             <button
+              type="button"
               class="submit-btn"
               :class="{ loading: registerLoading }"
               :disabled="registerLoading"
@@ -556,8 +417,6 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 
-// 登录类型
-const loginType = ref<"password" | "sms">("password");
 const isRegister = ref(false);
 
 // 输入引用
@@ -567,9 +426,7 @@ const passwordInputRef = ref<HTMLInputElement | null>(null);
 // 焦点状态
 const isPhoneFocused = ref(false);
 const isPasswordFocused = ref(false);
-const isCodeFocused = ref(false);
 const registerPhoneFocused = ref(false);
-const registerCodeFocused = ref(false);
 const registerPasswordFocused = ref(false);
 const confirmPasswordFocused = ref(false);
 
@@ -599,20 +456,14 @@ const triggerShake = () => {
   }, 10);
 };
 
-// 验证码倒计时
-const smsCooldown = ref(0);
-const registerSmsCooldown = ref(0);
-
 // 表单数据
 const loginForm = reactive({
   username: "",
-  password: "",
-  smsCode: ""
+  password: ""
 });
 
 const registerForm = reactive({
   phone: "",
-  code: "",
   password: "",
   confirmPassword: ""
 });
@@ -620,9 +471,7 @@ const registerForm = reactive({
 const errors = reactive({
   phone: "",
   password: "",
-  code: "",
   registerPhone: "",
-  registerCode: "",
   registerPassword: "",
   confirmPassword: ""
 });
@@ -632,54 +481,6 @@ const clearErrors = () => {
   Object.keys(errors).forEach(key => {
     errors[key as keyof typeof errors] = "";
   });
-};
-
-// 发送登录验证码
-const sendSmsCode = () => {
-  if (!loginForm.username) {
-    errors.phone = "请输入手机号";
-    return;
-  }
-  if (!/^1[3-9]\d{9}$/.test(loginForm.username)) {
-    errors.phone = "请输入正确的手机号";
-    return;
-  }
-
-  errors.phone = "";
-  smsCooldown.value = 60;
-  const timer = setInterval(() => {
-    smsCooldown.value--;
-    if (smsCooldown.value <= 0) {
-      clearInterval(timer);
-    }
-  }, 1000);
-
-  ElMessage.success("验证码已发送");
-  // TODO: 调用发送验证码API
-};
-
-// 发送注册验证码
-const sendRegisterSmsCode = () => {
-  if (!registerForm.phone) {
-    errors.registerPhone = "请输入手机号";
-    return;
-  }
-  if (!/^1[3-9]\d{9}$/.test(registerForm.phone)) {
-    errors.registerPhone = "请输入正确的手机号";
-    return;
-  }
-
-  errors.registerPhone = "";
-  registerSmsCooldown.value = 60;
-  const timer = setInterval(() => {
-    registerSmsCooldown.value--;
-    if (registerSmsCooldown.value <= 0) {
-      clearInterval(timer);
-    }
-  }, 1000);
-
-  ElMessage.success("验证码已发送");
-  // TODO: 调用发送验证码API
 };
 
 // 获取用户详细信息
@@ -781,47 +582,6 @@ const handlePasswordLogin = async () => {
   }
 };
 
-// 验证码登录
-const handleSmsLogin = async () => {
-  clearErrors();
-
-  if (!loginForm.username) {
-    errors.phone = "请输入手机号";
-    return;
-  }
-  if (!/^1[3-9]\d{9}$/.test(loginForm.username)) {
-    errors.phone = "请输入正确的手机号";
-    return;
-  }
-  if (!loginForm.smsCode) {
-    errors.code = "请输入验证码";
-    return;
-  }
-
-  loading.value = true;
-  try {
-    // TODO: 调用验证码登录API
-    ElMessage.info("验证码登录功能开发中...");
-  } catch (error) {
-    console.error("登录失败:", error);
-    ElMessage.error("登录失败");
-  } finally {
-    loading.value = false;
-  }
-};
-
-// 微信登录
-const handleWechatLogin = () => {
-  ElMessage.info("微信登录功能开发中...");
-  // TODO: 调用微信登录
-};
-
-// QQ登录
-const handleQQLogin = () => {
-  ElMessage.info("QQ登录功能开发中...");
-  // TODO: 调用QQ登录
-};
-
 // 注册处理
 const handleRegister = async () => {
   clearErrors();
@@ -832,10 +592,6 @@ const handleRegister = async () => {
   }
   if (!/^1[3-9]\d{9}$/.test(registerForm.phone)) {
     errors.registerPhone = "请输入正确的手机号";
-    return;
-  }
-  if (!registerForm.code) {
-    errors.registerCode = "请输入验证码";
     return;
   }
   if (!registerForm.password) {
@@ -901,13 +657,10 @@ const handleRegister = async () => {
 const resetForm = () => {
   loginForm.username = "";
   loginForm.password = "";
-  loginForm.smsCode = "";
   registerForm.phone = "";
-  registerForm.code = "";
   registerForm.password = "";
   registerForm.confirmPassword = "";
   isRegister.value = false;
-  loginType.value = "password";
   clearErrors();
 };
 
@@ -959,8 +712,8 @@ watch(
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   color: #8e8e93;
   cursor: pointer;
   background: #f5f5f7;
@@ -1001,39 +754,6 @@ watch(
   font-weight: 600;
   color: #1a1a2e;
   text-align: center;
-}
-
-/* 登录方式切换 */
-.login-tabs {
-  display: flex;
-  gap: 8px;
-  padding: 4px;
-  margin-bottom: 24px;
-  background: #f5f5f7;
-  border-radius: 12px;
-}
-
-.tab-btn {
-  flex: 1;
-  height: 40px;
-  font-size: 14px;
-  font-weight: 500;
-  color: #8e8e93;
-  cursor: pointer;
-  background: transparent;
-  border: none;
-  border-radius: 10px;
-  transition: all 0.2s;
-
-  &.active {
-    color: #1a1a2e;
-    background: #fff;
-    box-shadow: 0 2px 8px rgb(0 0 0 / 8%);
-  }
-
-  &:hover:not(.active) {
-    color: #5dade2;
-  }
 }
 
 /* 输入组 */
@@ -1124,8 +844,8 @@ watch(
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   color: #8e8e93;
   cursor: pointer;
   background: transparent;
@@ -1148,42 +868,6 @@ watch(
   margin: 6px 0 0;
   font-size: 12px;
   color: #ff6b6b;
-}
-
-/* 验证码行 */
-.sms-row {
-  display: flex;
-  gap: 10px;
-  width: 100%;
-}
-
-.sms-input {
-  flex: 1 1 0;
-  min-width: 0;
-}
-
-.sms-btn {
-  flex-shrink: 0;
-  width: 100px;
-  height: 48px;
-  font-size: 13px;
-  font-weight: 500;
-  color: #5dade2;
-  cursor: pointer;
-  background: #f5f7fa;
-  border: 1.5px solid #e8eaed;
-  border-radius: 12px;
-  transition: all 0.2s;
-
-  &:hover:not(:disabled) {
-    background: #fff;
-    border-color: #5dade2;
-  }
-
-  &:disabled {
-    color: #bfc3c7;
-    cursor: not-allowed;
-  }
 }
 
 /* 提交按钮 */
@@ -1218,70 +902,6 @@ watch(
   }
 }
 
-/* 第三方登录 */
-.third-party {
-  margin-top: 24px;
-}
-
-.divider {
-  display: flex;
-  align-items: center;
-  margin-bottom: 20px;
-  font-size: 13px;
-  color: #bfc3c7;
-
-  &::before,
-  &::after {
-    flex: 1;
-    height: 1px;
-    content: "";
-    background: #e8eaed;
-  }
-
-  span {
-    padding: 0 16px;
-  }
-}
-
-.social-btns {
-  display: flex;
-  gap: 20px;
-  justify-content: center;
-}
-
-.social-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 48px;
-  height: 48px;
-  cursor: pointer;
-  background: #f5f7fa;
-  border: none;
-  border-radius: 50%;
-  transition: all 0.2s;
-
-  &:hover {
-    transform: translateY(-2px);
-  }
-
-  &.wechat {
-    color: #07c160;
-
-    &:hover {
-      background: rgb(7 193 96 / 10%);
-    }
-  }
-
-  &.qq {
-    color: #12b7f5;
-
-    &:hover {
-      background: rgb(18 183 245 / 10%);
-    }
-  }
-}
-
 /* 底部链接 */
 .footer-link {
   margin-top: 20px;
@@ -1289,9 +909,13 @@ watch(
   color: #8e8e93;
   text-align: center;
 
-  a {
+  .link-btn {
+    padding: 0;
     font-weight: 500;
     color: #5dade2;
+    cursor: pointer;
+    background: transparent;
+    border: 0;
     text-decoration: none;
 
     &:hover {
@@ -1344,16 +968,6 @@ watch(
     font-size: 20px;
   }
 
-  .login-tabs {
-    margin-bottom: 16px;
-    border-radius: 10px;
-  }
-
-  .tab-btn {
-    padding: 8px;
-    font-size: 13px;
-  }
-
   .input-group {
     margin-bottom: 12px;
   }
@@ -1382,24 +996,6 @@ watch(
     border-radius: 12px;
   }
 
-  .third-party {
-    margin-top: 16px;
-
-    .divider {
-      margin-bottom: 12px;
-      font-size: 12px;
-    }
-
-    .social-btns {
-      gap: 12px;
-    }
-
-    .social-btn {
-      width: 40px;
-      height: 40px;
-    }
-  }
-
   .footer-link {
     margin-top: 14px;
     font-size: 13px;
@@ -1408,8 +1004,8 @@ watch(
   .close-btn {
     top: 12px;
     right: 12px;
-    width: 28px;
-    height: 28px;
+    width: 40px;
+    height: 40px;
   }
 }
 </style>
