@@ -574,6 +574,94 @@ function expectsCompactDigitalHuman(entry) {
   );
 }
 
+function routeActionSteps(route) {
+  if (!route.action) return [];
+  return Array.isArray(route.action) ? route.action : [route.action];
+}
+
+function validateRouteActionContract(route) {
+  if (!route.action) return [];
+  if (Array.isArray(route.action) && route.action.length === 0) {
+    return [`invalid interaction contract: ${route.name} has no action steps`];
+  }
+
+  const allowedKeys = new Set([
+    "selector",
+    "text",
+    "waitMs",
+    "afterSelector",
+    "afterText"
+  ]);
+  return routeActionSteps(route).flatMap((step, index) => {
+    const label = `${route.name} action step ${index + 1}`;
+    if (!step || typeof step !== "object" || Array.isArray(step)) {
+      return [`invalid interaction contract: ${label} must be an object`];
+    }
+    const stepFailures = [];
+    const unknownKey = Object.keys(step).find(key => !allowedKeys.has(key));
+    if (unknownKey) {
+      stepFailures.push(`${label} has unsupported field: ${unknownKey}`);
+    }
+    if (typeof step.selector !== "string" || !step.selector.trim()) {
+      stepFailures.push(`${label} requires a non-empty selector`);
+    }
+    if (step.text !== undefined && typeof step.text !== "string") {
+      stepFailures.push(`${label} text must be a string`);
+    }
+    if (
+      step.waitMs !== undefined &&
+      (!Number.isFinite(step.waitMs) ||
+        step.waitMs < 0 ||
+        step.waitMs > 120_000)
+    ) {
+      stepFailures.push(`${label} waitMs must be between 0 and 120000`);
+    }
+    if (
+      step.afterSelector !== undefined &&
+      (typeof step.afterSelector !== "string" || !step.afterSelector.trim())
+    ) {
+      stepFailures.push(`${label} afterSelector must be a non-empty string`);
+    }
+    if (
+      step.afterText !== undefined &&
+      (typeof step.afterText !== "string" || !step.afterText.trim())
+    ) {
+      stepFailures.push(`${label} afterText must be a non-empty string`);
+    }
+    if (step.afterText !== undefined && step.afterSelector === undefined) {
+      stepFailures.push(`${label} afterText requires afterSelector`);
+    }
+    return stepFailures;
+  });
+}
+
+function appendRouteActionArgs(commandArgs, route) {
+  if (!route.action) return;
+  const contractFailures = validateRouteActionContract(route);
+  if (contractFailures.length > 0) {
+    throw new Error(contractFailures.join("; "));
+  }
+
+  const routeWaitMs = route.postActionWaitMs ?? 2000;
+  let actionWaitMs = routeWaitMs;
+  if (Array.isArray(route.action)) {
+    commandArgs.push("--actions-json", JSON.stringify(route.action));
+  } else {
+    actionWaitMs = route.action.waitMs ?? routeWaitMs;
+    commandArgs.push("--action-selector", route.action.selector);
+    if (route.action.text) {
+      commandArgs.push("--action-text", route.action.text);
+    }
+    if (route.action.afterSelector) {
+      commandArgs.push("--action-after-selector", route.action.afterSelector);
+    }
+    if (route.action.afterText) {
+      commandArgs.push("--action-after-text", route.action.afterText);
+    }
+  }
+  commandArgs.push("--post-action-wait-ms", String(actionWaitMs));
+}
+
 const routeResult = runNode(routeSource, ["--list-json"]);
 if (routeResult.status !== 0) {
   throw new Error(
@@ -641,21 +729,76 @@ if (selfTest) {
     }
   }
   const interactionRoutes = matrixRoutes.filter(route => route.action);
-  if (interactionRoutes.length !== 13) {
+  if (interactionRoutes.length !== 16) {
     failures.push(
-      `expected 13 shared interaction routes, got ${interactionRoutes.length}`
+      `expected 16 shared interaction routes, got ${interactionRoutes.length}`
     );
   }
+  const multiStepInteractionRoutes = interactionRoutes.filter(route =>
+    Array.isArray(route.action)
+  );
+  if (multiStepInteractionRoutes.length !== 3) {
+    failures.push(
+      `expected 3 multi-step interaction routes, got ${multiStepInteractionRoutes.length}`
+    );
+  }
+  const interactionSteps = interactionRoutes.reduce(
+    (total, route) => total + routeActionSteps(route).length,
+    0
+  );
+  if (interactionSteps !== 20) {
+    failures.push(`expected 20 interaction steps, got ${interactionSteps}`);
+  }
   for (const route of interactionRoutes) {
-    if (!route.action.selector || !Array.isArray(route.readyExpect)) {
+    if (!Array.isArray(route.readyExpect)) {
       failures.push(`invalid interaction contract: ${route.name}`);
     }
-    if (
-      route.action.afterText !== undefined &&
-      (!route.action.afterSelector || !String(route.action.afterText).trim())
-    ) {
-      failures.push(`invalid post-action text: ${route.name}`);
+    failures.push(...validateRouteActionContract(route));
+  }
+  for (const route of multiStepInteractionRoutes) {
+    const actionArgs = [];
+    appendRouteActionArgs(actionArgs, route);
+    const jsonIndex = actionArgs.indexOf("--actions-json");
+    if (jsonIndex < 0 || actionArgs.includes("--action-selector")) {
+      failures.push(`multi-step action transport is not JSON: ${route.name}`);
+      continue;
     }
+    try {
+      const transportedSteps = JSON.parse(actionArgs[jsonIndex + 1]);
+      if (
+        !Array.isArray(transportedSteps) ||
+        transportedSteps.length !== route.action.length
+      ) {
+        failures.push(`multi-step action transport changed: ${route.name}`);
+      }
+    } catch (error) {
+      failures.push(
+        `multi-step action transport is invalid: ${route.name}:${error}`
+      );
+    }
+  }
+  const singleStepRoute = interactionRoutes.find(
+    route => !Array.isArray(route.action)
+  );
+  if (singleStepRoute) {
+    const actionArgs = [];
+    appendRouteActionArgs(actionArgs, singleStepRoute);
+    if (
+      !actionArgs.includes("--action-selector") ||
+      actionArgs.includes("--actions-json")
+    ) {
+      failures.push("legacy single-step action transport changed");
+    }
+  }
+  const zeroWaitArgs = [];
+  appendRouteActionArgs(zeroWaitArgs, {
+    name: "zero-wait-action",
+    action: { selector: ".action", waitMs: 0 },
+    postActionWaitMs: 900
+  });
+  const zeroWaitIndex = zeroWaitArgs.indexOf("--post-action-wait-ms");
+  if (zeroWaitArgs[zeroWaitIndex + 1] !== "0") {
+    failures.push("single-step action wait transport does not preserve zero");
   }
   for (const route of androidDynamicRoutes) {
     if (!route.fixtureKind || !/\{[A-Za-z][A-Za-z0-9]*\}/.test(route.entry)) {
@@ -847,6 +990,8 @@ if (selfTest) {
           route => route.requiredRequestPath
         ).length,
         interactionRoutes: interactionRoutes.length,
+        multiStepInteractionRoutes: multiStepInteractionRoutes.length,
+        interactionSteps,
         resumePolicyAssertions: 5,
         child: childSelfTest.stdout.trim()
       },
@@ -1002,22 +1147,7 @@ for (const [routeIndex, route] of routes.entries()) {
   if (readyExpected && route.action) {
     commandArgs.push("--ready-expect-text", readyExpected);
   }
-  if (route.action) {
-    commandArgs.push("--action-selector", route.action.selector);
-    if (route.action.text) {
-      commandArgs.push("--action-text", route.action.text);
-    }
-    if (route.action.afterSelector) {
-      commandArgs.push("--action-after-selector", route.action.afterSelector);
-    }
-    if (route.action.afterText) {
-      commandArgs.push("--action-after-text", route.action.afterText);
-    }
-    commandArgs.push(
-      "--post-action-wait-ms",
-      String(route.postActionWaitMs || 2000)
-    );
-  }
+  appendRouteActionArgs(commandArgs, route);
   if (route.requiredRequestPath) {
     commandArgs.push(
       "--required-request-path",

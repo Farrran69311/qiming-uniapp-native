@@ -13,6 +13,83 @@ function readArg(name, fallback = "") {
 
 const hasFlag = name => args.includes(name);
 
+const maxActionWaitMs = 120_000;
+
+function normalizeActionStep(step, index, fallbackWaitMs) {
+  const label = `action step ${index + 1}`;
+  if (!step || typeof step !== "object" || Array.isArray(step)) {
+    throw new Error(`${label} must be an object`);
+  }
+
+  const allowedKeys = new Set([
+    "selector",
+    "text",
+    "waitMs",
+    "afterSelector",
+    "afterText"
+  ]);
+  const unknownKey = Object.keys(step).find(key => !allowedKeys.has(key));
+  if (unknownKey) {
+    throw new Error(`${label} has unsupported field: ${unknownKey}`);
+  }
+
+  if (typeof step.selector !== "string" || !step.selector.trim()) {
+    throw new Error(`${label} requires a non-empty selector`);
+  }
+  if (step.text !== undefined && typeof step.text !== "string") {
+    throw new Error(`${label} text must be a string`);
+  }
+  if (
+    step.afterSelector !== undefined &&
+    (typeof step.afterSelector !== "string" || !step.afterSelector.trim())
+  ) {
+    throw new Error(`${label} afterSelector must be a non-empty string`);
+  }
+  if (
+    step.afterText !== undefined &&
+    (typeof step.afterText !== "string" || !step.afterText.trim())
+  ) {
+    throw new Error(`${label} afterText must be a non-empty string`);
+  }
+  if (step.afterText !== undefined && step.afterSelector === undefined) {
+    throw new Error(`${label} afterText requires afterSelector`);
+  }
+
+  const stepWaitMs = step.waitMs ?? fallbackWaitMs;
+  if (
+    !Number.isFinite(stepWaitMs) ||
+    stepWaitMs < 0 ||
+    stepWaitMs > maxActionWaitMs
+  ) {
+    throw new Error(`${label} waitMs must be between 0 and ${maxActionWaitMs}`);
+  }
+
+  return {
+    selector: step.selector,
+    text: step.text ?? "",
+    waitMs: stepWaitMs,
+    afterSelector: step.afterSelector ?? null,
+    afterText: step.afterText ?? null
+  };
+}
+
+function parseActionStepsJson(raw, fallbackWaitMs) {
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(
+      `Invalid --actions-json: ${error instanceof Error ? error.message : error}`
+    );
+  }
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    throw new Error("--actions-json must contain a non-empty action array");
+  }
+  return parsed.map((step, index) =>
+    normalizeActionStep(step, index, fallbackWaitMs)
+  );
+}
+
 function inspectBusinessEnvelope(body) {
   let parsed;
   try {
@@ -98,7 +175,7 @@ function executionFailureReport(error) {
 
 function printUsage() {
   process.stdout.write(
-    `Usage: node scripts/android-webview-audit.mjs [options]\n\nOptions:\n  --strict                         Exit non-zero when an audit assertion fails\n  --role <student|teacher|admin>   Seed a real role session before auditing\n  --entry <route>                  Navigate to a hash route before auditing\n  --expect-text <text>             Require page/account body text\n  --ready-expect-text <text>       Require text before a configured action\n  --account-menu-text <text>       Require the active account menu and account body\n  --action-selector <selector>     Click the first visible matching element\n  --action-text <text>             Optionally narrow --action-selector by text\n  --action-after-selector <css>    Require a visible element after the action\n  --action-after-text <text>       Require text inside the post-action element\n  --required-request-path <path>   Require a successful API response and code 0/200\n  --expect-forbidden               Require the route to resolve to the 403 page\n  --serial <adb-serial>             Target one Android device\n  --port <port>                    Local CDP forwarding port (default: 9223)\n  --url-pattern <text>             WebView target URL pattern\n  --wait-ms <ms>                   Wait after navigation/session seed\n  --post-action-wait-ms <ms>       Wait after the configured action\n  --min-content-ratio <ratio>      Minimum main-content/viewport width ratio\n  --api-origin <url>               API origin used for real login\n  --out <path>                     Write the JSON report to a file\n  --self-test                      Run pure response-envelope checks and exit\n  -h, --help                       Show this help and exit\n`
+    `Usage: node scripts/android-webview-audit.mjs [options]\n\nOptions:\n  --strict                         Exit non-zero when an audit assertion fails\n  --role <student|teacher|admin>   Seed a real role session before auditing\n  --entry <route>                  Navigate to a hash route before auditing\n  --expect-text <text>             Require page/account body text\n  --ready-expect-text <text>       Require text before a configured action\n  --account-menu-text <text>       Require the active account menu and account body\n  --actions-json <json>            Run a validated action-step array in sequence\n  --action-selector <selector>     Click the first visible matching element\n  --action-text <text>             Optionally narrow --action-selector by text\n  --action-after-selector <css>    Require a visible element after the action\n  --action-after-text <text>       Require text inside the post-action element\n  --required-request-path <path>   Require a successful API response and code 0/200\n  --expect-forbidden               Require the route to resolve to the 403 page\n  --serial <adb-serial>             Target one Android device\n  --port <port>                    Local CDP forwarding port (default: 9223)\n  --url-pattern <text>             WebView target URL pattern\n  --wait-ms <ms>                   Wait after navigation/session seed\n  --post-action-wait-ms <ms>       Default wait after each configured action\n  --min-content-ratio <ratio>      Minimum main-content/viewport width ratio\n  --api-origin <url>               API origin used for real login\n  --out <path>                     Write the JSON report to a file\n  --self-test                      Run pure response-envelope checks and exit\n  -h, --help                       Show this help and exit\n`
   );
   process.stdout.write(
     "  --package <application-id>        Android package owning the WebView\n"
@@ -149,11 +226,65 @@ function runSelfTest() {
   if (environmentInterruption("expected text not found: 课程")) {
     failures.push("business failure misclassified as environment interruption");
   }
+  const actionSteps = parseActionStepsJson(
+    JSON.stringify([
+      { selector: ".menu-toggle", text: "", waitMs: 250 },
+      {
+        selector: ".menu-item",
+        text: "账户管理",
+        afterSelector: ".account-panel",
+        afterText: "修改账户密码"
+      }
+    ]),
+    1200
+  );
+  if (
+    actionSteps.length !== 2 ||
+    actionSteps[0].waitMs !== 250 ||
+    actionSteps[1].waitMs !== 1200 ||
+    actionSteps[1].afterText !== "修改账户密码"
+  ) {
+    failures.push(
+      `action sequence normalization failed:${JSON.stringify(actionSteps)}`
+    );
+  }
+  const invalidActionCases = [
+    ["non-array", "{}", "non-empty action array"],
+    ["empty-array", "[]", "non-empty action array"],
+    ["missing-selector", '[{"text":"设置"}]', "non-empty selector"],
+    [
+      "after-text-without-selector",
+      '[{"selector":".item","afterText":"完成"}]',
+      "afterText requires afterSelector"
+    ],
+    [
+      "invalid-wait",
+      '[{"selector":".item","waitMs":120001}]',
+      "waitMs must be between"
+    ],
+    [
+      "unsupported-field",
+      '[{"selector":".item","skip":true}]',
+      "unsupported field"
+    ]
+  ];
+  for (const [name, raw, expectedMessage] of invalidActionCases) {
+    try {
+      parseActionStepsJson(raw, 1000);
+      failures.push(`${name} action contract did not throw`);
+    } catch (error) {
+      if (!String(error).includes(expectedMessage)) {
+        failures.push(
+          `${name} action contract error was not actionable: ${error}`
+        );
+      }
+    }
+  }
   if (failures.length) {
     throw new Error(`Self-test failed: ${failures.join(", ")}`);
   }
   process.stdout.write(
-    `android-webview-audit self-test: ${cases.length + environmentCases.length + 1} passed\n`
+    `android-webview-audit self-test: ${cases.length + environmentCases.length + invalidActionCases.length + 2} passed\n`
   );
 }
 
@@ -182,6 +313,7 @@ const minUsableContentRatio = Number(
 const entry = readArg("--entry");
 const expectedText = readArg("--expect-text");
 const readyExpectedText = readArg("--ready-expect-text");
+const actionsJson = readArg("--actions-json");
 const actionSelector = readArg("--action-selector");
 const actionText = readArg("--action-text");
 const actionAfterSelector = readArg("--action-after-selector");
@@ -255,7 +387,7 @@ if (!Number.isFinite(waitMs) || waitMs < 0 || waitMs > 120_000) {
 if (
   !Number.isFinite(postActionWaitMs) ||
   postActionWaitMs < 0 ||
-  postActionWaitMs > 120_000
+  postActionWaitMs > maxActionWaitMs
 ) {
   throw new Error(`Invalid --post-action-wait-ms value: ${postActionWaitMs}`);
 }
@@ -268,6 +400,12 @@ if (entry && !entry.startsWith("/")) {
   throw new Error(`--entry must start with /: ${entry}`);
 }
 
+if (hasFlag("--actions-json") && !actionsJson) {
+  throw new Error("--actions-json requires a JSON value");
+}
+if (actionsJson && actionSelector) {
+  throw new Error("--actions-json cannot be combined with --action-selector");
+}
 if (!actionSelector && actionText) {
   throw new Error("--action-text requires --action-selector");
 }
@@ -277,6 +415,27 @@ if (!actionSelector && actionAfterSelector) {
 if (!actionAfterSelector && actionAfterText) {
   throw new Error("--action-after-text requires --action-after-selector");
 }
+
+const actionSteps = actionsJson
+  ? parseActionStepsJson(actionsJson, postActionWaitMs)
+  : actionSelector
+    ? [
+        normalizeActionStep(
+          {
+            selector: actionSelector,
+            ...(actionText ? { text: actionText } : {}),
+            waitMs: postActionWaitMs,
+            ...(actionAfterSelector
+              ? { afterSelector: actionAfterSelector }
+              : {}),
+            ...(actionAfterText ? { afterText: actionAfterText } : {})
+          },
+          0,
+          postActionWaitMs
+        )
+      ]
+    : [];
+const hasActionSequence = Boolean(actionsJson);
 
 if (requiredRequestPath && !requiredRequestPath.startsWith("/")) {
   throw new Error(
@@ -377,6 +536,111 @@ function createCdpClient(socket) {
 }
 
 const wait = ms => new Promise(resolveWait => setTimeout(resolveWait, ms));
+
+async function executeActionStep(command, step, index) {
+  const actionEvaluation = await command("Runtime.evaluate", {
+    expression: `(() => {
+      const selector = ${JSON.stringify(step.selector)};
+      const expectedText = ${JSON.stringify(step.text)};
+      const candidates = Array.from(document.querySelectorAll(selector));
+      const target = candidates.find(element => {
+        const style = getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return style.display !== "none" &&
+          style.visibility !== "hidden" &&
+          Number(style.opacity || 1) > 0.01 &&
+          element.getAttribute("aria-hidden") !== "true" &&
+          rect.width > 0 &&
+          rect.height > 0 &&
+          String(element.textContent || "").replace(/\\s+/g, " ").trim().includes(expectedText);
+      });
+      if (!target) {
+        return { ok: false, reason: "target-not-found" };
+      }
+      target.scrollIntoView({ block: "center", inline: "center" });
+      if (typeof target.click === "function") target.click();
+      else target.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      return {
+        ok: true,
+        tag: target.tagName.toLowerCase(),
+        text: String(target.textContent || "").replace(/\\s+/g, " ").trim().slice(0, 160)
+      };
+    })()`,
+    returnByValue: true
+  });
+  let result;
+  if (actionEvaluation.exceptionDetails) {
+    result = {
+      ok: false,
+      reason:
+        actionEvaluation.exceptionDetails.exception?.description ||
+        actionEvaluation.exceptionDetails.text ||
+        "action-evaluation-failed"
+    };
+  } else {
+    result = actionEvaluation.result?.value || {
+      ok: false,
+      reason: "action-returned-no-result"
+    };
+  }
+  Object.assign(result, {
+    step: index + 1,
+    selector: step.selector,
+    expectedText: step.text,
+    waitMs: step.waitMs,
+    afterSelector: step.afterSelector,
+    afterText: step.afterText
+  });
+  if (!result.ok) return result;
+
+  await wait(step.waitMs);
+  if (!step.afterSelector) return result;
+
+  const afterEvaluation = await command("Runtime.evaluate", {
+    expression: `(() => {
+      const selector = ${JSON.stringify(step.afterSelector)};
+      const element = Array.from(document.querySelectorAll(selector)).find(element => {
+        const style = getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return style.display !== "none" &&
+          style.visibility !== "hidden" &&
+          Number(style.opacity || 1) > 0.01 &&
+          element.getAttribute("aria-hidden") !== "true" &&
+          rect.width > 0 &&
+          rect.height > 0;
+      });
+      return {
+        visible: Boolean(element),
+        text: String(element?.textContent || "").replace(/\\s+/g, " ").trim().slice(0, 1000)
+      };
+    })()`,
+    returnByValue: true
+  });
+  if (afterEvaluation.exceptionDetails) {
+    result.ok = false;
+    result.reason =
+      afterEvaluation.exceptionDetails.exception?.description ||
+      afterEvaluation.exceptionDetails.text ||
+      "after-action-evaluation-failed";
+    return result;
+  }
+
+  const afterResult = afterEvaluation.result?.value || {
+    visible: false,
+    text: ""
+  };
+  result.afterSelectorVisible = afterResult.visible === true;
+  result.afterSelectorText = afterResult.text;
+  result.afterTextFound =
+    !step.afterText || String(afterResult.text).includes(step.afterText);
+  if (!result.afterSelectorVisible || !result.afterTextFound) {
+    result.ok = false;
+    result.reason = result.afterSelectorVisible
+      ? "after-text-not-found"
+      : "after-selector-not-visible";
+  }
+  return result;
+}
 
 async function fetchJson(url, init = {}) {
   const response = await fetch(url, init);
@@ -827,7 +1091,7 @@ try {
 
   let actionResult = null;
   let readyTextSample = "";
-  if (actionSelector) {
+  if (actionSteps.length > 0) {
     const readyEvaluation = await command("Runtime.evaluate", {
       expression:
         'String(document.body?.innerText || "").replace(/\\s+/g, " ").trim().slice(0, 4000)',
@@ -835,90 +1099,23 @@ try {
     });
     readyTextSample = String(readyEvaluation.result?.value || "");
 
-    const actionExpression = `(() => {
-      const selector = ${JSON.stringify(actionSelector)};
-      const expectedText = ${JSON.stringify(actionText)};
-      const candidates = Array.from(document.querySelectorAll(selector));
-      const target = candidates.find(element => {
-        const style = getComputedStyle(element);
-        const rect = element.getBoundingClientRect();
-        return style.display !== "none" &&
-          style.visibility !== "hidden" &&
-          rect.width > 0 &&
-          rect.height > 0 &&
-          String(element.textContent || "").replace(/\\s+/g, " ").trim().includes(expectedText);
-      });
-      if (!target) {
-        return { ok: false, reason: "target-not-found" };
-      }
-      target.scrollIntoView({ block: "center", inline: "center" });
-      target.click();
-      return {
-        ok: true,
-        tag: target.tagName.toLowerCase(),
-        text: String(target.textContent || "").replace(/\\s+/g, " ").trim().slice(0, 160)
-      };
-    })()`;
-    const actionEvaluation = await command("Runtime.evaluate", {
-      expression: actionExpression,
-      returnByValue: true
-    });
-    if (actionEvaluation.exceptionDetails) {
-      actionResult = {
-        ok: false,
-        reason:
-          actionEvaluation.exceptionDetails.exception?.description ||
-          actionEvaluation.exceptionDetails.text ||
-          "action-evaluation-failed"
-      };
-    } else {
-      actionResult = actionEvaluation.result?.value || {
-        ok: false,
-        reason: "action-returned-no-result"
-      };
+    const stepResults = [];
+    for (const [index, step] of actionSteps.entries()) {
+      const stepResult = await executeActionStep(command, step, index);
+      stepResults.push(stepResult);
+      if (!stepResult.ok) break;
     }
-    if (actionResult.ok) {
-      await wait(postActionWaitMs);
-      if (actionAfterSelector) {
-        const afterEvaluation = await command("Runtime.evaluate", {
-          expression: `(() => {
-            const selector = ${JSON.stringify(actionAfterSelector)};
-            const element = Array.from(document.querySelectorAll(selector)).find(element => {
-              const style = getComputedStyle(element);
-              const rect = element.getBoundingClientRect();
-              return style.display !== "none" &&
-                style.visibility !== "hidden" &&
-                rect.width > 0 &&
-                rect.height > 0;
-            });
-            return {
-              visible: Boolean(element),
-              text: String(element?.textContent || "").replace(/\\s+/g, " ").trim().slice(0, 1000)
-            };
-          })()`,
-          returnByValue: true
-        });
-        const afterResult = afterEvaluation.result?.value || {
-          visible: false,
-          text: ""
-        };
-        const afterSelectorVisible = afterResult.visible === true;
-        const afterTextFound =
-          !actionAfterText ||
-          String(afterResult.text).includes(actionAfterText);
-        actionResult.afterSelector = actionAfterSelector;
-        actionResult.afterSelectorVisible = afterSelectorVisible;
-        actionResult.afterSelectorText = afterResult.text;
-        actionResult.afterText = actionAfterText || null;
-        actionResult.afterTextFound = afterTextFound;
-        if (!afterSelectorVisible || !afterTextFound) {
-          actionResult.ok = false;
-          actionResult.reason = afterSelectorVisible
-            ? "after-text-not-found"
-            : "after-selector-not-visible";
+    const failedStep = stepResults.find(step => !step.ok) || null;
+    actionResult = hasActionSequence
+      ? {
+          ok: !failedStep && stepResults.length === actionSteps.length,
+          completedSteps: stepResults.filter(step => step.ok).length,
+          totalSteps: actionSteps.length,
+          failedStep: failedStep?.step ?? null,
+          reason: failedStep?.reason || null,
+          steps: stepResults
         }
-      }
-    }
+      : stepResults[0];
   }
 
   const evaluation = await command("Runtime.evaluate", {
@@ -1051,7 +1248,7 @@ try {
   ) {
     failures.push(`ready text not found: ${readyExpectedText}`);
   }
-  if (actionSelector && !actionResult?.ok) {
+  if (actionSteps.length > 0 && !actionResult?.ok) {
     failures.push(`route action failed: ${actionResult?.reason || "unknown"}`);
   }
   if (requiredRequestPath && !requiredResponse) {
@@ -1127,15 +1324,18 @@ try {
     entry: entry || null,
     expectedText: expectedText || null,
     readyExpectedText: readyExpectedText || null,
-    action: actionSelector
-      ? {
-          selector: actionSelector,
-          text: actionText,
-          afterSelector: actionAfterSelector || null,
-          afterText: actionAfterText || null,
-          postActionWaitMs
-        }
-      : null,
+    action:
+      actionSteps.length > 0
+        ? hasActionSequence
+          ? { mode: "sequence", steps: actionSteps }
+          : {
+              selector: actionSelector,
+              text: actionText,
+              afterSelector: actionAfterSelector || null,
+              afterText: actionAfterText || null,
+              postActionWaitMs
+            }
+        : null,
     accountMenuText: accountMenuText || null,
     expectCompactDigitalHuman,
     expectForbidden,
