@@ -184,14 +184,14 @@ test("WeChat top bars stay opaque and the student profile clears its header", ()
   assert.match(wechatMiniProgram, /QIMING_MINIPROGRAM_H5_WAIT_MS \|\| 20000/);
 });
 
-test("native profile keeps local activity fallback without calling an absent API", () => {
+test("profile keeps an honest local activity state without calling an absent API", () => {
   assert.doesNotMatch(userProfile, /完成了《Python 基础入门》/);
-  assert.match(userProfile, /const learningActivities = ref\(\[\]\)/);
-  assert.match(userProfile, /classList\.contains\("qiming-native-webview"\)/);
   assert.match(
     userProfile,
-    /const isNativeWebView =[\s\S]*if \(\s*isNativeWebView \|\|[\s\S]*return;/
+    /const learningActivities = ref(?:<[\s\S]*?>)?\(\[\]\)/
   );
+  assert.doesNotMatch(userProfile, /getUserActivities/);
+  assert.match(userProfile, /description="学习动态服务暂未接入"/);
 });
 
 test("account audit ignores SVG style text and expects rendered page content", () => {
@@ -220,9 +220,12 @@ test("account audit ignores SVG style text and expects rendered page content", (
   assert.match(androidAudit, /\.exam-result-page/);
   assert.match(
     sharedRouteMatrix,
-    /name: "student-account-home"[\s\S]*readyExpect: \["课程信息", "AI总结"\][\s\S]*selector: "\.quick-access-card\.course-access"[\s\S]*expect: \["我的课程"\][\s\S]*afterActionAccountMenuText: "课程"/
+    /name: "student-account-home"[\s\S]*readyExpect: \["学习总结服务尚未接入"\][\s\S]*selector: "\.quick-access-card\.course-access"[\s\S]*expect: \["我的课程"\][\s\S]*afterActionAccountMenuText: "课程"/
   );
-  assert.match(sharedRouteMatrix, /expect: \["启明智教 · 2D 校园导览"\]/);
+  assert.match(
+    sharedRouteMatrix,
+    /expect: \["启明智教 · 2D 校园导览", "欢迎来到启明智教"\]/
+  );
   assert.match(
     sharedRouteMatrix,
     /name: "student-course-work"[\s\S]*expect: \["作业考试"\]/
