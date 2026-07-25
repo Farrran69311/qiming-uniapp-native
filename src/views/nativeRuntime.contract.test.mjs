@@ -10,6 +10,7 @@ const assistantFloatButton = read(
   "../components/AiScreenCapture/FloatButton.vue"
 );
 const mobileNav = read("../layout/components/NavMobile.vue");
+const layoutShell = read("../layout/index.vue");
 const userProfile = read("account/components/UserProfile.vue");
 const accountShell = read("account/index.vue");
 const aiAppShell = read("account/ai-app/index.vue");
@@ -107,7 +108,7 @@ test("mobile AI assistant stays above the rendered bottom dock", () => {
   );
   assert.match(
     assistantFloatButton,
-    /window\.innerHeight - dockTop \+ MOBILE_DOCK_GAP/
+    /window\.innerHeight - obstructionTop \+ MOBILE_DOCK_GAP/
   );
   assert.match(
     assistantFloatButton,
@@ -175,6 +176,11 @@ test("WeChat top bars stay opaque and the student profile clears its header", ()
     globalStyles,
     /qiming-mini-program-webview \.account-container \.account-content \{[^}]*padding-top: 8px !important;/
   );
+  assert.match(layoutShell, /route\.path !== "\/account"/);
+  assert.match(layoutShell, /qiming-mini-program-webview/);
+  assert.match(layoutShell, /data-qiming-layout-header/);
+  assert.match(layoutShell, /<LayHeader v-if="shouldRenderLayHeader" \/>/);
+  assert.match(layoutShell, /<LayContent :fixed-header="set\.fixedHeader" \/>/);
   assert.match(
     wechatMiniProgram,
     /name: "public-home"[\s\S]*?entry: "\/home"[\s\S]*?expectText: "为每一门课"/
@@ -220,8 +226,13 @@ test("account audit ignores SVG style text and expects rendered page content", (
   assert.match(androidAudit, /\.exam-result-page/);
   assert.match(
     sharedRouteMatrix,
-    /name: "student-account-home"[\s\S]*readyExpect: \["学习总结服务尚未接入"\][\s\S]*selector: "\.quick-access-card\.course-access"[\s\S]*expect: \["我的课程"\][\s\S]*afterActionAccountMenuText: "课程"/
+    /name: "student-account-home"[\s\S]*readyExpect: \["课程信息", "AI总结"\][\s\S]*selector: "\.quick-access-card\.course-access"[\s\S]*expect: \["我的课程"\][\s\S]*afterActionAccountMenuText: "课程"/
   );
+  assert.match(sharedRouteMatrix, /menuToMainGap/);
+  assert.match(sharedRouteMatrix, /requireLearningSummary: true/);
+  assert.match(sharedRouteMatrix, /learningSummaryItemCount/);
+  assert.match(sharedRouteMatrix, /account-module-gap:/);
+  assert.match(sharedRouteMatrix, /duplicate-account-navbar-visible/);
   assert.match(
     sharedRouteMatrix,
     /expect: \["启明智教 · 2D 校园导览", "欢迎来到启明智教"\]/

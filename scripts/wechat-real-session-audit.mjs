@@ -133,7 +133,8 @@ const routes = [
     name: "student-account-home",
     entry: "/account?menu=home",
     accountMenuText: "首页",
-    readyExpect: ["学习总结服务尚未接入"],
+    readyExpect: ["课程信息", "AI总结"],
+    requireLearningSummary: true,
     action: { selector: ".quick-access-card.course-access" },
     expect: ["我的课程"],
     afterActionAccountMenuText: "课程",
@@ -1497,7 +1498,10 @@ const inspectExpression = `(() => {
   ];
   const main = mainCandidates.map(selector => document.querySelector(selector)).find(isVisibleElement);
   const navbar = document.querySelector('.navbar, .header');
+  const outerNavbar = Array.from(document.querySelectorAll('[data-qiming-layout-header] .navbar')).find(isVisibleElement);
+  const accountSidebar = document.querySelector('.account-sidebar');
   const accountMain = document.querySelector('.account-main');
+  const learningSummary = document.querySelector('.summary-card[data-summary-status]');
   const activeAccountMenu = Array.from(document.querySelectorAll('.account-menu .el-menu-item.is-active')).find(isVisibleElement);
   const textWithoutSvg = element => {
     if (!element) return '';
@@ -1658,7 +1662,18 @@ const inspectExpression = `(() => {
     },
     account: {
       activeMenuText: textWithoutSvg(activeAccountMenu),
-      mainText: String(accountMain?.innerText || accountMain?.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 4000)
+      mainText: String(accountMain?.innerText || accountMain?.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 4000),
+      menuToMainGap:
+        accountSidebar && accountMain
+          ? Math.round(
+              accountMain.getBoundingClientRect().top -
+                accountSidebar.getBoundingClientRect().bottom
+            )
+          : null,
+      learningSummaryStatus:
+        learningSummary?.getAttribute('data-summary-status') || '',
+      learningSummaryItemCount:
+        learningSummary?.querySelectorAll('ul > li:not(.typing-cursor)').length || 0
     },
     course: {
       section: new URLSearchParams(hashQuery).get('section') || '',
@@ -1668,6 +1683,7 @@ const inspectExpression = `(() => {
     },
     layout: {
       navbar: rectInfo(navbar),
+      outerNavbar: rectInfo(outerNavbar),
       main: rectInfo(main),
       accountMain: rectInfo(accountMain),
       routeContent: boxInfo(routeContent),
@@ -1839,6 +1855,21 @@ function analyze(
       `account-menu-mismatch:${info.account?.activeMenuText || "none"}!=${expectedAccountMenuText}`
     );
   }
+  if (
+    !route.expectedForbidden &&
+    expectedAccountMenuText &&
+    Number(info.widthAudit?.viewportWidth || 0) <= 767
+  ) {
+    const menuToMainGap = Number(info.account?.menuToMainGap);
+    if (!Number.isFinite(menuToMainGap) || menuToMainGap < 12) {
+      failures.push(
+        `account-module-gap:${Number.isFinite(menuToMainGap) ? menuToMainGap : "missing"}<12`
+      );
+    }
+    if (info.layout?.outerNavbar?.visible) {
+      failures.push("duplicate-account-navbar-visible");
+    }
+  }
   failures.push(...courseStateFailures(info, route.courseState));
   if (route.afterActionState && actionResult?.ok) {
     failures.push(
@@ -1978,13 +2009,18 @@ async function waitForExpectedPage(
     const afterActionReady =
       !includeAfterAction ||
       courseStateFailures(info, route?.afterActionState).length === 0;
+    const learningSummaryReady =
+      !route?.requireLearningSummary ||
+      (info.account?.learningSummaryStatus !== "loading" &&
+        Number(info.account?.learningSummaryItemCount || 0) > 0);
     if (
       !info.blank &&
       info.textLength > 80 &&
       info.loadingCount === 0 &&
       expectedReady &&
       courseReady &&
-      afterActionReady
+      afterActionReady &&
+      learningSummaryReady
     )
       break;
   } while (Date.now() - startedAt < waitMs);

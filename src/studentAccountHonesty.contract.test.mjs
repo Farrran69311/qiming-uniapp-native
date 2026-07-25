@@ -13,7 +13,29 @@ test("student course views use backend filters without demo fallbacks", () => {
   assert.match(accountView, /elective:\s*2/);
   assert.match(accountView, /completed:\s*3/);
   assert.match(accountView, /incomplete:\s*4/);
-  assert.match(accountView, /学习总结服务尚未接入/);
+  assert.match(accountView, /getLearningSummary/);
+  assert.match(accountView, /code === 200 && responseItems\.length > 0/);
+  assert.match(accountView, /fallbackAiSummaryItems/);
+  assert.match(accountView, /window\.setTimeout\(typeNextChar, typingSpeed\)/);
+  assert.match(accountView, /window\.setTimeout\(typeNextChar, 320\)/);
+  assert.match(accountView, /prefers-reduced-motion: reduce/);
+  assert.match(accountView, /requestId !== learningSummaryRequestId/);
+  assert.match(accountView, /学习总结请求超时/);
+  assert.match(accountView, /data-summary-status="aiSummaryStatus"/);
+  assert.match(accountView, /实时总结暂不可用，当前展示学习总结示例/);
+  assert.match(accountView, /void loadLearningSummary\(\)/);
+  assert.match(accountView, /:interval="4000"/);
+  assert.match(accountView, /v-for="\(notice, index\) in notices"/);
+  assert.doesNotMatch(accountView, /学习总结服务尚未接入/);
+
+  const noticesBlock = accountView.match(
+    /const notices = ref\(\[([\s\S]*?)\]\);/
+  )?.[1];
+  const summaryBlock = accountView.match(
+    /const fallbackAiSummaryItems = \[([\s\S]*?)\];/
+  )?.[1];
+  assert.equal(noticesBlock?.match(/^\s*"/gm)?.length, 5);
+  assert.equal(summaryBlock?.match(/^\s*"/gm)?.length, 6);
   assert.match(courseApi, /queryType\?: number/);
   assert.doesNotMatch(courseApi, /status\?: string/);
 });

@@ -32,12 +32,6 @@ const defaultLaunchRole = "";
 
 const realAppIdPattern = /^wx[a-zA-Z0-9]{16}$/;
 
-const roleLabels = {
-  student: "student",
-  teacher: "teacher",
-  admin: "admin"
-};
-
 const routeMatrix = [
   {
     name: "public-home",
@@ -164,6 +158,12 @@ const routeMatrix = [
     role: "admin",
     entry: "/course/discussion/review",
     expectText: "筛选条件"
+  },
+  {
+    name: "admin-ai-app",
+    role: "admin",
+    entry: "/ai-app/workspace",
+    expectText: "管理员模式"
   }
 ];
 
@@ -172,9 +172,7 @@ function parseArgs(argv) {
   const command = args.shift() || "doctor";
   const options = {
     appid:
-      process.env.WECHAT_MINIPROGRAM_APPID ||
-      process.env.MP_WEIXIN_APPID ||
-      "",
+      process.env.WECHAT_MINIPROGRAM_APPID || process.env.MP_WEIXIN_APPID || "",
     cli: process.env.WECHAT_DEVTOOLS_CLI || "",
     devServer:
       process.env.QIMING_MINIPROGRAM_WEBVIEW_ORIGIN ||
@@ -261,7 +259,9 @@ function parseArgs(argv) {
     throw new Error(`Unsupported wait time: ${options.waitMs}`);
   }
   if (!Number.isFinite(options.devtoolsWaitMs) || options.devtoolsWaitMs < 0) {
-    throw new Error(`Unsupported DevTools wait time: ${options.devtoolsWaitMs}`);
+    throw new Error(
+      `Unsupported DevTools wait time: ${options.devtoolsWaitMs}`
+    );
   }
   if (!Number.isFinite(options.devtoolsPort) || options.devtoolsPort < 0) {
     throw new Error(`Unsupported DevTools port: ${options.devtoolsPort}`);
@@ -319,7 +319,9 @@ function run(command, args, cwd = root, env = {}) {
   });
   if (result.error) throw result.error;
   if (result.status !== 0) {
-    throw new Error(`${command} ${args.join(" ")} failed with ${result.status}`);
+    throw new Error(
+      `${command} ${args.join(" ")} failed with ${result.status}`
+    );
   }
 }
 
@@ -407,7 +409,9 @@ function buildQuery(route, role, devServer) {
 
 function readLaunchOptions(config) {
   const condition = config.condition?.miniprogram;
-  const currentIndex = Number.isInteger(condition?.current) ? condition.current : 0;
+  const currentIndex = Number.isInteger(condition?.current)
+    ? condition.current
+    : 0;
   const current = condition?.list?.[currentIndex] || condition?.list?.[0];
   if (!current?.query) return {};
   const params = new URLSearchParams(current.query);
@@ -416,15 +420,6 @@ function readLaunchOptions(config) {
     role: params.get("demoRole") || "",
     devServer: params.get("devServer") || ""
   };
-}
-
-function readExistingLaunchOptions() {
-  if (!existsSync(projectConfigPath)) return {};
-  try {
-    return readLaunchOptions(readJson(projectConfigPath));
-  } catch {
-    return {};
-  }
 }
 
 function resolveLaunchOptions(options) {
@@ -473,7 +468,8 @@ function assertPhonePreviewTarget(launch, options, command) {
 
 function collectPhoneTargetChecks(options, launch, command = "mini:preflight") {
   const checks = [];
-  const add = (status, name, detail = "") => checks.push({ status, name, detail });
+  const add = (status, name, detail = "") =>
+    checks.push({ status, name, detail });
   const appid = options.appid || "";
   const cliPath = resolveCliPath(options.cli);
   add(
@@ -514,7 +510,8 @@ function collectPhoneTargetChecks(options, launch, command = "mini:preflight") {
 
 async function collectH5OriginChecks(origin) {
   const checks = [];
-  const add = (status, name, detail = "") => checks.push({ status, name, detail });
+  const add = (status, name, detail = "") =>
+    checks.push({ status, name, detail });
   if (!origin) return checks;
   try {
     const response = await fetch(origin, {
@@ -535,11 +532,7 @@ async function collectH5OriginChecks(origin) {
     );
     const html = await response.text();
     const bodySize = new TextEncoder().encode(html).length;
-    add(
-      bodySize > 1024 ? "OK" : "FAIL",
-      "H5 origin body",
-      `${bodySize} bytes`
-    );
+    add(bodySize > 1024 ? "OK" : "FAIL", "H5 origin body", `${bodySize} bytes`);
     add(
       /<script\b[^>]+src=["'][^"']*\/static\/js\//.test(html) ? "OK" : "FAIL",
       "H5 origin assets",
@@ -624,7 +617,8 @@ function runBuild(options) {
 
 function collectChecks(options) {
   const checks = [];
-  const add = (status, name, detail = "") => checks.push({ status, name, detail });
+  const add = (status, name, detail = "") =>
+    checks.push({ status, name, detail });
   const requiredFiles = [
     "app.js",
     "app.json",
@@ -707,7 +701,8 @@ function collectChecks(options) {
     add(
       hasRealAppId(config.appid) ? "OK" : "WARN",
       "WeChat AppID",
-      config.appid || "empty for simulator import; set WECHAT_MINIPROGRAM_APPID for preview/upload/auto"
+      config.appid ||
+        "empty for simulator import; set WECHAT_MINIPROGRAM_APPID for preview/upload/auto"
     );
   }
 
@@ -764,7 +759,9 @@ function printChecks(checks) {
   }
   const failCount = checks.filter(check => check.status === "FAIL").length;
   const warnCount = checks.filter(check => check.status === "WARN").length;
-  console.log(`Summary: ${checks.length - warnCount - failCount} OK, ${warnCount} WARN, ${failCount} FAIL`);
+  console.log(
+    `Summary: ${checks.length - warnCount - failCount} OK, ${warnCount} WARN, ${failCount} FAIL`
+  );
   if (failCount > 0) process.exitCode = 1;
 }
 
@@ -791,7 +788,9 @@ function hasValidRouteContent(info, route) {
 }
 
 function isAcceptedProductWordmark(value) {
-  const normalized = String(value || "").trim().toLowerCase();
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
   return normalized === "intelledu" || normalized === "启明智教";
 }
 
@@ -819,7 +818,8 @@ function getH5RouteSmokeFailures(info, route) {
   const topbar = info?.layout?.topbar;
   if (topbar?.exists) {
     if (!topbar.hamburgerVisible) failures.push("topbar-missing-menu-button");
-    if (!topbar.themeToggleVisible) failures.push("topbar-missing-theme-button");
+    if (!topbar.themeToggleVisible)
+      failures.push("topbar-missing-theme-button");
     if (!topbar.userChipVisible) failures.push("topbar-missing-user-button");
     const topbarBrandText = String(topbar.brandText || "").trim();
     if (topbarBrandText && !isAcceptedProductWordmark(topbarBrandText)) {
@@ -840,7 +840,9 @@ function getH5RouteSmokeFailures(info, route) {
         ...toolbarRects.map(rect => Number(rect.y) + Number(rect.height))
       );
       if (bottomY - topY > 66) {
-        failures.push(`topbar-controls-not-single-row:${Math.round(bottomY - topY)}px`);
+        failures.push(
+          `topbar-controls-not-single-row:${Math.round(bottomY - topY)}px`
+        );
       }
     }
   }
@@ -893,6 +895,35 @@ function getH5RouteSmokeFailures(info, route) {
       !info.sidebarCheck.wordmarkComplete
     ) {
       failures.push("sidebar-brand-truncated");
+    }
+  }
+  if (route.name.endsWith("-ai-app")) {
+    const drawer = info?.aiDrawerCheck;
+    if (!drawer?.sidebarVisible || !drawer?.scrimVisible) {
+      failures.push("ai-course-drawer-not-visible");
+    } else {
+      if (
+        !drawer.focusInsideSidebar ||
+        drawer.modalRole !== "dialog" ||
+        drawer.ariaModal !== "true"
+      ) {
+        failures.push("ai-course-drawer-focus-not-contained");
+      }
+      if (Number(drawer.visibleCourseAddButtons || 0) < 1) {
+        failures.push("ai-course-new-chat-touch-target-hidden");
+      }
+      const sidebarZ = Number(drawer.sidebarZ);
+      const scrimZ = Number(drawer.scrimZ);
+      const obstructionZ = Math.max(
+        Number(drawer.floatingHumanZ || 0),
+        Number(drawer.captureButtonZ || 0)
+      );
+      if (!Number.isFinite(sidebarZ) || sidebarZ <= scrimZ) {
+        failures.push(`ai-course-drawer-below-scrim:${sidebarZ}/${scrimZ}`);
+      }
+      if (!Number.isFinite(scrimZ) || scrimZ <= obstructionZ) {
+        failures.push(`ai-course-drawer-obstructed:${scrimZ}/${obstructionZ}`);
+      }
     }
   }
   return failures;
@@ -957,7 +988,9 @@ function getFreePort() {
         if (address && typeof address === "object") {
           resolvePort(address.port);
         } else {
-          rejectPort(new Error("Unable to allocate a local browser debug port."));
+          rejectPort(
+            new Error("Unable to allocate a local browser debug port.")
+          );
         }
       });
     });
@@ -1015,7 +1048,9 @@ class CdpClient {
       if (!pending) return;
       this.pending.delete(message.id);
       if (message.error) {
-        pending.reject(new Error(message.error.message || "CDP command failed."));
+        pending.reject(
+          new Error(message.error.message || "CDP command failed.")
+        );
       } else {
         pending.resolve(message.result);
       }
@@ -1530,6 +1565,67 @@ async function runH5Smoke(options) {
           Buffer.from(sidebarScreenshot.data, "base64")
         );
       }
+      let aiDrawerScreenshotPath = "";
+      if (route.name.endsWith("-ai-app")) {
+        await client.send("Runtime.evaluate", {
+          awaitPromise: true,
+          expression: `(() => {
+            const button = document.querySelector('[aria-label="新建对话"]');
+            button?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
+          })()`
+        });
+        await wait(420);
+        const aiDrawerCheck = await client.send("Runtime.evaluate", {
+          returnByValue: true,
+          awaitPromise: true,
+          expression: `(() => {
+            const inspect = selector => {
+              const el = document.querySelector(selector);
+              if (!el) return { visible: false, z: 0, rect: null };
+              const rect = el.getBoundingClientRect();
+              const style = getComputedStyle(el);
+              return {
+                visible: rect.width > 1 && rect.height > 1 && style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity || 1) > 0.01,
+                z: Number(style.zIndex || 0),
+                rect: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) }
+              };
+            };
+            const sidebar = inspect(".ai-app-left-rail");
+            const scrim = inspect(".ai-course-drawer-scrim");
+            const floatingHuman = inspect(".floating-human-2d");
+            const captureButton = inspect(".ai-float-button");
+            const courseAddButtons = Array.from(document.querySelectorAll(".ai-sidebar__course-add"));
+            return {
+              sidebarVisible: sidebar.visible,
+              scrimVisible: scrim.visible,
+              focusInsideSidebar: Boolean(document.activeElement && document.querySelector(".ai-app-left-rail")?.contains(document.activeElement)),
+              modalRole: document.querySelector(".ai-app-left-rail")?.getAttribute("role") || "",
+              ariaModal: document.querySelector(".ai-app-left-rail")?.getAttribute("aria-modal") || "",
+              visibleCourseAddButtons: courseAddButtons.filter(button => {
+                const rect = button.getBoundingClientRect();
+                const style = getComputedStyle(button);
+                return rect.width >= 40 && rect.height >= 40 && style.visibility !== "hidden" && Number(style.opacity || 1) > 0.01;
+              }).length,
+              sidebarZ: sidebar.z,
+              scrimZ: scrim.z,
+              floatingHumanZ: floatingHuman.z,
+              captureButtonZ: captureButton.z,
+              sidebarRect: sidebar.rect,
+              scrimRect: scrim.rect
+            };
+          })()`
+        });
+        info.aiDrawerCheck = aiDrawerCheck.result?.value || {};
+        const aiDrawerScreenshot = await client.send("Page.captureScreenshot", {
+          format: "png",
+          fromSurface: true
+        });
+        aiDrawerScreenshotPath = join(outDir, `${route.name}-drawer.png`);
+        writeFileSync(
+          aiDrawerScreenshotPath,
+          Buffer.from(aiDrawerScreenshot.data, "base64")
+        );
+      }
       const failReasons = getH5RouteSmokeFailures(info, route);
       const ok = failReasons.length === 0;
       results.push({
@@ -1538,6 +1634,7 @@ async function runH5Smoke(options) {
         screenshotPath,
         bottomScreenshotPath,
         sidebarScreenshotPath,
+        aiDrawerScreenshotPath,
         info,
         ok,
         failReasons
@@ -1576,7 +1673,12 @@ async function runH5Smoke(options) {
     browserProcess.kill();
     await wait(300);
     try {
-      rmSync(profileDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 150 });
+      rmSync(profileDir, {
+        recursive: true,
+        force: true,
+        maxRetries: 3,
+        retryDelay: 150
+      });
     } catch (error) {
       console.warn(
         `[WARN] temporary browser profile cleanup skipped: ${
@@ -1689,8 +1791,13 @@ async function runDevToolsSmoke(options) {
 
 function runDoctor(options) {
   const checks = [];
-  const add = (status, name, detail = "") => checks.push({ status, name, detail });
-  add(existsSync(nativeProject) ? "OK" : "FAIL", "native-app project", nativeProject);
+  const add = (status, name, detail = "") =>
+    checks.push({ status, name, detail });
+  add(
+    existsSync(nativeProject) ? "OK" : "FAIL",
+    "native-app project",
+    nativeProject
+  );
   add(
     existsSync(join(nativeProject, "package.json")) ? "OK" : "FAIL",
     "native-app package",
@@ -1763,17 +1870,23 @@ function runPreview(options) {
     );
   }
   mkdirSync(artifactsDir, { recursive: true });
-  run(cliPath, withDevToolsPort([
-    "preview",
-    "--project",
-    buildDir,
-    "--qr-format",
-    "image",
-    "--qr-output",
-    join(artifactsDir, "preview.png"),
-    "--info-output",
-    join(artifactsDir, "preview-info.json")
-  ], options));
+  run(
+    cliPath,
+    withDevToolsPort(
+      [
+        "preview",
+        "--project",
+        buildDir,
+        "--qr-format",
+        "image",
+        "--qr-output",
+        join(artifactsDir, "preview.png"),
+        "--info-output",
+        join(artifactsDir, "preview-info.json")
+      ],
+      options
+    )
+  );
 }
 
 function runAuto(options) {
@@ -1789,12 +1902,13 @@ function runAuto(options) {
       "WeChat DevTools CLI not found. Install WeChat DevTools or set WECHAT_DEVTOOLS_CLI."
     );
   }
-  const output = runCapture(cliPath, withDevToolsPort([
-    "auto",
-    "--project",
-    buildDir,
-    "--trust-project"
-  ], options));
+  const output = runCapture(
+    cliPath,
+    withDevToolsPort(
+      ["auto", "--project", buildDir, "--trust-project"],
+      options
+    )
+  );
   console.log(output.trim());
 }
 
@@ -1813,17 +1927,23 @@ function runUpload(options) {
     );
   }
   mkdirSync(artifactsDir, { recursive: true });
-  run(cliPath, withDevToolsPort([
-    "upload",
-    "--project",
-    buildDir,
-    "--version",
-    options.version,
-    "--desc",
-    options.desc || `IntellEdu mini program ${options.version}`,
-    "--info-output",
-    join(artifactsDir, "upload-info.json")
-  ], options));
+  run(
+    cliPath,
+    withDevToolsPort(
+      [
+        "upload",
+        "--project",
+        buildDir,
+        "--version",
+        options.version,
+        "--desc",
+        options.desc || `IntellEdu mini program ${options.version}`,
+        "--info-output",
+        join(artifactsDir, "upload-info.json")
+      ],
+      options
+    )
+  );
 }
 
 function printHelp() {

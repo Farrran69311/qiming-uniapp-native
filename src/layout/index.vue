@@ -39,6 +39,16 @@ const appStore = useAppStoreHook();
 const pureSetting = useSettingStoreHook();
 const { $storage } = useGlobal<GlobalPropertiesApi>();
 
+const shouldRenderLayHeader = computed(() => {
+  if (route.path !== "/account" || typeof document === "undefined") {
+    return true;
+  }
+
+  return !document.documentElement.classList.contains(
+    "qiming-mini-program-webview"
+  );
+});
+
 const set: setType = reactive({
   sidebar: computed(() => {
     return appStore.sidebar;
@@ -161,6 +171,7 @@ const LayHeader = defineComponent({
       "div",
       {
         class: { "fixed-header": set.fixedHeader },
+        "data-qiming-layout-header": "true",
         style: [
           set.hideTabs && layout.value.includes("horizontal")
             ? isDark.value
@@ -212,7 +223,7 @@ const LayHeader = defineComponent({
       ]"
     >
       <div v-if="set.fixedHeader">
-        <LayHeader />
+        <LayHeader v-if="shouldRenderLayHeader" />
         <!-- 主体内容 -->
         <LayContent :fixed-header="set.fixedHeader" />
       </div>
@@ -226,7 +237,7 @@ const LayHeader = defineComponent({
         >
           <BackTopIcon />
         </el-backtop>
-        <LayHeader />
+        <LayHeader v-if="shouldRenderLayHeader" />
         <!-- 主体内容 -->
         <LayContent :fixed-header="set.fixedHeader" />
       </el-scrollbar>

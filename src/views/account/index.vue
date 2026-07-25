@@ -285,14 +285,26 @@
 
           <!-- 上方卡片 -->
           <div class="card" :class="currentTheme">
-            <!-- 信息来源说明 -->
+            <!-- 重要提醒 -->
             <div class="reminder">
-              <div class="reminder-content">
-                <el-icon><InfoFilled /></el-icon>
-                <span class="notice-text">
-                  课程与学习进度来自当前账号的实时数据。
-                </span>
-              </div>
+              <el-carousel
+                height="46px"
+                direction="vertical"
+                :autoplay="true"
+                :interval="4000"
+                indicator-position="none"
+                arrow="never"
+              >
+                <el-carousel-item
+                  v-for="(notice, index) in notices"
+                  :key="index"
+                >
+                  <div class="reminder-content">
+                    <el-icon><InfoFilled /></el-icon>
+                    <span class="notice-text">{{ notice }}</span>
+                  </div>
+                </el-carousel-item>
+              </el-carousel>
             </div>
             <!-- 课程信息和AI总结 -->
             <div class="info-section">
@@ -387,14 +399,28 @@
               </div>
               <div class="ai-summary">
                 <h3>AI总结</h3>
-                <div class="summary-card" :class="currentTheme">
-                  <el-alert
-                    title="学习总结服务尚未接入"
-                    description="服务器当前未提供个人学习总结能力，因此这里不展示自动生成的模拟结论。"
-                    type="info"
-                    :closable="false"
-                    show-icon
-                  />
+                <div
+                  class="summary-card"
+                  :class="currentTheme"
+                  :data-summary-status="aiSummaryStatus"
+                >
+                  <span
+                    v-if="aiSummaryStatus !== 'real'"
+                    class="summary-source"
+                  >
+                    {{ aiSummarySourceLabel }}
+                  </span>
+                  <p>{{ aiSummaryTitle }}</p>
+                  <ul aria-live="polite" aria-atomic="false">
+                    <li v-for="(item, idx) in displayedSummary" :key="idx">
+                      {{ item }}
+                    </li>
+                    <li v-if="isTyping" class="typing-cursor">
+                      正在生成中<span v-for="n in 3" :key="n" class="dot"
+                        >.</span
+                      >
+                    </li>
+                  </ul>
                 </div>
               </div>
             </div>
@@ -598,6 +624,7 @@ import StudentExamCenter from "@/views/exam-paper/student-center/index.vue";
 import StudentResourceWorkbench from "@/views/course/student-resource/index.vue";
 import { getFrontendCourseList } from "@/api/frontend/course";
 import type { CourseListResult } from "@/api/frontend/course";
+import { getLearningSummary } from "@/api/frontend/user";
 
 // 导入新图标
 import LabIcon from "@/new student interface icons/lab-medical-test-svgrepo-com.svg?component";
@@ -768,6 +795,138 @@ const myCourses = ref<{ learningList: CourseListItem[] }>({
   learningList: []
 });
 
+const notices = ref([
+  "重要提示:同学们，新学期到了，系统已经分配最新的课程，请各位同学抓紧学习 书山有路勤为径，学海无涯苦作舟 🎉",
+  "温馨提示：请同学们按时提交作业，避免影响课程进度和最终成绩。如有疑问请及时联系课程导师。",
+  "新功能上线：虚拟实验室现已支持更多实验场景，欢迎同学们前往体验，探索科学的奥秘。",
+  "赛事预告：下周将举行全校程序设计大赛，感兴趣的同学请在赛事场报名，展示你的编程才华。",
+  "学习建议：合理安排学习时间，利用好学习云盘整理资料，保持良好的学习习惯是成功的关键。"
+]);
+
+const fallbackAiSummaryTitle = "根据您的学习进度，AI助手小启为您总结：";
+const fallbackAiSummaryItems = [
+  "您目前已完成基础模块学习，知识点体系良好",
+  "建议加强实践环节的练习",
+  "下周将开始新模块的学习",
+  "根据您的习题练习已经生成相似题目推荐，推荐练习",
+  "您可以结合AI课程动画再次复习知识点体系",
+  "知识点已生成可以在课程主页进行观看"
+] as const;
+const aiSummaryTitle = ref(fallbackAiSummaryTitle);
+const aiSummaryList = ref<string[]>([...fallbackAiSummaryItems]);
+const aiSummaryStatus = ref<"loading" | "real" | "fallback">("loading");
+const aiSummarySourceLabel = computed(() =>
+  aiSummaryStatus.value === "loading"
+    ? "正在获取实时总结，先展示学习总结示例"
+    : "实时总结暂不可用，当前展示学习总结示例"
+);
+const typingIndex = ref(0);
+const charIndex = ref(0);
+const typedLines = ref<string[]>([]);
+const isTyping = ref(false);
+const typingSpeed = 55;
+let typingTimer: number | null = null;
+let learningSummaryRequestId = 0;
+
+const resetTyping = () => {
+  if (typingTimer !== null) {
+    window.clearTimeout(typingTimer);
+    typingTimer = null;
+  }
+  typedLines.value = [];
+  typingIndex.value = 0;
+  charIndex.value = 0;
+  isTyping.value = false;
+};
+
+const typeNextChar = () => {
+  const lines = aiSummaryList.value;
+  if (typingIndex.value >= lines.length) {
+    isTyping.value = false;
+    typingTimer = null;
+    return;
+  }
+
+  const currentLine = lines[typingIndex.value];
+  if (typedLines.value[typingIndex.value] === undefined) {
+    typedLines.value[typingIndex.value] = "";
+  }
+  typedLines.value[typingIndex.value] += currentLine[charIndex.value];
+  charIndex.value += 1;
+
+  if (charIndex.value < currentLine.length) {
+    typingTimer = window.setTimeout(typeNextChar, typingSpeed);
+    return;
+  }
+
+  typingIndex.value += 1;
+  charIndex.value = 0;
+  typingTimer = window.setTimeout(typeNextChar, 320);
+};
+
+const startTyping = () => {
+  resetTyping();
+  if (!aiSummaryList.value.length) return;
+
+  if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+    typedLines.value = [...aiSummaryList.value];
+    return;
+  }
+
+  isTyping.value = true;
+  typeNextChar();
+};
+
+const displayedSummary = computed(() => typedLines.value);
+
+const loadLearningSummary = async () => {
+  const requestId = ++learningSummaryRequestId;
+  let title = fallbackAiSummaryTitle;
+  let items: string[] = [...fallbackAiSummaryItems];
+  let status: "real" | "fallback" = "fallback";
+  let timeoutId: number | null = null;
+
+  aiSummaryTitle.value = fallbackAiSummaryTitle;
+  aiSummaryList.value = [...fallbackAiSummaryItems];
+  aiSummaryStatus.value = "loading";
+  if (activeMenu.value === "home") startTyping();
+
+  try {
+    const { code, data } = await Promise.race([
+      getLearningSummary(),
+      new Promise<never>((_, reject) => {
+        timeoutId = window.setTimeout(
+          () => reject(new Error("学习总结请求超时")),
+          8000
+        );
+      })
+    ]);
+    const responseItems = Array.isArray(data?.items)
+      ? data.items
+          .filter((item): item is string => typeof item === "string")
+          .map(item => item.trim())
+          .filter(Boolean)
+      : [];
+
+    if (code === 200 && responseItems.length > 0) {
+      title = String(data?.title || "").trim() || fallbackAiSummaryTitle;
+      items = responseItems;
+      status = "real";
+    }
+  } catch (error) {
+    console.warn("获取学习总结失败，使用本地总结回退:", error);
+  } finally {
+    if (timeoutId !== null) window.clearTimeout(timeoutId);
+  }
+
+  if (requestId !== learningSummaryRequestId) return;
+
+  aiSummaryTitle.value = title;
+  aiSummaryList.value = items;
+  aiSummaryStatus.value = status;
+  if (status === "real" && activeMenu.value === "home") startTyping();
+};
+
 // 课程页面数据
 const coursesData = ref<{ list: CourseListItem[]; loading: boolean }>({
   list: [], // 课程列表
@@ -806,6 +965,7 @@ const loadHomeData = async () => {
   loading.value = true;
 
   try {
+    void loadLearningSummary();
     const courseList = await fetchCourseList();
     myCourses.value.learningList = Array.isArray(courseList) ? courseList : [];
   } catch (error) {
@@ -983,6 +1143,10 @@ const initialLoadDone = ref(false);
 // 监听菜单变化并持久化
 watch(activeMenu, async newVal => {
   storageLocal().setItem("account_active_menu", newVal);
+  if (newVal !== "home") {
+    learningSummaryRequestId += 1;
+    resetTyping();
+  }
   if (!initialLoadDone.value) return;
 
   if (newVal === "home") {
@@ -1033,6 +1197,8 @@ onUnmounted(() => {
     handleUserInfoUpdate as EventListener
   );
   emitter.off("accountMenuSelect", handleExternalMenuSelect);
+  learningSummaryRequestId += 1;
+  resetTyping();
 });
 </script>
 
@@ -1938,6 +2104,8 @@ onUnmounted(() => {
             .summary-card {
               position: absolute;
               inset: 45px 0 0;
+              display: flex;
+              flex-direction: column;
               padding: 16px;
               overflow: hidden;
               color: #333;
@@ -1952,6 +2120,22 @@ onUnmounted(() => {
                 box-shadow: 0 4px 12px rgb(0 0 0 / 40%);
               }
 
+              .summary-source {
+                align-self: flex-start;
+                padding: 3px 8px;
+                margin-bottom: 8px;
+                font-size: 11px;
+                line-height: 1.5;
+                color: #53698f;
+                background: rgb(255 255 255 / 48%);
+                border-radius: 6px;
+
+                .dark & {
+                  color: #bae6fd;
+                  background: rgb(56 189 248 / 12%);
+                }
+              }
+
               p {
                 margin: 0 0 12px;
                 font-size: 14px;
@@ -1959,7 +2143,8 @@ onUnmounted(() => {
               }
 
               ul {
-                height: calc(100% - 32px);
+                flex: 1;
+                min-height: 0;
                 padding-left: 0;
                 margin: 0;
                 overflow-y: auto;
@@ -2387,6 +2572,7 @@ onUnmounted(() => {
     }
 
     .account-content {
+      display: flex;
       flex-direction: column;
       gap: 18px;
       height: auto;

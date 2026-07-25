@@ -22,6 +22,8 @@ const props = withDefaults(
     leftZoneWidth?: number;
     bottomOffset?: number;
     storageKey?: string;
+    avoidSelector?: string;
+    layoutKey?: string | number;
   }>(),
   {
     roleLabel: "学生",
@@ -31,7 +33,9 @@ const props = withDefaults(
     anchorSelector: "",
     leftZoneWidth: 260,
     bottomOffset: 140,
-    storageKey: ""
+    storageKey: "",
+    avoidSelector: "",
+    layoutKey: ""
   }
 );
 
@@ -73,6 +77,7 @@ const dragState = ref<{
 } | null>(null);
 
 let speakingTimer: ReturnType<typeof setTimeout> | null = null;
+let avoidanceResizeObserver: ResizeObserver | null = null;
 
 const currentState = computed<DigitalHumanState>(() =>
   localSpeaking.value ? "saying" : props.state
@@ -98,14 +103,48 @@ const bubbleStyle = computed(() => ({
   opacity: isReady.value ? 1 : 0
 }));
 
+const getReservedBottom = () => {
+  let reservedBottom =
+    props.anchor === "appLeftBottom"
+      ? Math.max(windowPadding, props.bottomOffset)
+      : windowPadding;
+
+  if (props.anchor !== "appLeftBottom" || !props.avoidSelector) {
+    return reservedBottom;
+  }
+
+  document
+    .querySelectorAll<HTMLElement>(props.avoidSelector)
+    .forEach(element => {
+      const style = window.getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      const isVisible =
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        Number(style.opacity || 1) > 0.01 &&
+        rect.width > 0 &&
+        rect.height > 0 &&
+        rect.bottom > 0 &&
+        rect.top < window.innerHeight;
+      if (!isVisible) return;
+      reservedBottom = Math.max(
+        reservedBottom,
+        window.innerHeight - Math.max(0, rect.top) + 12
+      );
+    });
+
+  return reservedBottom;
+};
+
 const clampPosition = (nextX: number, nextY: number) => {
+  const reservedBottom = getReservedBottom();
   const maxX = Math.max(
     windowPadding,
     window.innerWidth - bubbleSize - windowPadding
   );
   const maxY = Math.max(
     windowPadding,
-    window.innerHeight - bubbleSize - windowPadding
+    window.innerHeight - bubbleSize - reservedBottom
   );
   return {
     x: Math.min(Math.max(windowPadding, nextX), maxX),
@@ -185,8 +224,11 @@ const playVideo = async () => {
 
 const detectEmbeddedMobile = () => {
   const locationText = `${window.location.search}&${window.location.hash}`;
+  const runtimeClassList = document.documentElement.classList;
   return (
     /(?:qimingMiniProgram|qimingNative)=1/.test(locationText) ||
+    runtimeClassList.contains("qiming-mini-program-webview") ||
+    runtimeClassList.contains("qiming-native-webview") ||
     window.localStorage.getItem("qimingMiniProgramWebView") === "1" ||
     window.localStorage.getItem("qimingNativeWebView") === "1" ||
     window.sessionStorage.getItem("qimingMiniProgramWebView") === "1" ||
@@ -239,6 +281,21 @@ const handleResize = () => {
     ? clampPosition(position.value.x, position.value.y)
     : getDefaultPosition();
   if (hasUserPosition.value) savePosition();
+};
+
+const bindAvoidanceObserver = async () => {
+  await nextTick();
+  avoidanceResizeObserver?.disconnect();
+  avoidanceResizeObserver = null;
+
+  if (props.avoidSelector && typeof ResizeObserver !== "undefined") {
+    avoidanceResizeObserver = new ResizeObserver(handleResize);
+    document
+      .querySelectorAll<HTMLElement>(props.avoidSelector)
+      .forEach(element => avoidanceResizeObserver?.observe(element));
+  }
+
+  handleResize();
 };
 
 const pauseRender = () => {
@@ -297,12 +354,16 @@ watch(
     props.anchor,
     props.anchorSelector,
     props.leftZoneWidth,
-    props.bottomOffset
+    props.bottomOffset,
+    props.avoidSelector,
+    props.layoutKey
   ],
   () => {
-    if (!hasUserPosition.value) {
-      position.value = getDefaultPosition();
-    }
+    position.value = hasUserPosition.value
+      ? clampPosition(position.value.x, position.value.y)
+      : getDefaultPosition();
+    if (hasUserPosition.value) savePosition();
+    void bindAvoidanceObserver();
   }
 );
 
@@ -311,11 +372,13 @@ onMounted(() => {
   restorePosition();
   isReady.value = true;
   window.addEventListener("resize", handleResize);
+  void bindAvoidanceObserver();
   void playVideo();
 });
 
 onUnmounted(() => {
   if (speakingTimer) clearTimeout(speakingTimer);
+  avoidanceResizeObserver?.disconnect();
   window.removeEventListener("resize", handleResize);
 });
 

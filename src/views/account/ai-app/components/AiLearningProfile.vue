@@ -383,7 +383,7 @@ watch(() => [props.courseId, props.targetStudentId], loadProfile);
         class="profile-summary bg-bg_color rounded-xl p-6 border border-gray-100 dark:border-gray-800 flex flex-col items-center"
       >
         <div
-          class="relative w-24 h-24 rounded-full border border-gray-200 bg-gray-50 p-1 mb-5"
+          class="profile-avatar relative w-24 h-24 rounded-full border border-gray-200 bg-gray-50 p-1 mb-5"
         >
           <div
             class="w-full h-full rounded-full bg-bg_color flex items-center justify-center overflow-hidden"
@@ -915,6 +915,11 @@ watch(() => [props.courseId, props.targetStudentId], loadProfile);
 .profile-summary,
 .dimension-preview {
   box-shadow: none;
+}
+
+.profile-avatar {
+  flex: 0 0 96px;
+  overflow: visible;
 }
 
 .joined-courses {

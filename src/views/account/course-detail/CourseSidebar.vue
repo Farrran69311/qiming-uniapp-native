@@ -90,13 +90,15 @@ const props = defineProps<{
 }>();
 
 const MOBILE_BREAKPOINT = 767;
-const MOBILE_COLLAPSE_DISTANCE = 120;
+const MOBILE_COLLAPSE_DISTANCE = 72;
 const MOBILE_TOP_RESET = 8;
 const sidebarRef = ref<HTMLElement | null>(null);
 const itemRefs = new Map<string, HTMLElement>();
 const isMobileView = ref(false);
 const mobileCollapsed = ref(false);
 const mobileExpandAnchor = ref(0);
+let primaryScrollContainer: HTMLElement | null = null;
+let scrollStateRafId: number | null = null;
 
 // Emits
 defineEmits<{
@@ -110,6 +112,56 @@ const getWindowScrollTop = () =>
   document.documentElement.scrollTop ||
   document.body.scrollTop ||
   0;
+
+const resolvePrimaryScrollContainer = () => {
+  const courseRoot = sidebarRef.value?.closest<HTMLElement>(
+    ".course-detail-root"
+  );
+  return courseRoot?.closest<HTMLElement>(".el-scrollbar__wrap") ?? null;
+};
+
+const getEffectiveScrollTop = () =>
+  primaryScrollContainer?.scrollTop ?? getWindowScrollTop();
+
+const scheduleMobileScrollState = () => {
+  if (scrollStateRafId !== null) return;
+
+  scrollStateRafId = requestAnimationFrame(() => {
+    scrollStateRafId = null;
+    handleMobileScrollState();
+  });
+};
+
+const unbindPrimaryScrollContainer = () => {
+  primaryScrollContainer?.removeEventListener(
+    "scroll",
+    scheduleMobileScrollState
+  );
+  primaryScrollContainer = null;
+};
+
+const bindPrimaryScrollContainer = () => {
+  const nextContainer = resolvePrimaryScrollContainer();
+  if (nextContainer === primaryScrollContainer) return;
+
+  unbindPrimaryScrollContainer();
+  primaryScrollContainer = nextContainer;
+  primaryScrollContainer?.addEventListener(
+    "scroll",
+    scheduleMobileScrollState,
+    {
+      passive: true
+    }
+  );
+};
+
+const notifyCollapseChange = () => {
+  window.dispatchEvent(
+    new CustomEvent("qiming:course-sidebar-collapse-change", {
+      detail: { collapsed: mobileCollapsed.value }
+    })
+  );
+};
 
 const setItemRef = (key: string, el: HTMLDivElement | null) => {
   if (!key) return;
@@ -150,7 +202,7 @@ const updateViewportState = () => {
 const handleMobileScrollState = () => {
   if (!isMobileViewport()) return;
 
-  const scrollTop = getWindowScrollTop();
+  const scrollTop = getEffectiveScrollTop();
 
   if (scrollTop <= MOBILE_TOP_RESET) {
     mobileCollapsed.value = false;
@@ -160,9 +212,7 @@ const handleMobileScrollState = () => {
 
   if (mobileCollapsed.value) return;
 
-  if (
-    Math.abs(scrollTop - mobileExpandAnchor.value) >= MOBILE_COLLAPSE_DISTANCE
-  ) {
+  if (scrollTop - mobileExpandAnchor.value >= MOBILE_COLLAPSE_DISTANCE) {
     mobileCollapsed.value = true;
   }
 };
@@ -171,19 +221,22 @@ const handleMobileToggle = () => {
   if (!isMobileViewport()) return;
 
   mobileCollapsed.value = false;
-  mobileExpandAnchor.value = getWindowScrollTop();
+  mobileExpandAnchor.value = getEffectiveScrollTop();
 
   nextTick(() => ensureActiveItemVisible());
 };
 
 const handleViewportResize = () => {
   updateViewportState();
-  nextTick(() => ensureActiveItemVisible());
-  handleMobileScrollState();
+  nextTick(() => {
+    bindPrimaryScrollContainer();
+    ensureActiveItemVisible();
+    scheduleMobileScrollState();
+  });
 };
 
 const handleWindowScroll = () => {
-  handleMobileScrollState();
+  scheduleMobileScrollState();
 };
 
 // 侧边栏菜单配置
@@ -209,26 +262,43 @@ watch(
   () => props.activeMenu,
   async () => {
     await nextTick();
+    bindPrimaryScrollContainer();
     ensureActiveItemVisible();
 
     if (isMobileViewport() && !mobileCollapsed.value) {
-      mobileExpandAnchor.value = getWindowScrollTop();
+      mobileExpandAnchor.value = getEffectiveScrollTop();
     }
   },
   { immediate: true }
+);
+
+watch(
+  mobileCollapsed,
+  () => {
+    notifyCollapseChange();
+  },
+  { flush: "post" }
 );
 
 onMounted(() => {
   updateViewportState();
   window.addEventListener("resize", handleViewportResize, { passive: true });
   window.addEventListener("scroll", handleWindowScroll, { passive: true });
-  nextTick(() => ensureActiveItemVisible());
-  handleMobileScrollState();
+  nextTick(() => {
+    bindPrimaryScrollContainer();
+    ensureActiveItemVisible();
+    scheduleMobileScrollState();
+  });
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener("resize", handleViewportResize);
   window.removeEventListener("scroll", handleWindowScroll);
+  unbindPrimaryScrollContainer();
+  if (scrollStateRafId !== null) {
+    cancelAnimationFrame(scrollStateRafId);
+    scrollStateRafId = null;
+  }
 });
 </script>
 
