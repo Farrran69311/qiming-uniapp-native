@@ -40,6 +40,7 @@ const structuredResourcePreview = readView(
 const layContent = readView("../layout/components/lay-content/index.vue");
 const globalStyles = readView("../style/index.scss");
 const androidAudit = readView("../../scripts/android-webview-audit.mjs");
+const aiFloatButton = readView("../components/AiScreenCapture/FloatButton.vue");
 
 test("Android route roots use compact gutters and audit usable width", () => {
   assert.equal(
@@ -179,7 +180,7 @@ test("mobile AI workspaces release desktop fixed widths", () => {
   assert.match(aiApp, /class="ai-course-context-bar/);
   assert.match(
     aiApp,
-    /@media \(max-width: 768px\)[\s\S]*\.ai-course-context-bar \{[\s\S]*flex-direction: column[\s\S]*\.ai-course-context-bar :deep\(\.el-select\) \{[\s\S]*width: 100% !important/
+    /@media \(max-width: 768px\)[\s\S]*\.ai-course-context-bar \{[\s\S]*grid-template-columns: auto minmax\(0, 1fr\)[\s\S]*\.ai-course-context-bar :deep\(\.el-select\) \{[\s\S]*width: 100% !important/
   );
   assert.match(aiApp, /class="ai-profile-workspace/);
   assert.match(
@@ -188,8 +189,14 @@ test("mobile AI workspaces release desktop fixed widths", () => {
   );
   assert.match(
     aiApp,
-    /\.ai-profile-main \{[\s\S]*height: clamp\(420px, 68dvh, 680px\) !important/
+    /\.ai-profile-main \{[^}]*height: auto !important;[^}]*overflow: visible/
   );
+  assert.doesNotMatch(
+    aiApp,
+    /\.ai-profile-main \{[^}]*height: clamp\(420px, 68dvh, 680px\)/
+  );
+  assert.match(aiApp, /class="ai-welcome-center /);
+  assert.match(aiApp, /class="ai-welcome-content /);
   assert.match(aiApp, /\.ai-profile-inspector \{[\s\S]*width: 100% !important/);
   assert.match(
     aiApp,
@@ -199,6 +206,23 @@ test("mobile AI workspaces release desktop fixed widths", () => {
   assert.match(
     aiApp,
     /\.stack-preview-content \{[\s\S]*flex-direction: column/
+  );
+});
+
+test("AI floating actions avoid the mobile composer and bottom dock", () => {
+  assert.match(aiFloatButton, /getVisibleBottomDock/);
+  assert.match(aiFloatButton, /getVisibleAiComposer/);
+  assert.match(
+    aiFloatButton,
+    /window\.innerHeight - obstructionTop \+ MOBILE_DOCK_GAP/
+  );
+  assert.match(
+    aiFloatButton,
+    /\.ai-mobile-composer-surface, \.nav-mobile-container/
+  );
+  assert.match(
+    aiFloatButton,
+    /new ResizeObserver\(\(\) => schedulePositionSync\(\)\)/
   );
 });
 

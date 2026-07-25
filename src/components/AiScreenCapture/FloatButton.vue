@@ -77,13 +77,39 @@ const getVisibleBottomDock = () => {
   );
 };
 
+const getVisibleAiComposer = () => {
+  if (!isMobile.value) return null;
+
+  return (
+    Array.from(
+      document.querySelectorAll<HTMLElement>(".ai-mobile-composer-surface")
+    ).find(element => {
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return (
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        Number(style.opacity || 1) > 0.01 &&
+        rect.width > 0 &&
+        rect.height > 0 &&
+        rect.bottom > 0 &&
+        rect.top < window.innerHeight
+      );
+    }) || null
+  );
+};
+
 const getMobileBottomOffset = () => {
   const dock = getVisibleBottomDock();
-  if (dock) {
-    const dockTop = dock.getBoundingClientRect().top;
+  const composer = getVisibleAiComposer();
+  const obstructionTops = [dock, composer]
+    .filter((element): element is HTMLElement => Boolean(element))
+    .map(element => element.getBoundingClientRect().top);
+  if (obstructionTops.length) {
+    const obstructionTop = Math.min(...obstructionTops);
     return Math.max(
       POSITION_PADDING,
-      window.innerHeight - dockTop + MOBILE_DOCK_GAP
+      window.innerHeight - obstructionTop + MOBILE_DOCK_GAP
     );
   }
 
@@ -223,10 +249,48 @@ const handleResize = () => {
 };
 
 let positionSyncFrame = 0;
+let bottomAvoidanceBindFrame = 0;
+let bottomAvoidanceObserver: ResizeObserver | null = null;
+let bottomAvoidanceMutationObserver: MutationObserver | null = null;
 const schedulePositionSync = (reset = false) => {
   window.cancelAnimationFrame(positionSyncFrame);
   positionSyncFrame = window.requestAnimationFrame(() => {
     syncPosition(reset);
+  });
+};
+
+const bindBottomAvoidanceObserver = async () => {
+  await nextTick();
+  bottomAvoidanceObserver?.disconnect();
+  bottomAvoidanceObserver = null;
+  if (typeof ResizeObserver === "undefined") return;
+
+  bottomAvoidanceObserver = new ResizeObserver(() => schedulePositionSync());
+  document
+    .querySelectorAll<HTMLElement>(
+      ".ai-mobile-composer-surface, .nav-mobile-container"
+    )
+    .forEach(element => bottomAvoidanceObserver?.observe(element));
+  schedulePositionSync();
+};
+
+const scheduleBottomAvoidanceRebind = () => {
+  window.cancelAnimationFrame(bottomAvoidanceBindFrame);
+  bottomAvoidanceBindFrame = window.requestAnimationFrame(() => {
+    void bindBottomAvoidanceObserver();
+  });
+};
+
+const bindBottomAvoidanceMutationObserver = () => {
+  bottomAvoidanceMutationObserver?.disconnect();
+  bottomAvoidanceMutationObserver = null;
+  if (typeof MutationObserver === "undefined" || !document.body) return;
+  bottomAvoidanceMutationObserver = new MutationObserver(() => {
+    scheduleBottomAvoidanceRebind();
+  });
+  bottomAvoidanceMutationObserver.observe(document.body, {
+    childList: true,
+    subtree: true
   });
 };
 
@@ -258,12 +322,17 @@ const getButtonCenterFromDom = () => {
 
 onMounted(() => {
   void nextTick(() => schedulePositionSync(true));
+  void bindBottomAvoidanceObserver();
+  bindBottomAvoidanceMutationObserver();
   window.addEventListener("resize", handleResize, { passive: true });
 });
 
 onUnmounted(() => {
+  bottomAvoidanceObserver?.disconnect();
+  bottomAvoidanceMutationObserver?.disconnect();
   window.removeEventListener("resize", handleResize);
   window.cancelAnimationFrame(positionSyncFrame);
+  window.cancelAnimationFrame(bottomAvoidanceBindFrame);
   releasePointerCapture(activePointerId.value);
 });
 
@@ -274,7 +343,7 @@ watch(isMobile, () => {
 watch(
   () => route.fullPath,
   () => {
-    void nextTick(() => schedulePositionSync());
+    scheduleBottomAvoidanceRebind();
   }
 );
 

@@ -461,8 +461,16 @@
               </div>
               <div class="ai-summary">
                 <h3>AI总结</h3>
-                <div class="summary-card" :class="currentTheme">
-                  <p>{{ aiSummaryTitle }}</p>
+                <div
+                  class="summary-card"
+                  :class="currentTheme"
+                  :data-summary-status="aiSummaryStatus"
+                  :aria-busy="aiSummaryStatus === 'loading'"
+                >
+                  <p class="summary-title">{{ aiSummaryTitle }}</p>
+                  <p class="summary-status" role="status" aria-live="polite">
+                    {{ aiSummaryStatusText }}
+                  </p>
                   <ul>
                     <li v-for="(item, idx) in displayedSummary" :key="idx">
                       {{ item }}
@@ -659,6 +667,7 @@ import Classroom3D from "@/views/course/classroom/index.vue";
 import StudentExamCenter from "@/views/exam-paper/student-center/index.vue";
 import StudentResourceWorkbench from "@/views/course/student-resource/index.vue";
 import { getFrontendCourseList } from "@/api/frontend/course";
+import { getLearningSummary } from "@/api/frontend/user";
 
 // 导入新图标
 import LabIcon from "@/new student interface icons/lab-medical-test-svgrepo-com.svg?component";
@@ -910,9 +919,9 @@ const fetchCourseList = async () => {
 // 加载主页数据
 const loadHomeData = async () => {
   loading.value = true;
+  beginLearningSummaryRefresh();
 
   try {
-    // 获取课程列表
     const courseList = await fetchCourseList();
 
     // 这里只是模拟数据，实际项目中应该根据后端接口返回的数据进行处理
@@ -1110,17 +1119,28 @@ const handleCourseClick = (courseId: number) => {
   router.push(`/course/${courseId}`);
 };
 
-// ---------------- AI 总结相关（后续可替换为真实接口） ----------------
-// 标题与列表通过变量控制，方便后续替换为后端返回
-const aiSummaryTitle = ref("根据您的学习进度，AI助手小启为您总结：");
-const aiSummaryList = ref<string[]>([
+// ---------------- AI 总结相关 ----------------
+const fallbackAiSummaryTitle = "根据您的学习进度，AI助手小启为您总结：";
+const fallbackAiSummaryItems = [
   "您目前已完成基础模块学习，知识点体系良好",
   "建议加强实践环节的练习",
   "下周将开始新模块的学习",
   "根据您的习题练习已经生成相似题目推荐，推荐练习",
   "您可以结合AI课程动画再次复习知识点体系",
   "知识点已生成可以在课程主页进行观看"
-]);
+] as const;
+type LearningSummaryStatus = "loading" | "live" | "fallback";
+const LEARNING_SUMMARY_TIMEOUT_MS = 8000;
+const aiSummaryTitle = ref(fallbackAiSummaryTitle);
+const aiSummaryList = ref<string[]>([...fallbackAiSummaryItems]);
+const aiSummaryStatus = ref<LearningSummaryStatus>("loading");
+const aiSummaryStatusText = computed(() => {
+  if (aiSummaryStatus.value === "loading") {
+    return "正在获取实时学习总结，当前先展示学习总结示例";
+  }
+  if (aiSummaryStatus.value === "live") return "实时学习总结已更新";
+  return "实时总结暂不可用，当前展示学习总结示例";
+});
 
 // 打字效果相关状态
 const typingIndex = ref(0); // 当前正在打的行索引
@@ -1129,10 +1149,12 @@ const typedLines = ref<string[]>([]); // 已经显示的内容（含正在输入
 const isTyping = ref(false);
 const typingSpeed = 55; // 每个字符毫秒
 let typingTimer: number | null = null;
+let learningSummaryRequestId = 0;
+const learningSummaryRequestCancels = new Map<number, () => void>();
 
 const resetTyping = () => {
-  if (typingTimer) {
-    clearTimeout(typingTimer);
+  if (typingTimer !== null) {
+    window.clearTimeout(typingTimer);
     typingTimer = null;
   }
   typedLines.value = [];
@@ -1150,28 +1172,32 @@ const typeNextChar = () => {
   }
 
   const currentLine = lines[typingIndex.value];
-  // 初始化当前行
-  if (!typedLines.value[typingIndex.value]) {
+  if (typedLines.value[typingIndex.value] === undefined) {
     typedLines.value[typingIndex.value] = "";
   }
 
-  // 追加一个字符
   typedLines.value[typingIndex.value] += currentLine[charIndex.value];
-  charIndex.value++;
+  charIndex.value += 1;
 
   if (charIndex.value < currentLine.length) {
     typingTimer = window.setTimeout(typeNextChar, typingSpeed);
-  } else {
-    // 当前行完成，进入下一行
-    typingIndex.value++;
-    charIndex.value = 0;
-    typingTimer = window.setTimeout(typeNextChar, 320); // 换行停顿
+    return;
   }
+
+  typingIndex.value += 1;
+  charIndex.value = 0;
+  typingTimer = window.setTimeout(typeNextChar, 320);
 };
 
 const startTyping = () => {
   resetTyping();
   if (!aiSummaryList.value.length) return;
+
+  if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+    typedLines.value = [...aiSummaryList.value];
+    return;
+  }
+
   isTyping.value = true;
   typeNextChar();
 };
@@ -1179,16 +1205,108 @@ const startTyping = () => {
 // 供模板使用的展示列表
 const displayedSummary = computed(() => typedLines.value);
 
+const invalidateLearningSummaryRequest = () => {
+  learningSummaryRequestId += 1;
+  for (const cancelRequest of learningSummaryRequestCancels.values()) {
+    cancelRequest();
+  }
+  learningSummaryRequestCancels.clear();
+};
+
+const requestLearningSummaryWithTimeout = async (requestId: number) => {
+  let timeoutTimer: number | null = null;
+  let cancelRequest: () => void = () => undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutTimer = window.setTimeout(
+      () => reject(new Error("学习总结请求超时")),
+      LEARNING_SUMMARY_TIMEOUT_MS
+    );
+  });
+  const cancellationPromise = new Promise<never>((_, reject) => {
+    cancelRequest = () => reject(new Error("学习总结请求已失效"));
+  });
+  learningSummaryRequestCancels.set(requestId, cancelRequest);
+
+  try {
+    return await Promise.race([
+      Promise.resolve().then(() => getLearningSummary()),
+      timeoutPromise,
+      cancellationPromise
+    ]);
+  } finally {
+    if (timeoutTimer !== null) window.clearTimeout(timeoutTimer);
+    if (learningSummaryRequestCancels.get(requestId) === cancelRequest) {
+      learningSummaryRequestCancels.delete(requestId);
+    }
+  }
+};
+
+const loadLearningSummary = async (requestId: number) => {
+  let responseItems: string[] = [];
+
+  try {
+    const { code, data } = await requestLearningSummaryWithTimeout(requestId);
+    responseItems = Array.isArray(data?.items)
+      ? data.items
+          .filter((item): item is string => typeof item === "string")
+          .map(item => item.trim())
+          .filter(Boolean)
+      : [];
+
+    if (code === 200 && responseItems.length > 0) {
+      if (
+        requestId !== learningSummaryRequestId ||
+        activeMenu.value !== "home"
+      ) {
+        return;
+      }
+
+      aiSummaryTitle.value =
+        typeof data?.title === "string" && data.title.trim()
+          ? data.title.trim()
+          : fallbackAiSummaryTitle;
+      aiSummaryList.value = responseItems;
+      aiSummaryStatus.value = "live";
+      startTyping();
+      return;
+    }
+  } catch (error) {
+    if (requestId !== learningSummaryRequestId) return;
+    console.warn("获取学习总结失败，使用本地总结回退:", error);
+  }
+
+  if (requestId !== learningSummaryRequestId || activeMenu.value !== "home") {
+    return;
+  }
+
+  aiSummaryTitle.value = fallbackAiSummaryTitle;
+  aiSummaryList.value = [...fallbackAiSummaryItems];
+  aiSummaryStatus.value = "fallback";
+};
+
+const beginLearningSummaryRefresh = () => {
+  invalidateLearningSummaryRequest();
+  const requestId = learningSummaryRequestId;
+  aiSummaryTitle.value = fallbackAiSummaryTitle;
+  aiSummaryList.value = [...fallbackAiSummaryItems];
+  aiSummaryStatus.value = "loading";
+  startTyping();
+  void loadLearningSummary(requestId);
+};
+
 const initialLoadDone = ref(false);
 
 // 监听菜单变化并持久化
 watch(activeMenu, async newVal => {
   storageLocal().setItem("account_active_menu", newVal);
+  if (newVal !== "home") {
+    invalidateLearningSummaryRequest();
+    resetTyping();
+  }
   if (!initialLoadDone.value) return;
 
   if (newVal === "home") {
     await loadHomeData();
-    startTyping();
   } else if (newVal === "course") {
     await loadCoursePageData();
   }
@@ -1202,7 +1320,6 @@ watch(
     activeMenu.value = routeMenu;
     if (routeMenu === "home") {
       await loadHomeData();
-      startTyping();
     } else if (routeMenu === "course") {
       await loadCoursePageData();
     }
@@ -1222,7 +1339,6 @@ onMounted(async () => {
 
   if (activeMenu.value === "home") {
     await loadHomeData();
-    setTimeout(() => startTyping(), 150);
   } else if (activeMenu.value === "course") {
     await loadCoursePageData();
   }
@@ -1237,7 +1353,8 @@ onUnmounted(() => {
     handleUserInfoUpdate as EventListener
   );
   emitter.off("accountMenuSelect", handleExternalMenuSelect);
-  if (typingTimer) clearTimeout(typingTimer);
+  invalidateLearningSummaryRequest();
+  resetTyping();
 });
 </script>
 
@@ -2143,6 +2260,8 @@ onUnmounted(() => {
             .summary-card {
               position: absolute;
               inset: 45px 0 0;
+              display: flex;
+              flex-direction: column;
               padding: 16px;
               overflow: hidden;
               color: #333;
@@ -2157,14 +2276,26 @@ onUnmounted(() => {
                 box-shadow: 0 4px 12px rgb(0 0 0 / 40%);
               }
 
-              p {
+              .summary-title {
                 margin: 0 0 12px;
                 font-size: 14px;
                 font-weight: 500;
               }
 
+              .summary-status {
+                margin: -4px 0 10px;
+                font-size: 12px;
+                line-height: 1.5;
+                color: #334155;
+
+                .dark & {
+                  color: #bae6fd;
+                }
+              }
+
               ul {
-                height: calc(100% - 32px);
+                flex: 1 1 auto;
+                min-height: 0;
                 padding-left: 0;
                 margin: 0;
                 overflow-y: auto;

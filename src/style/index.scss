@@ -1109,6 +1109,7 @@ html.qiming-native-webview.ua-mobile .account-container .header-right {
 
 html.qiming-native-webview .account-container .account-content,
 html.qiming-native-webview.ua-mobile .account-container .account-content {
+  display: flex !important;
   flex-direction: column !important;
   gap: 14px !important;
   height: auto !important;
@@ -1420,6 +1421,64 @@ html.qiming-native-webview .ai-app-left-rail:not(.is-collapsed) > button {
   border-radius: 12px !important;
   box-shadow: 0 8px 20px rgb(35 50 82 / 8%) !important;
   transform: none !important;
+}
+
+@media (max-width: 768px) {
+  html.qiming-native-webview .ai-app-root.is-compact-viewport .ai-app-left-rail,
+  html.qiming-native-webview.ua-mobile
+    .ai-app-root.is-compact-viewport
+    .ai-app-left-rail {
+    position: absolute !important;
+    inset: 0 auto 0 0 !important;
+    z-index: 2200 !important;
+    width: min(86vw, 320px) !important;
+    max-width: calc(100vw - 44px) !important;
+    min-width: min(86vw, 320px) !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    background: #fff !important;
+    border: 0 !important;
+    border-right: 1px solid #dce4ee !important;
+    border-radius: 0 16px 16px 0 !important;
+    box-shadow: 18px 0 44px rgb(30 45 70 / 18%) !important;
+    pointer-events: auto !important;
+    transform: translateX(0) !important;
+    visibility: visible !important;
+  }
+
+  html.qiming-native-webview
+    .ai-app-root.is-compact-viewport
+    .ai-app-left-rail.is-collapsed,
+  html.qiming-native-webview.ua-mobile
+    .ai-app-root.is-compact-viewport
+    .ai-app-left-rail.is-collapsed {
+    inset: 0 auto 0 0 !important;
+    width: min(86vw, 320px) !important;
+    max-width: calc(100vw - 44px) !important;
+    min-width: min(86vw, 320px) !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    background: #fff !important;
+    border-right: 1px solid #dce4ee !important;
+    border-radius: 0 16px 16px 0 !important;
+    box-shadow: 18px 0 44px rgb(30 45 70 / 18%) !important;
+    pointer-events: none !important;
+    transform: translateX(-105%) !important;
+    visibility: hidden !important;
+  }
+
+  html.qiming-native-webview
+    .ai-app-root.is-compact-viewport
+    .ai-app-left-rail
+    > button.absolute,
+  html.qiming-native-webview.ua-mobile
+    .ai-app-root.is-compact-viewport
+    .ai-app-left-rail
+    > button.absolute {
+    display: none !important;
+  }
 }
 
 html.qiming-native-webview .ai-chat-scene,

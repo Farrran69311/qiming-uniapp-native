@@ -32,6 +32,8 @@
                   text
                   :icon="Plus"
                   class="ai-sidebar__course-add opacity-0 group-hover/course:opacity-100 transition-opacity duration-150"
+                  :aria-label="`为${course}新建辅导会话`"
+                  :title="`为${course}新建辅导会话`"
                   @click.stop="$emit('new-chat', { course })"
                 />
               </el-tooltip>
@@ -250,11 +252,21 @@ const emit = defineEmits(["update:activeRail", "new-chat", "select-chat"]);
 }
 
 .ai-sidebar__course-add:hover,
-.ai-sidebar__course-add:focus {
+.ai-sidebar__course-add:focus,
+.ai-sidebar__course-add:focus-visible {
   color: #3f6ef2;
   background: #f1f5f9;
   border: 0;
   box-shadow: none;
+  opacity: 1;
+}
+
+@media (hover: none), (pointer: coarse), (max-width: 768px) {
+  .ai-sidebar__course-add {
+    width: 44px;
+    height: 44px;
+    opacity: 1 !important;
+  }
 }
 
 /* 列表进入过渡 */

@@ -1,5 +1,5 @@
 ﻿<script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted, watch } from "vue";
+import { computed, ref, nextTick, onMounted, onUnmounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { storageLocal } from "@pureadmin/utils";
 import { ElMessage } from "element-plus";
@@ -24,7 +24,9 @@ import {
   Bell,
   ChatLineRound,
   Close,
-  ArrowRight
+  ArrowRight,
+  Menu,
+  Plus
 } from "@element-plus/icons-vue";
 
 // 引入三个拆分后的组件
@@ -426,15 +428,99 @@ const sidebarWidth = ref(
     )
   )
 );
+const isCompactViewport = ref(isCompactAiViewport());
 const sidebarCollapsed = ref(isCompactAiViewport());
 const sidebarResizing = ref(false);
 const humanCollapsed = ref(false);
 const canMountInline3D = ref(false);
+const courseDrawerRef = ref<HTMLElement | null>(null);
+const courseDrawerTriggerRef = ref<HTMLButtonElement | null>(null);
+let courseDrawerRestoreFocus: HTMLElement | null = null;
 let sidebarWasCompact = isCompactAiViewport();
 const toggleSidebar = () => (sidebarCollapsed.value = !sidebarCollapsed.value);
+const openCourseDrawer = () => {
+  if (!isCompactViewport.value) {
+    sidebarCollapsed.value = false;
+    return;
+  }
+  courseDrawerRestoreFocus =
+    document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : courseDrawerTriggerRef.value;
+  sidebarCollapsed.value = false;
+  void nextTick(() => {
+    courseDrawerRef.value
+      ?.querySelector<HTMLElement>(
+        'button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+      )
+      ?.focus();
+  });
+};
+const closeCourseDrawer = (
+  options: { restoreFocus?: boolean } = { restoreFocus: true }
+) => {
+  if (!isCompactViewport.value) return;
+  sidebarCollapsed.value = true;
+  const restoreTarget =
+    courseDrawerRestoreFocus || courseDrawerTriggerRef.value;
+  courseDrawerRestoreFocus = null;
+  if (options.restoreFocus !== false) {
+    void nextTick(() => restoreTarget?.focus());
+  }
+};
+const handleCourseDrawerKeydown = (event: KeyboardEvent) => {
+  if (!isCompactViewport.value || sidebarCollapsed.value) return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeCourseDrawer();
+    return;
+  }
+  if (event.key !== "Tab" || !courseDrawerRef.value) return;
+
+  const focusable = Array.from(
+    courseDrawerRef.value.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )
+  ).filter(element => {
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    return (
+      rect.width > 0 &&
+      rect.height > 0 &&
+      style.display !== "none" &&
+      style.visibility !== "hidden"
+    );
+  });
+  if (!focusable.length) {
+    event.preventDefault();
+    courseDrawerRef.value.focus();
+    return;
+  }
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+};
 const toggleHuman = () => (humanCollapsed.value = !humanCollapsed.value);
 const sidebarRenderedWidth = computed(() =>
-  sidebarCollapsed.value ? 34 : sidebarWidth.value
+  sidebarCollapsed.value
+    ? isCompactViewport.value
+      ? 0
+      : 34
+    : sidebarWidth.value
+);
+const floatingHumanBottomOffset = computed(() =>
+  isCompactViewport.value ? (activeRail.value === "chat" ? 156 : 104) : 104
+);
+const floatingHumanStorageKey = computed(() =>
+  isCompactViewport.value
+    ? "ai-app-floating-digital-human-2d-mobile"
+    : "ai-app-floating-digital-human-2d-left-bottom"
 );
 
 let sidebarResizePointerId: number | null = null;
@@ -503,6 +589,7 @@ const handleSidebarResizeKeydown = (event: KeyboardEvent) => {
 const syncSidebarWidthLimit = () => {
   const compact = isCompactAiViewport();
   if (compact && !sidebarWasCompact) sidebarCollapsed.value = true;
+  isCompactViewport.value = compact;
   sidebarWasCompact = compact;
   sidebarMaxWidth.value = getSidebarMaxWidth();
   setSidebarWidth(sidebarWidth.value);
@@ -801,7 +888,10 @@ const courseContextLabel = computed(() => "课程:");
 const isCourseSwitching = ref(false);
 const isInteractionScopeSwitching = ref(false);
 const selectedCoursePickerId = computed({
-  get: () => selectedCourseId.value,
+  get: () =>
+    activeRail.value === "chat"
+      ? activeCourse.value?.id
+      : selectedCourseId.value,
   set: courseId => {
     void handleCourseContextChange(Number(courseId));
   }
@@ -866,6 +956,7 @@ const railItems = ref([
   { key: "governance", label: "治理看板", icon: "DataBoard" },
   { key: "automation", label: "常规任务", icon: "Check" }
 ]);
+const mobileChatTitle = computed(() => activeCourse.value?.name || "学习助手");
 
 const selectedTaskId = ref("");
 
@@ -2284,6 +2375,13 @@ const loadConversationMessages = async (conversation: ConversationView) => {
   }
 };
 
+const handleSidebarConversationSelect = async (
+  conversation: ConversationView
+) => {
+  closeCourseDrawer();
+  await loadConversationMessages(conversation);
+};
+
 const handleSwitchCourse = (courseName: string) => {
   const target = myCourses.value.find(course => course.name === courseName);
   if (!target) return;
@@ -2586,17 +2684,18 @@ const handleQuickVoiceInput = () => {
 
 const handleNewChat = async (payload: { course: string }) => {
   const course = myCourses.value.find(item => item.name === payload.course);
-  if (course && course.id !== selectedCourseId.value) {
-    await handleCourseContextChange(course.id);
-  } else if (course) {
-    activeCourse.value = course;
-  }
-  const courseId = course?.id || selectedCourseId.value;
-  const courseName = course?.name || payload.course;
-  if (!courseId) {
+  if (!course) {
     ElMessage.warning("请先选择课程");
+    if (isCompactViewport.value) openCourseDrawer();
     return;
   }
+  if (course.id !== selectedCourseId.value) {
+    await handleCourseContextChange(course.id);
+  } else {
+    activeCourse.value = course;
+  }
+  const courseId = course.id;
+  const courseName = course.name;
   if (
     interactionScope.value === "student_analysis" &&
     !selectedTargetStudentId.value
@@ -2674,19 +2773,39 @@ const handleNewChat = async (payload: { course: string }) => {
   }
 };
 
-const syncHumanRenderState = () => {
-  const shouldPauseAll = document.hidden || activeRail.value !== "chat";
-  if (shouldPauseAll) {
-    virtualHumanRef.value?.pauseRender?.();
-    floatingHumanRef.value?.pauseRender?.();
+const handleSidebarNewChat = async (payload: { course: string }) => {
+  closeCourseDrawer();
+  await handleNewChat(payload);
+};
+
+const handleMobileNewChat = async () => {
+  activeRail.value = "chat";
+  const courseName = activeCourse.value?.name || "";
+  if (!courseName) {
+    ElMessage.info("请先选择课程");
+    openCourseDrawer();
     return;
   }
+  closeCourseDrawer({ restoreFocus: false });
+  await handleNewChat({ course: courseName });
+};
 
-  floatingHumanRef.value?.resumeRender?.();
-  if (!canMountInline3D.value || humanCollapsed.value) {
+const syncHumanRenderState = () => {
+  const shouldPauseVirtualHuman =
+    document.hidden ||
+    activeRail.value !== "chat" ||
+    humanCollapsed.value ||
+    !canMountInline3D.value;
+  if (shouldPauseVirtualHuman) {
     virtualHumanRef.value?.pauseRender?.();
   } else {
     virtualHumanRef.value?.resumeRender?.();
+  }
+
+  if (document.hidden) {
+    floatingHumanRef.value?.pauseRender?.();
+  } else {
+    floatingHumanRef.value?.resumeRender?.();
   }
 };
 
@@ -2756,13 +2875,20 @@ onUnmounted(() => {
 <template>
   <div
     class="ai-app-root h-[100dvh] flex flex-col overflow-hidden"
-    :class="[currentTheme, { 'is-chat': activeRail === 'chat' }]"
+    :class="[
+      currentTheme,
+      {
+        'is-chat': activeRail === 'chat',
+        'is-compact-viewport': isCompactViewport
+      }
+    ]"
   >
     <div class="flex-1 min-h-0 flex overflow-hidden">
       <!-- 极简左侧边栏 (第一块) -->
       <aside
         v-if="activeRail === 'chat'"
         id="ai-app-course-sidebar"
+        ref="courseDrawerRef"
         class="ai-app-left-rail flex-shrink-0 z-20 flex flex-col relative"
         :class="{
           'is-collapsed': sidebarCollapsed,
@@ -2770,14 +2896,34 @@ onUnmounted(() => {
         }"
         :style="{ width: `${sidebarRenderedWidth}px` }"
         aria-label="课程与会话侧栏"
+        :role="isCompactViewport && !sidebarCollapsed ? 'dialog' : undefined"
+        :aria-modal="
+          isCompactViewport && !sidebarCollapsed ? 'true' : undefined
+        "
+        tabindex="-1"
+        @keydown="handleCourseDrawerKeydown"
       >
+        <div v-show="!sidebarCollapsed" class="ai-course-drawer-header">
+          <div>
+            <strong>课程与对话</strong>
+            <span>{{ mode }}</span>
+          </div>
+          <button
+            type="button"
+            aria-label="关闭课程与对话"
+            title="关闭课程与对话"
+            @click="closeCourseDrawer()"
+          >
+            <el-icon><Close /></el-icon>
+          </button>
+        </div>
         <div v-show="!sidebarCollapsed" class="flex-1 overflow-hidden">
           <AiSidebar
             v-model:activeRail="activeRail"
             :conversations="conversations"
             :courses="myCourses.map(course => course.name)"
-            @new-chat="handleNewChat"
-            @select-chat="loadConversationMessages"
+            @new-chat="handleSidebarNewChat"
+            @select-chat="handleSidebarConversationSelect"
           />
         </div>
 
@@ -2832,11 +2978,51 @@ onUnmounted(() => {
         </button>
       </aside>
 
+      <button
+        v-if="isCompactViewport && activeRail === 'chat' && !sidebarCollapsed"
+        type="button"
+        class="ai-course-drawer-scrim"
+        aria-label="关闭课程与对话"
+        @click="closeCourseDrawer()"
+      />
+
       <!-- 右边总体容器 (主体) -->
-      <div class="flex-1 flex flex-col min-w-0">
+      <div class="ai-app-main-column flex-1 flex flex-col min-w-0">
+        <header
+          v-if="isCompactViewport && activeRail === 'chat'"
+          class="ai-mobile-app-bar"
+        >
+          <button
+            ref="courseDrawerTriggerRef"
+            type="button"
+            aria-label="打开课程与对话"
+            title="课程与对话"
+            aria-controls="ai-app-course-sidebar"
+            :aria-expanded="!sidebarCollapsed"
+            @click="openCourseDrawer"
+          >
+            <el-icon><Menu /></el-icon>
+          </button>
+          <div class="ai-mobile-app-bar__title">
+            <strong>{{ mobileChatTitle }}</strong>
+            <span>{{ mode }}</span>
+          </div>
+          <button
+            type="button"
+            aria-label="新建对话"
+            title="新建对话"
+            @click="handleMobileNewChat"
+          >
+            <el-icon><Plus /></el-icon>
+          </button>
+        </header>
+
         <!-- 课程 / 学生上下文工具栏 -->
         <div
-          v-if="showCourseContext"
+          v-if="
+            showCourseContext &&
+            (!isCompactViewport || activeRail !== 'chat' || isStaffMode)
+          "
           class="ai-course-context-bar flex-none flex items-center justify-end gap-3 bg-white mb-5 px-6 py-3 border border-gray-100 rounded-lg z-10 relative overflow-hidden"
         >
           <span class="text-xs text-gray-500 font-medium">{{
@@ -3055,12 +3241,12 @@ onUnmounted(() => {
           <!-- 【场景 A2】 智能辅导欢迎中心 (未选课) -->
           <div
             v-else-if="activeRail === `chat` && !activeCourse"
-            class="h-full w-full p-4 flex items-center justify-center relative"
+            class="ai-welcome-center h-full w-full p-4 flex items-center justify-center relative"
           >
             <div
-              class="w-full max-w-5xl px-6 space-y-8 relative z-10 transform -translate-y-8"
+              class="ai-welcome-content w-full max-w-5xl px-6 space-y-8 relative z-10 transform -translate-y-8"
             >
-              <div class="text-center space-y-4">
+              <div class="ai-welcome-heading text-center space-y-4">
                 <h1
                   class="text-3xl sm:text-[38px] font-bold tracking-tight text-primary"
                 >
@@ -3071,7 +3257,10 @@ onUnmounted(() => {
                 </p>
               </div>
 
-              <div class="quick-chat-card">
+              <div
+                class="quick-chat-card ai-mobile-composer-surface"
+                data-ai-mobile-composer="welcome"
+              >
                 <input
                   ref="quickUploadInputRef"
                   type="file"
@@ -3659,7 +3848,6 @@ onUnmounted(() => {
     </div>
 
     <FloatingDigitalHuman2D
-      v-if="activeRail === 'chat'"
       ref="floatingHumanRef"
       :role-label="currentUserRoleLabel"
       :course-name="selectedCourseName"
@@ -3667,8 +3855,10 @@ onUnmounted(() => {
       anchor="appLeftBottom"
       anchor-selector=".ai-app-root"
       :left-zone-width="sidebarRenderedWidth"
-      :bottom-offset="104"
-      storage-key="ai-app-floating-digital-human-2d-left-bottom"
+      :bottom-offset="floatingHumanBottomOffset"
+      :storage-key="floatingHumanStorageKey"
+      avoid-selector=".ai-mobile-composer-surface, .nav-mobile-container"
+      :layout-key="`${activeRail}-${selectedCourseId || 'none'}-${quickAttachments.length}`"
     />
 
     <PlatformResourcePreviewDialog
@@ -3804,6 +3994,12 @@ onUnmounted(() => {
   width: 100%;
   min-width: 0;
   max-width: 100%;
+}
+
+.ai-course-drawer-header,
+.ai-course-drawer-scrim,
+.ai-mobile-app-bar {
+  display: none;
 }
 
 .resource-workspace-tabs {
@@ -4524,6 +4720,127 @@ onUnmounted(() => {
 }
 
 @media (max-width: 768px) {
+  .ai-app-root {
+    width: 100%;
+    min-width: 0;
+    height: var(--qiming-native-vh, 100dvh);
+    min-height: var(--qiming-native-vh, 100dvh);
+    overflow: hidden;
+  }
+
+  .ai-app-root > .flex-1 {
+    position: relative;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .ai-app-main-column {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .ai-mobile-app-bar {
+    display: grid;
+    flex: 0 0 auto;
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    gap: 8px;
+    align-items: center;
+    min-height: 54px;
+    padding: 5px 10px;
+    background: #fff;
+    border-bottom: 1px solid #e5eaf1;
+  }
+
+  .ai-mobile-app-bar > button,
+  .ai-course-drawer-header > button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    color: #42526a;
+    touch-action: manipulation;
+    background: transparent;
+    border: 0;
+    border-radius: 10px;
+  }
+
+  .ai-mobile-app-bar > button:active,
+  .ai-course-drawer-header > button:active {
+    background: #edf3fb;
+    transform: scale(0.98);
+  }
+
+  .ai-mobile-app-bar__title {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    text-align: center;
+  }
+
+  .ai-mobile-app-bar__title strong,
+  .ai-mobile-app-bar__title span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ai-mobile-app-bar__title strong {
+    color: #243247;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.25;
+  }
+
+  .ai-mobile-app-bar__title span {
+    margin-top: 2px;
+    color: #748198;
+    font-size: 11px;
+    line-height: 1.2;
+  }
+
+  .ai-welcome-center {
+    align-items: stretch !important;
+    justify-content: stretch !important;
+    padding: 12px 8px 8px !important;
+    overflow-x: hidden;
+    overflow-y: hidden;
+  }
+
+  .ai-welcome-content {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
+    height: 100%;
+    min-height: 0;
+    margin: 0 auto;
+    padding-right: 8px !important;
+    padding-left: 8px !important;
+    transform: none !important;
+  }
+
+  .ai-welcome-heading {
+    align-self: center;
+    padding-bottom: 24px;
+    margin: 0;
+  }
+
+  .ai-welcome-content h1 {
+    font-size: 24px !important;
+    line-height: 1.2;
+  }
+
+  .ai-welcome-content p {
+    font-size: 13px !important;
+    line-height: 1.55;
+  }
+
+  .ai-welcome-content .quick-chat-card {
+    flex: 0 0 auto;
+    margin-top: 0 !important;
+    border-radius: 18px;
+    box-shadow: 0 12px 30px rgb(41 62 91 / 10%);
+  }
   .ai-course-context-bar {
     align-items: stretch;
     justify-content: flex-start;
@@ -4534,8 +4851,25 @@ onUnmounted(() => {
     overflow: visible;
   }
 
-  .ai-course-context-bar > span:not(:first-child) {
-    margin-top: 4px;
+  .ai-app-root.is-chat .ai-course-context-bar {
+    display: grid !important;
+    flex: 0 0 auto;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 8px 10px;
+    align-items: center;
+    justify-content: stretch;
+    margin: 0 8px 8px;
+    margin-bottom: 8px;
+    padding: 8px 10px;
+    overflow: visible;
+    border-radius: 12px;
+  }
+
+  .ai-app-root.is-chat .ai-course-context-bar > span {
+    margin: 0 !important;
+    color: #58667a !important;
+    font-size: 12px !important;
+    white-space: nowrap;
   }
 
   .ai-course-context-bar :deep(.el-select) {
@@ -4559,9 +4893,16 @@ onUnmounted(() => {
   .ai-profile-main {
     flex: 0 0 auto;
     width: 100%;
-    height: clamp(420px, 68dvh, 680px) !important;
-    min-height: 420px;
+    height: auto !important;
+    min-height: 0;
+    overflow: visible;
     border-radius: 12px;
+  }
+
+  .ai-profile-main .profile-page {
+    height: auto !important;
+    min-height: 0;
+    overflow: visible;
   }
 
   .ai-profile-inspector {
@@ -4655,22 +4996,78 @@ onUnmounted(() => {
   }
 
   .ai-app-left-rail {
-    position: absolute;
-    top: 8px;
-    bottom: 8px;
-    left: 8px;
-    width: min(82vw, 300px) !important;
-    max-width: calc(100vw - 24px);
-    border-radius: 16px;
+    position: absolute !important;
+    inset: 0 auto 0 0;
+    z-index: 2200;
+    width: min(86vw, 320px) !important;
+    max-width: calc(100vw - 44px);
+    min-width: min(86vw, 320px);
+    overflow: hidden;
+    background: #fff;
+    border: 0;
+    border-right: 1px solid #dce4ee;
+    border-radius: 0 16px 16px 0;
+    box-shadow: 18px 0 44px rgb(30 45 70 / 18%);
+    transform: translateX(0);
+    visibility: visible;
+    transition:
+      transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+      visibility 0.22s step-start;
   }
 
   .ai-app-left-rail.is-collapsed {
-    width: 34px !important;
-    border-radius: 12px;
+    width: min(86vw, 320px) !important;
+    min-width: min(86vw, 320px);
+    pointer-events: none;
+    transform: translateX(-105%);
+    visibility: hidden;
+    transition:
+      transform 0.18s ease-in,
+      visibility 0.18s step-end;
+  }
+
+  .ai-course-drawer-header {
+    display: flex;
+    flex: 0 0 60px;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px 8px 16px;
+    border-bottom: 1px solid #e5eaf1;
+  }
+
+  .ai-course-drawer-header > div {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .ai-course-drawer-header strong {
+    color: #243247;
+    font-size: 15px;
+  }
+
+  .ai-course-drawer-header span {
+    margin-top: 2px;
+    color: #748198;
+    font-size: 11px;
+  }
+
+  .ai-course-drawer-scrim {
+    position: absolute;
+    inset: 0;
+    z-index: 2190;
+    display: block;
+    padding: 0;
+    background: rgb(20 31 48 / 48%);
+    border: 0;
   }
 
   .ai-app-left-rail__resize-handle {
     display: none;
+  }
+
+  .ai-app-left-rail > button.absolute {
+    display: none !important;
   }
 
   .resource-workspace-tabs {
@@ -4678,13 +5075,38 @@ onUnmounted(() => {
   }
 
   .ai-app-root.is-chat .ai-chat-workbench {
-    gap: 10px;
-    padding: 10px 10px 10px 48px;
+    gap: 0;
+    padding: 8px;
   }
 
   .quick-chat-toolbar {
+    gap: 8px;
     align-items: stretch;
     flex-direction: column;
+    padding: 10px;
+  }
+
+  .quick-chat-tools-left {
+    flex-wrap: nowrap;
+    width: 100%;
+    padding-bottom: 2px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .quick-chat-tools-left::-webkit-scrollbar {
+    display: none;
+  }
+
+  .quick-chat-chip {
+    flex: 0 0 auto;
+    max-width: min(220px, 72vw);
+    min-height: 44px;
+  }
+
+  .quick-chat-chip--static {
+    display: none;
   }
 
   .quick-chat-tools-right {
@@ -4693,7 +5115,8 @@ onUnmounted(() => {
   }
 
   .quick-chat-model-trigger {
-    max-width: 180px;
+    min-height: 44px;
+    max-width: min(180px, 48vw);
   }
 
   .quick-attachment-remove {
@@ -4715,6 +5138,22 @@ onUnmounted(() => {
   .quick-attachment-remove:focus-visible {
     color: #fff;
     background: #d92d20;
+  }
+}
+
+@media (max-width: 390px) {
+  .ai-app-root.is-chat .ai-course-context-bar {
+    gap: 6px 8px;
+    margin-inline: 6px;
+    padding-inline: 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-app-left-rail,
+  .ai-course-drawer-scrim,
+  .ai-mobile-app-bar > button {
+    transition: none !important;
   }
 }
 </style>

@@ -5,6 +5,8 @@ import listeningVideo from "@/assets/ai-app/digital-human-2d/listening_circle.we
 import sayingVideo from "@/assets/ai-app/digital-human-2d/saying_circle.webm";
 import standbyVideo from "@/assets/ai-app/digital-human-2d/standby_circle.webm";
 import thinkingVideo from "@/assets/ai-app/digital-human-2d/thinking_circle.webm";
+import fallbackPoster from "@/assets/ai-app/assistant-avatar.png";
+import embeddedStandbyVideo from "@/assets/生成数字人待机视频.mp4";
 
 defineOptions({ name: "FloatingDigitalHuman2D" });
 
@@ -20,6 +22,8 @@ const props = withDefaults(
     leftZoneWidth?: number;
     bottomOffset?: number;
     storageKey?: string;
+    avoidSelector?: string;
+    layoutKey?: string | number;
   }>(),
   {
     roleLabel: "学生",
@@ -29,7 +33,9 @@ const props = withDefaults(
     anchorSelector: "",
     leftZoneWidth: 260,
     bottomOffset: 140,
-    storageKey: ""
+    storageKey: "",
+    avoidSelector: "",
+    layoutKey: ""
   }
 );
 
@@ -56,6 +62,8 @@ const storageKey = computed(
 const videoRef = ref<HTMLVideoElement | null>(null);
 const isReady = ref(false);
 const isPaused = ref(false);
+const forceMp4Playback = ref(false);
+const isEmbeddedMobile = ref(false);
 const localSpeaking = ref(false);
 const speechAmplitude = ref(0);
 const position = ref({ x: 0, y: 0 });
@@ -69,11 +77,18 @@ const dragState = ref<{
 } | null>(null);
 
 let speakingTimer: ReturnType<typeof setTimeout> | null = null;
+let avoidanceResizeObserver: ResizeObserver | null = null;
 
 const currentState = computed<DigitalHumanState>(() =>
   localSpeaking.value ? "saying" : props.state
 );
 const currentVideo = computed(() => stateAssets[currentState.value]);
+const usesMp4Playback = computed(
+  () => isEmbeddedMobile.value || forceMp4Playback.value
+);
+const playbackVideo = computed(() =>
+  usesMp4Playback.value ? embeddedStandbyVideo : currentVideo.value
+);
 const statusLabel = computed(() => stateLabels[currentState.value]);
 const ariaLabel = computed(
   () =>
@@ -88,14 +103,48 @@ const bubbleStyle = computed(() => ({
   opacity: isReady.value ? 1 : 0
 }));
 
+const getReservedBottom = () => {
+  let reservedBottom =
+    props.anchor === "appLeftBottom"
+      ? Math.max(windowPadding, props.bottomOffset)
+      : windowPadding;
+
+  if (props.anchor !== "appLeftBottom" || !props.avoidSelector) {
+    return reservedBottom;
+  }
+
+  document
+    .querySelectorAll<HTMLElement>(props.avoidSelector)
+    .forEach(element => {
+      const style = window.getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      const isVisible =
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        Number(style.opacity || 1) > 0.01 &&
+        rect.width > 0 &&
+        rect.height > 0 &&
+        rect.bottom > 0 &&
+        rect.top < window.innerHeight;
+      if (!isVisible) return;
+      reservedBottom = Math.max(
+        reservedBottom,
+        window.innerHeight - Math.max(0, rect.top) + 12
+      );
+    });
+
+  return reservedBottom;
+};
+
 const clampPosition = (nextX: number, nextY: number) => {
+  const reservedBottom = getReservedBottom();
   const maxX = Math.max(
     windowPadding,
     window.innerWidth - bubbleSize - windowPadding
   );
   const maxY = Math.max(
     windowPadding,
-    window.innerHeight - bubbleSize - windowPadding
+    window.innerHeight - bubbleSize - reservedBottom
   );
   return {
     x: Math.min(Math.max(windowPadding, nextX), maxX),
@@ -169,8 +218,34 @@ const playVideo = async () => {
   try {
     await video.play();
   } catch {
-    // Muted autoplay can still be blocked by strict browser settings.
+    if (!usesMp4Playback.value) forceMp4Playback.value = true;
   }
+};
+
+const detectEmbeddedMobile = () => {
+  const locationText = `${window.location.search}&${window.location.hash}`;
+  const runtimeClassList = document.documentElement.classList;
+  return (
+    /(?:qimingMiniProgram|qimingNative)=1/.test(locationText) ||
+    runtimeClassList.contains("qiming-mini-program-webview") ||
+    runtimeClassList.contains("qiming-native-webview") ||
+    window.localStorage.getItem("qimingMiniProgramWebView") === "1" ||
+    window.localStorage.getItem("qimingNativeWebView") === "1" ||
+    window.sessionStorage.getItem("qimingMiniProgramWebView") === "1" ||
+    window.sessionStorage.getItem("qimingNativeWebView") === "1"
+  );
+};
+
+const handleVideoReady = () => {
+  isReady.value = true;
+};
+
+const handleVideoError = () => {
+  if (!usesMp4Playback.value) {
+    forceMp4Playback.value = true;
+    return;
+  }
+  isReady.value = true;
 };
 
 const handlePointerDown = (event: PointerEvent) => {
@@ -206,6 +281,21 @@ const handleResize = () => {
     ? clampPosition(position.value.x, position.value.y)
     : getDefaultPosition();
   if (hasUserPosition.value) savePosition();
+};
+
+const bindAvoidanceObserver = async () => {
+  await nextTick();
+  avoidanceResizeObserver?.disconnect();
+  avoidanceResizeObserver = null;
+
+  if (props.avoidSelector && typeof ResizeObserver !== "undefined") {
+    avoidanceResizeObserver = new ResizeObserver(handleResize);
+    document
+      .querySelectorAll<HTMLElement>(props.avoidSelector)
+      .forEach(element => avoidanceResizeObserver?.observe(element));
+  }
+
+  handleResize();
 };
 
 const pauseRender = () => {
@@ -254,7 +344,8 @@ function resetSpeech() {
   speechAmplitude.value = 0;
 }
 
-watch(currentVideo, () => {
+watch(playbackVideo, () => {
+  isReady.value = false;
   void playVideo();
 });
 
@@ -263,24 +354,31 @@ watch(
     props.anchor,
     props.anchorSelector,
     props.leftZoneWidth,
-    props.bottomOffset
+    props.bottomOffset,
+    props.avoidSelector,
+    props.layoutKey
   ],
   () => {
-    if (!hasUserPosition.value) {
-      position.value = getDefaultPosition();
-    }
+    position.value = hasUserPosition.value
+      ? clampPosition(position.value.x, position.value.y)
+      : getDefaultPosition();
+    if (hasUserPosition.value) savePosition();
+    void bindAvoidanceObserver();
   }
 );
 
 onMounted(() => {
+  isEmbeddedMobile.value = detectEmbeddedMobile();
   restorePosition();
   isReady.value = true;
   window.addEventListener("resize", handleResize);
+  void bindAvoidanceObserver();
   void playVideo();
 });
 
 onUnmounted(() => {
   if (speakingTimer) clearTimeout(speakingTimer);
+  avoidanceResizeObserver?.disconnect();
   window.removeEventListener("resize", handleResize);
 });
 
@@ -310,13 +408,18 @@ defineExpose({
     @pointercancel="handlePointerUp"
   >
     <video
+      :key="playbackVideo"
       ref="videoRef"
-      :src="currentVideo"
+      :src="playbackVideo"
+      :poster="fallbackPoster"
+      :data-playback-format="usesMp4Playback ? 'mp4' : 'webm'"
       muted
       autoplay
       loop
       playsinline
-      preload="metadata"
+      preload="auto"
+      @loadeddata="handleVideoReady"
+      @error="handleVideoError"
     />
     <span class="floating-human-2d__dot" />
   </div>
