@@ -125,7 +125,7 @@ test("mobile AI assistant stays above the rendered bottom dock", () => {
   );
   assert.match(
     assistantFloatButton,
-    /window\.innerHeight - dockTop \+ MOBILE_DOCK_GAP/
+    /window\.innerHeight - obstructionTop \+ MOBILE_DOCK_GAP/
   );
   assert.match(
     assistantFloatButton,

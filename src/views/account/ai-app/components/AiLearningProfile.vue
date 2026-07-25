@@ -376,12 +376,14 @@ watch(() => [props.courseId, props.targetStudentId], loadProfile);
       </el-button>
     </div>
 
-    <div class="grid grid-cols-1 xl:grid-cols-[320px_1fr] gap-5">
+    <div
+      class="profile-primary-grid grid grid-cols-1 xl:grid-cols-[320px_1fr] gap-5"
+    >
       <div
         class="profile-summary bg-bg_color rounded-xl p-6 border border-gray-100 dark:border-gray-800 flex flex-col items-center"
       >
         <div
-          class="relative w-24 h-24 rounded-full border border-gray-200 bg-gray-50 p-1 mb-5"
+          class="profile-avatar relative w-24 h-24 rounded-full border border-gray-200 bg-gray-50 p-1 mb-5"
         >
           <div
             class="w-full h-full rounded-full bg-bg_color flex items-center justify-center overflow-hidden"
@@ -586,7 +588,9 @@ watch(() => [props.courseId, props.targetStudentId], loadProfile);
       </div>
     </div>
 
-    <div class="mt-6 grid grid-cols-1 xl:grid-cols-3 gap-6">
+    <div
+      class="profile-secondary-grid mt-6 grid grid-cols-1 xl:grid-cols-3 gap-6"
+    >
       <div
         class="bg-bg_color rounded-xl p-6 border border-gray-100 dark:border-gray-800 shadow-sm"
       >
@@ -904,9 +908,18 @@ watch(() => [props.courseId, props.targetStudentId], loadProfile);
   --profile-border: #edf0f5;
 }
 
+.profile-page > * {
+  flex-shrink: 0;
+}
+
 .profile-summary,
 .dimension-preview {
   box-shadow: none;
+}
+
+.profile-avatar {
+  flex: 0 0 96px;
+  overflow: visible;
 }
 
 .joined-courses {
@@ -1027,6 +1040,47 @@ watch(() => [props.courseId, props.targetStudentId], loadProfile);
 .profile-dimension-dialog {
   :deep(.el-dialog__body) {
     padding-top: 8px;
+  }
+}
+
+@media (width <= 768px) {
+  .profile-page {
+    padding: 8px !important;
+  }
+
+  .profile-summary,
+  .dimension-preview,
+  .profile-page > .mt-6 > div,
+  .profile-page > .mt-6.bg-bg_color {
+    padding: 14px !important;
+  }
+
+  .profile-page > .mb-5 {
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+
+  .profile-page > .mb-5 :deep(.el-button) {
+    min-height: 44px;
+    flex: 0 0 auto;
+  }
+
+  .profile-primary-grid,
+  .profile-secondary-grid {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px;
+  }
+
+  .profile-primary-grid > *,
+  .profile-secondary-grid > * {
+    flex: 0 0 auto !important;
+    min-height: max-content;
+  }
+
+  .dimension-card {
+    padding: 14px !important;
   }
 }
 </style>

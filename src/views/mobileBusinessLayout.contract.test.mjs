@@ -179,7 +179,7 @@ test("mobile AI workspaces release desktop fixed widths", () => {
   assert.match(aiApp, /class="ai-course-context-bar/);
   assert.match(
     aiApp,
-    /@media \(max-width: 768px\)[\s\S]*\.ai-course-context-bar \{[\s\S]*flex-direction: column[\s\S]*\.ai-course-context-bar :deep\(\.el-select\) \{[\s\S]*width: 100% !important/
+    /@media \(max-width: 768px\)[\s\S]*\.ai-course-context-bar \{[\s\S]*grid-template-columns: auto minmax\(0, 1fr\)[\s\S]*\.ai-course-context-bar :deep\(\.el-select\) \{[\s\S]*width: 100% !important/
   );
   assert.match(aiApp, /class="ai-profile-workspace/);
   assert.match(
@@ -188,7 +188,11 @@ test("mobile AI workspaces release desktop fixed widths", () => {
   );
   assert.match(
     aiApp,
-    /\.ai-profile-main \{[\s\S]*height: clamp\(420px, 68dvh, 680px\) !important/
+    /\.ai-profile-main \{[\s\S]*height: auto !important;[\s\S]*overflow: visible/
+  );
+  assert.match(
+    aiApp,
+    /\.ai-profile-main \.profile-page \{[\s\S]*height: auto !important;[\s\S]*overflow: visible/
   );
   assert.match(aiApp, /\.ai-profile-inspector \{[\s\S]*width: 100% !important/);
   assert.match(

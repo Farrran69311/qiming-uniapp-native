@@ -440,14 +440,17 @@ const updateMobileTopOffset = () => {
   ) as HTMLElement | null;
   const headerBottom = headerEl?.getBoundingClientRect().bottom ?? 0;
   const sidebarBottom = sidebarEl?.getBoundingClientRect().bottom ?? 0;
+  const sidebarCollapsed =
+    sidebarEl?.classList.contains("mobile-collapsed") ?? false;
   const safeGap = 16;
   const measuredOffset = Math.ceil(
-    Math.max(headerBottom, sidebarBottom) + safeGap
+    Math.max(headerBottom, sidebarCollapsed ? 0 : sidebarBottom) + safeGap
   );
+  const minimumOffset = sidebarCollapsed ? 92 : 156;
 
   root.style.setProperty(
     "--course-mobile-top-offset",
-    `${Math.max(measuredOffset, 156)}px`
+    `${Math.max(measuredOffset, minimumOffset)}px`
   );
 };
 
@@ -463,6 +466,10 @@ const scheduleMobileTopOffsetUpdate = () => {
 };
 
 const handleViewportResize = () => {
+  scheduleMobileTopOffsetUpdate();
+};
+
+const handleCourseSidebarCollapseChange = () => {
   scheduleMobileTopOffsetUpdate();
 };
 
@@ -1077,6 +1084,10 @@ onMounted(async () => {
   ) as HTMLElement | null;
   baseCourseId.value = Number(route.params.id);
   window.addEventListener("resize", handleViewportResize, { passive: true });
+  window.addEventListener(
+    "qiming:course-sidebar-collapse-change",
+    handleCourseSidebarCollapseChange
+  );
 
   // 获取用户ID（如果还没有）
   if (!userStore.userId) {
@@ -1160,6 +1171,10 @@ onBeforeUnmount(() => {
   setAiScreenCaptureVisibilityOverride(null);
   document.body.classList.remove("course-page");
   window.removeEventListener("resize", handleViewportResize);
+  window.removeEventListener(
+    "qiming:course-sidebar-collapse-change",
+    handleCourseSidebarCollapseChange
+  );
   if (mobileOffsetRafId !== null) {
     cancelAnimationFrame(mobileOffsetRafId);
     mobileOffsetRafId = null;

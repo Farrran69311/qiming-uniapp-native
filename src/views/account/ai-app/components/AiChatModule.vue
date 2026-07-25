@@ -4,7 +4,7 @@
   >
     <!-- 顶部精简导航 -->
     <div
-      class="flex items-center justify-between p-4 bg-white rounded-t-2xl border-b border-gray-100 z-10"
+      class="ai-chat-course-head flex items-center justify-between p-4 bg-white rounded-t-2xl border-b border-gray-100 z-10"
     >
       <div class="flex items-center gap-2">
         <el-tag size="small" effect="plain" round>{{ activeCourse }}</el-tag>
@@ -14,7 +14,7 @@
     <!-- 消息流：移除背景修饰文字，保持纯净 -->
     <el-scrollbar
       ref="scrollbarRef"
-      class="flex-1 min-h-0 min-w-0 px-4 py-6 scroll-smooth"
+      class="ai-chat-message-scroll flex-1 min-h-0 min-w-0 px-4 py-6 scroll-smooth"
       @scroll="handleChatScroll"
       @wheel.passive="pauseStreamingAnswerFollow"
       @touchstart.passive="pauseStreamingAnswerFollow"
@@ -611,10 +611,11 @@
     </el-scrollbar>
 
     <!-- 输入区：悬浮极简设计，带常驻选择器 -->
-    <div class="p-4 bg-transparent z-10 w-full min-w-0">
+    <div class="ai-chat-composer-shell p-4 bg-transparent z-10 w-full min-w-0">
       <div class="w-full min-w-0 relative group">
         <div
-          class="relative bg-white border border-gray-200 rounded-2xl shadow-sm focus-within:border-primary/40 focus-within:shadow-[0_0_0_3px_rgba(47,111,203,0.10)] transition-all duration-200 overflow-hidden"
+          class="ai-chat-composer ai-mobile-composer-surface relative bg-white border border-gray-200 rounded-2xl shadow-sm focus-within:border-primary/40 focus-within:shadow-[0_0_0_3px_rgba(47,111,203,0.10)] transition-all duration-200 overflow-hidden"
+          data-ai-mobile-composer="chat"
         >
           <!-- 输入框 -->
           <input
@@ -625,7 +626,7 @@
             class="chat-attachment-input"
             @change="handleAttachmentChange"
           />
-          <div class="flex items-end gap-2 p-2">
+          <div class="ai-chat-composer__input-row flex items-end gap-2 p-2">
             <el-button
               :icon="Plus"
               class="!rounded-lg mb-1 hover:bg-gray-100 transition-colors duration-200 hover:!border-primary/50"
@@ -698,7 +699,7 @@
 
           <!-- 常驻工具栏：课程 / 模式 / 智能体 / 思考模式 / 模型 -->
           <div
-            class="flex min-w-0 flex-wrap items-center justify-between gap-2 px-3 py-2 bg-gray-50/60 border-t border-gray-100"
+            class="ai-chat-toolbar flex min-w-0 flex-wrap items-center justify-between gap-2 px-3 py-2 bg-gray-50/60 border-t border-gray-100"
           >
             <div class="chat-toolbar-left flex min-w-0 flex-wrap items-center">
               <el-dropdown
@@ -3158,7 +3159,79 @@ onBeforeUnmount(() => {
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
+  .ai-chat-module {
+    background: #f5f7fb;
+  }
+
+  .ai-chat-course-head {
+    display: none;
+  }
+
+  .ai-chat-message-scroll {
+    padding: 12px 10px 16px !important;
+  }
+
+  .ai-chat-message-scroll :deep(.el-scrollbar__view) {
+    min-height: 100%;
+    padding-bottom: 8px;
+  }
+
+  .ai-chat-composer-shell {
+    flex: 0 0 auto;
+    padding: 8px !important;
+    background: #fff;
+    border-top: 1px solid #e5eaf1;
+  }
+
+  .ai-chat-composer {
+    border-color: #dce3ed;
+    border-radius: 18px !important;
+    box-shadow: 0 10px 28px rgb(41 62 91 / 10%);
+  }
+
+  .ai-chat-composer__input-row {
+    gap: 6px;
+    min-height: 58px;
+    padding: 7px;
+  }
+
+  .ai-chat-composer__input-row :deep(.el-button) {
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    margin-bottom: 0 !important;
+  }
+
+  :deep(.ai-input-base .el-textarea__inner) {
+    min-height: 44px !important;
+    padding: 11px 8px;
+    font-size: 15px;
+    line-height: 22px;
+  }
+
+  .ai-chat-toolbar {
+    flex-wrap: nowrap !important;
+    justify-content: flex-start !important;
+    gap: 6px !important;
+    padding: 6px 8px 8px !important;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    background: #fff !important;
+    scrollbar-width: none;
+  }
+
+  .ai-chat-toolbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .chat-toolbar-left {
+    flex: 0 0 auto;
+    flex-wrap: nowrap !important;
+    overflow: visible;
+  }
+
   .chat-toolbar-chip,
   .chat-attachment-pill,
   .assistant-action-button,
@@ -3166,6 +3239,53 @@ onBeforeUnmount(() => {
   .reasoning-summary summary {
     height: auto;
     min-height: 44px;
+  }
+
+  .chat-toolbar-chip {
+    flex: 0 0 auto;
+    max-width: min(190px, 62vw);
+    padding-inline: 12px;
+  }
+
+  .chat-toolbar-chip--static {
+    display: none;
+  }
+
+  .ai-chat-model-trigger {
+    flex: 0 0 auto;
+    max-width: min(150px, 46vw);
+    min-height: 44px;
+  }
+
+  .chat-message-row {
+    gap: 8px;
+  }
+
+  .message-avatar {
+    width: 36px !important;
+    height: 36px !important;
+  }
+
+  .message-stack,
+  .message-stack.is-user {
+    max-width: calc(100% - 44px);
+  }
+
+  .message-bubble {
+    padding: 12px 14px;
+    font-size: 14px;
+    line-height: 1.65;
+  }
+
+  .message-bubble-system {
+    border-radius: 16px;
+    box-shadow: 0 6px 18px rgb(44 58 87 / 7%);
+  }
+
+  .message-bubble-user {
+    min-height: 40px;
+    border-radius: 16px 6px 16px 16px;
+    line-height: 1.4;
   }
 
   .chat-attachment-pill__remove {
