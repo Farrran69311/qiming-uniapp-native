@@ -1865,7 +1865,7 @@ async function runOpen(options) {
     );
   }
   closeDevToolsProject(cliPath, options);
-  await wait(1500);
+  await wait(3000);
   const args = withDevToolsPort(["open", "--project", buildDir], options);
   if (options.pureSimulator) args.push("--pure-simulator");
   run(cliPath, args);

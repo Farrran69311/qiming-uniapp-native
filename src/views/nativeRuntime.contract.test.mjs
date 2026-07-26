@@ -114,7 +114,7 @@ test("WeChat DevTools smoke closes only its existing build before launch", () =>
   );
   assert.match(
     wechatMiniProgram,
-    /async function runOpen\(options\)[\s\S]*closeDevToolsProject\(cliPath, options\);\s*await wait\(1500\);[\s\S]*\["open", "--project", buildDir\]/
+    /async function runOpen\(options\)[\s\S]*closeDevToolsProject\(cliPath, options\);\s*await wait\(3000\);[\s\S]*\["open", "--project", buildDir\]/
   );
 });
 
