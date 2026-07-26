@@ -29,8 +29,10 @@ const wrongExerciseApiPath = join(root, "src/api/frontend/wrong-exercise.ts");
 const defaultWebviewOrigin = "https://aiedu-mp.intelledu.cn";
 const defaultLaunchEntry = "/home";
 const defaultLaunchRole = "";
+const defaultWechatBaseLibraryVersion = "3.16.2";
 
 const realAppIdPattern = /^wx[a-zA-Z0-9]{16}$/;
+const wechatBaseLibraryVersionPattern = /^\d+\.\d+\.\d+$/;
 
 const routeMatrix = [
   {
@@ -562,6 +564,10 @@ function patchProjectConfig(options) {
       ? config.appid
       : "";
   config.projectname = config.projectname || "IntellEdu";
+  const configuredLibVersion = String(config.libVersion || "").trim();
+  config.libVersion = wechatBaseLibraryVersionPattern.test(configuredLibVersion)
+    ? configuredLibVersion
+    : defaultWechatBaseLibraryVersion;
   config.condition = config.condition || {};
   // A large generated condition list crashes DevTools 2.01.2510290 while it
   // enumerates package files. Route coverage belongs to the audit runners;
@@ -703,6 +709,11 @@ function collectChecks(options) {
       "WeChat AppID",
       config.appid ||
         "empty for simulator import; set WECHAT_MINIPROGRAM_APPID for preview/upload/auto"
+    );
+    add(
+      wechatBaseLibraryVersionPattern.test(config.libVersion) ? "OK" : "FAIL",
+      "WeChat base library",
+      config.libVersion || "missing libVersion"
     );
   }
 
@@ -1841,7 +1852,7 @@ async function runPreflight(options) {
   printChecks(checks);
 }
 
-function runOpen(options) {
+async function runOpen(options) {
   if (!existsSync(buildDir) || hasLaunchOverrides(options)) {
     runBuild(options);
   } else {
@@ -1853,6 +1864,8 @@ function runOpen(options) {
       "WeChat DevTools CLI not found. Install WeChat DevTools or set WECHAT_DEVTOOLS_CLI."
     );
   }
+  closeDevToolsProject(cliPath, options);
+  await wait(1500);
   const args = withDevToolsPort(["open", "--project", buildDir], options);
   if (options.pureSimulator) args.push("--pure-simulator");
   run(cliPath, args);
@@ -2001,7 +2014,7 @@ try {
   } else if (command === "preflight") {
     await runPreflight(options);
   } else if (command === "open") {
-    runOpen(options);
+    await runOpen(options);
   } else if (command === "preview") {
     runPreview(options);
   } else if (command === "auto") {

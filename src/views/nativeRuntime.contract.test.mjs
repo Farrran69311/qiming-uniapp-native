@@ -6,6 +6,7 @@ const read = relativePath =>
   readFileSync(new URL(relativePath, import.meta.url), "utf8");
 
 const packageJson = JSON.parse(read("../../package.json"));
+const nativeManifest = JSON.parse(read("../../native-app/src/manifest.json"));
 const assistantFloatButton = read(
   "../components/AiScreenCapture/FloatButton.vue"
 );
@@ -68,6 +69,19 @@ test("WeChat bootstrap installs the nested uni-app outside the root workspace", 
   );
 });
 
+test("WeChat builds always select a valid base library before DevTools opens", () => {
+  assert.match(nativeManifest["mp-weixin"].libVersion, /^\d+\.\d+\.\d+$/);
+  assert.match(
+    wechatMiniProgram,
+    /const defaultWechatBaseLibraryVersion = "3\.16\.2"/
+  );
+  assert.match(
+    wechatMiniProgram,
+    /config\.libVersion = wechatBaseLibraryVersionPattern\.test\(/
+  );
+  assert.match(wechatMiniProgram, /"WeChat base library"/);
+});
+
 test("mobile production resource previews use the fixed EdgeOne file proxy", () => {
   assert.match(
     platformResourcePreview,
@@ -97,6 +111,10 @@ test("WeChat DevTools smoke closes only its existing build before launch", () =>
   assert.match(
     wechatMiniProgram,
     /closeDevToolsProject\(cliPath, options\);\s*await wait\(1500\);\s*miniProgram = await automator\.launch/
+  );
+  assert.match(
+    wechatMiniProgram,
+    /async function runOpen\(options\)[\s\S]*closeDevToolsProject\(cliPath, options\);\s*await wait\(1500\);[\s\S]*\["open", "--project", buildDir\]/
   );
 });
 
