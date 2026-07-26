@@ -929,11 +929,52 @@ function getH5RouteSmokeFailures(info, route) {
         Number(drawer.floatingHumanZ || 0),
         Number(drawer.captureButtonZ || 0)
       );
+      const sidebarRect = drawer.sidebarRect;
+      const rootRect = drawer.rootRect;
+      if (
+        !sidebarRect ||
+        !rootRect ||
+        sidebarRect.width < rootRect.width * 0.99 ||
+        sidebarRect.height < rootRect.height * 0.99 ||
+        Math.abs(sidebarRect.x - rootRect.x) > 2 ||
+        Math.abs(sidebarRect.y - rootRect.y) > 2
+      ) {
+        failures.push("ai-course-drawer-not-fullscreen");
+      }
       if (!Number.isFinite(sidebarZ) || sidebarZ <= scrimZ) {
         failures.push(`ai-course-drawer-below-scrim:${sidebarZ}/${scrimZ}`);
       }
       if (!Number.isFinite(scrimZ) || scrimZ <= obstructionZ) {
         failures.push(`ai-course-drawer-obstructed:${scrimZ}/${obstructionZ}`);
+      }
+    }
+    const conversation = info?.aiConversationCheck;
+    if (!conversation?.conversationVisible) {
+      failures.push("ai-conversation-not-visible");
+    } else {
+      const rootHeight = Number(conversation.rootRect?.height || 0);
+      const scrollHeight = Number(conversation.scrollRect?.height || 0);
+      const composerHeight = Number(conversation.composerRect?.height || 0);
+      const scrollWidth = Number(conversation.scrollRect?.width || 0);
+      const systemWidth = Number(conversation.systemStackRect?.width || 0);
+      if (rootHeight > 0 && scrollHeight / rootHeight < 0.46) {
+        failures.push("ai-conversation-reading-area-too-short");
+      }
+      if (rootHeight > 0 && composerHeight / rootHeight > 0.3) {
+        failures.push("ai-conversation-composer-too-tall");
+      }
+      if (
+        scrollWidth > 0 &&
+        systemWidth > 0 &&
+        systemWidth / scrollWidth < 0.78
+      ) {
+        failures.push("ai-conversation-answer-too-narrow");
+      }
+      if (conversation.workbenchPadding !== "0px") {
+        failures.push("ai-conversation-stacked-page-padding");
+      }
+      if (conversation.courseHeadDisplay !== "none") {
+        failures.push("ai-conversation-duplicate-course-heading");
       }
     }
   }
@@ -1577,11 +1618,12 @@ async function runH5Smoke(options) {
         );
       }
       let aiDrawerScreenshotPath = "";
+      let aiConversationScreenshotPath = "";
       if (route.name.endsWith("-ai-app")) {
         await client.send("Runtime.evaluate", {
           awaitPromise: true,
           expression: `(() => {
-            const button = document.querySelector('[aria-label="新建对话"]');
+            const button = document.querySelector('[aria-label="打开课程与对话"]');
             button?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
           })()`
         });
@@ -1602,6 +1644,7 @@ async function runH5Smoke(options) {
               };
             };
             const sidebar = inspect(".ai-app-left-rail");
+            const root = inspect(".ai-app-root");
             const scrim = inspect(".ai-course-drawer-scrim");
             const floatingHuman = inspect(".floating-human-2d");
             const captureButton = inspect(".ai-float-button");
@@ -1622,6 +1665,7 @@ async function runH5Smoke(options) {
               floatingHumanZ: floatingHuman.z,
               captureButtonZ: captureButton.z,
               sidebarRect: sidebar.rect,
+              rootRect: root.rect,
               scrimRect: scrim.rect
             };
           })()`
@@ -1636,6 +1680,68 @@ async function runH5Smoke(options) {
           aiDrawerScreenshotPath,
           Buffer.from(aiDrawerScreenshot.data, "base64")
         );
+        const conversationSelection = await client.send("Runtime.evaluate", {
+          returnByValue: true,
+          awaitPromise: true,
+          expression: `(() => {
+            const button = document.querySelector(".ai-sidebar__conversation");
+            button?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
+            return Boolean(button);
+          })()`
+        });
+        for (let attempt = 0; attempt < 20; attempt += 1) {
+          const conversationReady = await client.send("Runtime.evaluate", {
+            returnByValue: true,
+            expression: `Boolean(document.querySelector(".ai-chat-module"))`
+          });
+          if (conversationReady.result?.value) break;
+          await wait(150);
+        }
+        await wait(250);
+        const aiConversationCheck = await client.send("Runtime.evaluate", {
+          returnByValue: true,
+          awaitPromise: true,
+          expression: `(() => {
+            const rect = selector => {
+              const el = document.querySelector(selector);
+              if (!el) return null;
+              const box = el.getBoundingClientRect();
+              return { x: Math.round(box.x), y: Math.round(box.y), width: Math.round(box.width), height: Math.round(box.height) };
+            };
+            const module = document.querySelector(".ai-chat-module");
+            const root = document.querySelector(".ai-app-root");
+            const workbench = document.querySelector(".ai-chat-workbench");
+            const courseHead = document.querySelector(".ai-chat-course-head");
+            const style = module ? getComputedStyle(module) : null;
+            return {
+              conversationSelected: ${Boolean(conversationSelection.result?.value)},
+              conversationVisible: Boolean(module && style?.display !== "none" && style?.visibility !== "hidden"),
+              rootClass: root?.className || "",
+              innerWidth: window.innerWidth,
+              compactMedia: window.matchMedia("(max-width: 768px)").matches,
+              workbenchPadding: workbench ? getComputedStyle(workbench).padding : "",
+              courseHeadDisplay: courseHead ? getComputedStyle(courseHead).display : "",
+              rootRect: rect(".ai-app-root"),
+              workbenchRect: rect(".ai-chat-workbench"),
+              scrollRect: rect(".ai-chat-message-scroll"),
+              composerRect: rect(".ai-chat-composer-shell"),
+              systemStackRect: rect(".message-stack.is-system")
+            };
+          })()`
+        });
+        info.aiConversationCheck = aiConversationCheck.result?.value || {};
+        const aiConversationScreenshot = await client.send(
+          "Page.captureScreenshot",
+          { format: "png", fromSurface: true }
+        );
+        aiConversationScreenshotPath = join(
+          outDir,
+          `${route.name}-conversation.png`
+        );
+        writeFileSync(
+          aiConversationScreenshotPath,
+          Buffer.from(aiConversationScreenshot.data, "base64")
+        );
       }
       const failReasons = getH5RouteSmokeFailures(info, route);
       const ok = failReasons.length === 0;
@@ -1646,6 +1752,7 @@ async function runH5Smoke(options) {
         bottomScreenshotPath,
         sidebarScreenshotPath,
         aiDrawerScreenshotPath,
+        aiConversationScreenshotPath,
         info,
         ok,
         failReasons

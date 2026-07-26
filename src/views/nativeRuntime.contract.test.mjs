@@ -12,6 +12,7 @@ const assistantFloatButton = read(
 );
 const mobileNav = read("../layout/components/NavMobile.vue");
 const layoutShell = read("../layout/index.vue");
+const layContent = read("../layout/components/lay-content/index.vue");
 const userProfile = read("account/components/UserProfile.vue");
 const accountShell = read("account/index.vue");
 const aiAppShell = read("account/ai-app/index.vue");
@@ -194,7 +195,10 @@ test("WeChat top bars stay opaque and the student profile clears its header", ()
     globalStyles,
     /qiming-mini-program-webview \.account-container \.account-content \{[^}]*padding-top: 8px !important;/
   );
-  assert.match(layoutShell, /route\.path !== "\/account"/);
+  assert.match(
+    layoutShell,
+    /miniProgramNativeTitleRoutes[\s\S]*"\/account"[\s\S]*miniProgramNativeTitleRoutes\.has\(route\.path\)/
+  );
   assert.match(layoutShell, /qiming-mini-program-webview/);
   assert.match(layoutShell, /data-qiming-layout-header/);
   assert.match(layoutShell, /<LayHeader v-if="shouldRenderLayHeader" \/>/);
@@ -206,6 +210,37 @@ test("WeChat top bars stay opaque and the student profile clears its header", ()
   assert.match(wechatMiniProgram, /landing-topbar-transparent/);
   assert.match(wechatMiniProgram, /student-profile-header-overlap/);
   assert.match(wechatMiniProgram, /QIMING_MINIPROGRAM_H5_WAIT_MS \|\| 20000/);
+});
+
+test("WeChat AI workspaces consume the native title and safe area only once", () => {
+  assert.match(
+    mainRuntime,
+    /if \(isMiniProgram\) \{[\s\S]*removeItem\("qimingNativeStatusTop"\)[\s\S]*setProperty\("--pure-safe-area-top", "0px"\)/
+  );
+  assert.match(
+    layoutShell,
+    /miniProgramNativeTitleRoutes[\s\S]*"\/account\/ai-app"[\s\S]*"\/ai-app\/workspace"/
+  );
+  assert.match(
+    layContent,
+    /usesMiniProgramNativeTitle[\s\S]*return \{[\s\S]*paddingTop: "0"/
+  );
+  assert.match(
+    globalStyles,
+    /qiming-mini-program-webview\.ua-mobile[\s\S]*\.main-content\.ai-app-root \{[\s\S]*margin: 0 !important/
+  );
+  assert.match(wechatMiniProgram, /aria-label=\"打开课程与对话\"/);
+  assert.match(wechatMiniProgram, /ai-course-drawer-not-fullscreen/);
+  assert.match(wechatMiniProgram, /\.ai-sidebar__conversation/);
+  assert.match(wechatMiniProgram, /ai-conversation-reading-area-too-short/);
+  assert.match(wechatMiniProgram, /ai-conversation-composer-too-tall/);
+  assert.match(wechatMiniProgram, /ai-conversation-answer-too-narrow/);
+  assert.match(wechatMiniProgram, /ai-conversation-stacked-page-padding/);
+  assert.match(wechatMiniProgram, /ai-conversation-duplicate-course-heading/);
+  assert.match(
+    sharedRouteMatrix,
+    /aiLeftRail\?\.visible[\s\S]*aiLeftRail\.width > 120/
+  );
 });
 
 test("profile keeps an honest local activity state without calling an absent API", () => {

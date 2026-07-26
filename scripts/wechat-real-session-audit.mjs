@@ -1967,7 +1967,11 @@ function analyze(
   if (browserAbortNetwork.length) {
     warnings.push(`browser-network:${browserAbortNetwork.length}`);
   }
-  if (route.name.includes("ai-") && info.layout?.aiLeftRail?.width > 120) {
+  if (
+    route.name.includes("ai-") &&
+    info.layout?.aiLeftRail?.visible &&
+    info.layout.aiLeftRail.width > 120
+  ) {
     failures.push(`ai-left-rail-too-wide:${info.layout.aiLeftRail.width}`);
   }
   return { failures, warnings };
