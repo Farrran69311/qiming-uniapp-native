@@ -21,6 +21,7 @@ const props = withDefaults(
     anchorSelector?: string;
     leftZoneWidth?: number;
     bottomOffset?: number;
+    size?: number;
     storageKey?: string;
     avoidSelector?: string;
     layoutKey?: string | number;
@@ -33,6 +34,7 @@ const props = withDefaults(
     anchorSelector: "",
     leftZoneWidth: 260,
     bottomOffset: 140,
+    size: 88,
     storageKey: "",
     avoidSelector: "",
     layoutKey: ""
@@ -53,7 +55,9 @@ const stateLabels: Record<DigitalHumanState, string> = {
   saying: "讲解"
 };
 
-const bubbleSize = 88;
+const bubbleSize = computed(() =>
+  Math.min(112, Math.max(56, Math.round(props.size)))
+);
 const windowPadding = 18;
 const storageKey = computed(
   () => props.storageKey || `ai-app-floating-digital-human-2d-${props.anchor}`
@@ -97,8 +101,8 @@ const ariaLabel = computed(
     }`
 );
 const bubbleStyle = computed(() => ({
-  width: `${bubbleSize}px`,
-  height: `${bubbleSize}px`,
+  width: `${bubbleSize.value}px`,
+  height: `${bubbleSize.value}px`,
   transform: `translate3d(${position.value.x}px, ${position.value.y}px, 0) scale(${1 + speechAmplitude.value * 0.035})`,
   opacity: isReady.value ? 1 : 0
 }));
@@ -140,11 +144,11 @@ const clampPosition = (nextX: number, nextY: number) => {
   const reservedBottom = getReservedBottom();
   const maxX = Math.max(
     windowPadding,
-    window.innerWidth - bubbleSize - windowPadding
+    window.innerWidth - bubbleSize.value - windowPadding
   );
   const maxY = Math.max(
     windowPadding,
-    window.innerHeight - bubbleSize - reservedBottom
+    window.innerHeight - bubbleSize.value - reservedBottom
   );
   return {
     x: Math.min(Math.max(windowPadding, nextX), maxX),
@@ -175,17 +179,17 @@ const getDefaultPosition = () => {
     const zoneWidth = Math.min(props.leftZoneWidth, rect.width);
     const leftOffset = Math.max(
       windowPadding,
-      Math.round((zoneWidth - bubbleSize) / 2)
+      Math.round((zoneWidth - bubbleSize.value) / 2)
     );
 
     return clampPosition(
       rect.left + leftOffset,
-      rect.bottom - bubbleSize - props.bottomOffset
+      rect.bottom - bubbleSize.value - props.bottomOffset
     );
   }
 
   return clampPosition(
-    window.innerWidth - bubbleSize - 30,
+    window.innerWidth - bubbleSize.value - 30,
     window.innerWidth >= 768 ? 78 : 68
   );
 };
@@ -440,7 +444,7 @@ defineExpose({
       rgba(255, 255, 255, 0.95),
       transparent 45%
     ),
-    linear-gradient(145deg, #f6f9ff, #fff4fb);
+    linear-gradient(145deg, #f6f9ff, #f7fbff);
   border: 1px solid rgba(191, 203, 230, 0.9);
   border-radius: 999px;
   box-shadow:

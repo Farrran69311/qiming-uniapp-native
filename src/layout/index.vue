@@ -39,6 +39,25 @@ const appStore = useAppStoreHook();
 const pureSetting = useSettingStoreHook();
 const { $storage } = useGlobal<GlobalPropertiesApi>();
 
+const miniProgramNativeTitleRoutes = new Set([
+  "/account",
+  "/account/ai-app",
+  "/ai-app/workspace"
+]);
+const nativeAiTitleRoutes = new Set(["/account/ai-app", "/ai-app/workspace"]);
+
+const shouldRenderLayHeader = computed(() => {
+  if (typeof document === "undefined") return true;
+  const rootClassList = document.documentElement.classList;
+  const usesMiniProgramTitle =
+    rootClassList.contains("qiming-mini-program-webview") &&
+    miniProgramNativeTitleRoutes.has(route.path);
+  const usesNativeAiTitle =
+    rootClassList.contains("qiming-native-webview") &&
+    nativeAiTitleRoutes.has(route.path);
+  return !(usesMiniProgramTitle || usesNativeAiTitle);
+});
+
 const set: setType = reactive({
   sidebar: computed(() => {
     return appStore.sidebar;
@@ -212,7 +231,7 @@ const LayHeader = defineComponent({
       ]"
     >
       <div v-if="set.fixedHeader">
-        <LayHeader />
+        <LayHeader v-if="shouldRenderLayHeader" />
         <!-- 主体内容 -->
         <LayContent :fixed-header="set.fixedHeader" />
       </div>
@@ -226,7 +245,7 @@ const LayHeader = defineComponent({
         >
           <BackTopIcon />
         </el-backtop>
-        <LayHeader />
+        <LayHeader v-if="shouldRenderLayHeader" />
         <!-- 主体内容 -->
         <LayContent :fixed-header="set.fixedHeader" />
       </el-scrollbar>

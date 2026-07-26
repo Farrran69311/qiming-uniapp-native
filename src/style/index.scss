@@ -1345,9 +1345,16 @@ html.qiming-native-webview.ua-mobile .ai-app-root {
   min-height: var(--qiming-native-vh, 100dvh) !important;
   min-width: 0 !important;
   overflow: hidden !important;
-  background:
-    radial-gradient(circle at 18% 6%, rgb(253 229 250 / 68%), transparent 28%),
-    linear-gradient(135deg, #fff 0%, #f8fbff 52%, #fff4fb 100%) !important;
+  background: var(--ai-app-shell-bg, #f3f6fa) !important;
+  background-image: none !important;
+}
+
+html.qiming-mini-program-webview.ua-mobile .main-content.ai-app-root,
+html.qiming-native-webview.ua-mobile .main-content.ai-app-root {
+  width: 100% !important;
+  max-width: 100vw !important;
+  padding: 0 !important;
+  margin: 0 !important;
 }
 
 html.qiming-native-webview .ai-app-root > .flex-1,
@@ -1429,19 +1436,19 @@ html.qiming-native-webview .ai-app-left-rail:not(.is-collapsed) > button {
     .ai-app-root.is-compact-viewport
     .ai-app-left-rail {
     position: absolute !important;
-    inset: 0 auto 0 0 !important;
+    inset: 0 !important;
     z-index: 2200 !important;
-    width: min(86vw, 320px) !important;
-    max-width: calc(100vw - 44px) !important;
-    min-width: min(86vw, 320px) !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 100% !important;
     height: auto !important;
     min-height: 0 !important;
     overflow: hidden !important;
     background: #fff !important;
     border: 0 !important;
-    border-right: 1px solid #dce4ee !important;
-    border-radius: 0 16px 16px 0 !important;
-    box-shadow: 18px 0 44px rgb(30 45 70 / 18%) !important;
+    border-right: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
     pointer-events: auto !important;
     transform: translateX(0) !important;
     visibility: visible !important;
@@ -1453,17 +1460,17 @@ html.qiming-native-webview .ai-app-left-rail:not(.is-collapsed) > button {
   html.qiming-native-webview.ua-mobile
     .ai-app-root.is-compact-viewport
     .ai-app-left-rail.is-collapsed {
-    inset: 0 auto 0 0 !important;
-    width: min(86vw, 320px) !important;
-    max-width: calc(100vw - 44px) !important;
-    min-width: min(86vw, 320px) !important;
+    inset: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 100% !important;
     height: auto !important;
     min-height: 0 !important;
     overflow: hidden !important;
     background: #fff !important;
-    border-right: 1px solid #dce4ee !important;
-    border-radius: 0 16px 16px 0 !important;
-    box-shadow: 18px 0 44px rgb(30 45 70 / 18%) !important;
+    border-right: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
     pointer-events: none !important;
     transform: translateX(-105%) !important;
     visibility: hidden !important;

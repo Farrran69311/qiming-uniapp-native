@@ -72,6 +72,32 @@ const mobileFooterOffset = computed(() => {
   return isMobile.value ? "calc(var(--pure-mobile-tab-height) + 16px)" : "0px";
 });
 
+const miniProgramNativeTitleRoutes = new Set([
+  "/account",
+  "/account/ai-app",
+  "/ai-app/workspace"
+]);
+const usesMiniProgramNativeTitle = computed(() => {
+  return (
+    typeof document !== "undefined" &&
+    document.documentElement.classList.contains(
+      "qiming-mini-program-webview"
+    ) &&
+    miniProgramNativeTitleRoutes.has(route.path)
+  );
+});
+const nativeAiTitleRoutes = new Set(["/account/ai-app", "/ai-app/workspace"]);
+const usesNativeAiTitle = computed(() => {
+  return (
+    typeof document !== "undefined" &&
+    document.documentElement.classList.contains("qiming-native-webview") &&
+    nativeAiTitleRoutes.has(route.path)
+  );
+});
+const usesEmbeddedAiTitle = computed(
+  () => usesMiniProgramNativeTitle.value || usesNativeAiTitle.value
+);
+
 function readCssPixelVar(name: string) {
   if (typeof window === "undefined") return 0;
   const rawValue = getComputedStyle(document.documentElement)
@@ -177,6 +203,12 @@ const getSectionStyle = computed<CSSProperties>(() => {
     : showModel.value == "chrome"
       ? 116
       : 112;
+
+  if (props.fixedHeader && usesEmbeddedAiTitle.value) {
+    return {
+      paddingTop: "0"
+    };
+  }
 
   if (props.fixedHeader) {
     return {
