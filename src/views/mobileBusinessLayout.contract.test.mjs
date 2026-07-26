@@ -180,7 +180,7 @@ test("mobile AI workspaces release desktop fixed widths", () => {
   assert.match(aiApp, /class="ai-course-context-bar/);
   assert.match(
     aiApp,
-    /@media \(max-width: 768px\)[\s\S]*\.ai-course-context-bar \{[\s\S]*grid-template-columns: auto minmax\(0, 1fr\)[\s\S]*\.ai-course-context-bar :deep\(\.el-select\) \{[\s\S]*width: 100% !important/
+    /@media \(max-width: 768px\)[\s\S]*\.ai-app-root\.is-chat \.ai-course-context-bar \{[\s\S]*flex-direction: row;[\s\S]*flex-wrap: nowrap;[\s\S]*overflow-x: auto[\s\S]*\.ai-app-root\.is-chat \.ai-course-context-bar :deep\(\.el-select\) \{[\s\S]*width: 148px !important/
   );
   assert.match(aiApp, /class="ai-profile-workspace/);
   assert.match(

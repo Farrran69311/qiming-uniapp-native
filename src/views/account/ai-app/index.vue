@@ -2184,6 +2184,12 @@ const handleModelSelect = (modelKey: string) => {
 const selectedAgentLabel = computed(() =>
   optionLabel(assistantBootstrap.value?.agents || [], selectedAgentKey.value)
 );
+const selectedAgentDisplayLabel = computed(() => {
+  const label = selectedAgentLabel.value || "选择助手";
+  return isCompactViewport.value && label === "LearningAssistant"
+    ? "学习助手"
+    : label;
+});
 const selectedModelLabel = computed(() =>
   selectedModelKey.value
     ? optionLabel(
@@ -3126,7 +3132,7 @@ onUnmounted(() => {
                   :agents="assistantBootstrap?.agents || []"
                   :models="assistantBootstrap?.models || []"
                   :thinkingModes="assistantBootstrap?.thinking_modes || []"
-                  :selectedAgent="selectedAgentLabel"
+                  :selectedAgent="selectedAgentDisplayLabel"
                   :selectedModel="selectedModelLabel"
                   :thinkingMode="thinkingModeLabel"
                   :explanation-image-enabled="explanationImageEnabled"
@@ -3312,8 +3318,15 @@ onUnmounted(() => {
                 <el-input
                   v-model="quickMessage"
                   type="textarea"
-                  :autosize="{ minRows: 2, maxRows: 8 }"
-                  placeholder="可以输入想要了解的知识点。输入 @ 提及课程或文件..."
+                  :autosize="{
+                    minRows: isCompactViewport ? 1 : 2,
+                    maxRows: isCompactViewport ? 5 : 8
+                  }"
+                  :placeholder="
+                    isCompactViewport
+                      ? '随时提问，输入 @ 提及课程或文件...'
+                      : '可以输入想要了解的知识点。输入 @ 提及课程或文件...'
+                  "
                   class="quick-chat-input"
                   resize="none"
                   @keyup.enter.prevent="
@@ -3347,7 +3360,11 @@ onUnmounted(() => {
                           <FolderOpened />
                         </el-icon>
                         <span class="quick-chat-chip__text">
-                          {{ quickCourse || "选择课程" }}
+                          {{
+                            isCompactViewport
+                              ? "课程"
+                              : quickCourse || "选择课程"
+                          }}
                         </span>
                         <el-icon class="quick-chat-chip__arrow">
                           <ArrowDown />
@@ -3385,7 +3402,11 @@ onUnmounted(() => {
                           <Cpu />
                         </el-icon>
                         <span class="quick-chat-chip__text">
-                          {{ selectedAgentLabel || "选择助手" }}
+                          {{
+                            isCompactViewport
+                              ? "助手"
+                              : selectedAgentDisplayLabel
+                          }}
                         </span>
                         <el-icon class="quick-chat-chip__arrow">
                           <ArrowDown />
@@ -3403,16 +3424,19 @@ onUnmounted(() => {
                         </el-dropdown-menu>
                       </template>
                     </el-dropdown>
-                  </div>
-
-                  <div class="quick-chat-tools-right">
                     <el-dropdown
                       trigger="click"
                       popper-class="quick-chat-dropdown"
                       @command="handleModelSelect"
                     >
                       <span class="quick-chat-model-trigger">
-                        <span>{{ selectedModelLabel || "选择模型" }}</span>
+                        <span>
+                          {{
+                            isCompactViewport
+                              ? "模型"
+                              : selectedModelLabel || "选择模型"
+                          }}
+                        </span>
                         <el-icon class="quick-chat-chip__arrow">
                           <ArrowDown />
                         </el-icon>
@@ -3450,7 +3474,9 @@ onUnmounted(() => {
                         </el-dropdown-menu>
                       </template>
                     </el-dropdown>
+                  </div>
 
+                  <div class="quick-chat-tools-right">
                     <button
                       type="button"
                       class="quick-chat-icon-button quick-chat-voice-button"
@@ -3468,6 +3494,7 @@ onUnmounted(() => {
                       <el-icon><Microphone /></el-icon>
                     </button>
                     <button
+                      v-show="quickMessage.trim()"
                       type="button"
                       class="quick-chat-send-button"
                       :class="{
@@ -3848,6 +3875,7 @@ onUnmounted(() => {
     </div>
 
     <FloatingDigitalHuman2D
+      v-show="!isCompactViewport || sidebarCollapsed"
       ref="floatingHumanRef"
       :role-label="currentUserRoleLabel"
       :course-name="selectedCourseName"
@@ -3856,6 +3884,7 @@ onUnmounted(() => {
       anchor-selector=".ai-app-root"
       :left-zone-width="sidebarRenderedWidth"
       :bottom-offset="floatingHumanBottomOffset"
+      :size="isCompactViewport ? (activeCourse ? 56 : 80) : 88"
       :storage-key="floatingHumanStorageKey"
       avoid-selector=".ai-mobile-composer-surface, .nav-mobile-container"
       :layout-key="`${activeRail}-${selectedCourseId || 'none'}-${quickAttachments.length}`"
@@ -4841,6 +4870,16 @@ onUnmounted(() => {
     border-radius: 18px;
     box-shadow: 0 12px 30px rgb(41 62 91 / 10%);
   }
+
+  .ai-welcome-content
+    .quick-chat-card
+    :deep(.quick-chat-input .el-textarea__inner) {
+    min-height: 52px !important;
+    padding: 12px;
+    font-size: 14px;
+    line-height: 22px;
+  }
+
   .ai-course-context-bar {
     align-items: stretch;
     justify-content: flex-start;
@@ -4852,17 +4891,25 @@ onUnmounted(() => {
   }
 
   .ai-app-root.is-chat .ai-course-context-bar {
-    display: grid !important;
+    display: flex !important;
     flex: 0 0 auto;
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: 8px 10px;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 4px !important;
     align-items: center;
-    justify-content: stretch;
-    margin: 0 8px 8px;
-    margin-bottom: 8px;
-    padding: 8px 10px;
-    overflow: visible;
-    border-radius: 12px;
+    justify-content: flex-start;
+    margin: 0 !important;
+    padding: 4px 8px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    border-right: 0 !important;
+    border-left: 0 !important;
+    border-radius: 0 !important;
+    scrollbar-width: none;
+  }
+
+  .ai-app-root.is-chat .ai-course-context-bar::-webkit-scrollbar {
+    display: none;
   }
 
   .ai-app-root.is-chat .ai-course-context-bar > span {
@@ -4872,13 +4919,26 @@ onUnmounted(() => {
     white-space: nowrap;
   }
 
-  .ai-course-context-bar :deep(.el-select) {
-    width: 100% !important;
-    max-width: 100%;
+  .ai-app-root.is-chat .ai-course-context-bar :deep(.el-select) {
+    flex: 0 0 148px;
+    width: 148px !important;
+    max-width: 148px;
   }
 
-  .ai-course-context-bar :deep(.el-select__wrapper) {
-    min-height: 44px;
+  .ai-app-root.is-chat .ai-course-context-bar :deep(.interaction-scope-select) {
+    flex-basis: 132px;
+    width: 132px !important;
+    max-width: 132px;
+  }
+
+  .ai-app-root.is-chat .ai-course-context-bar :deep(.student-select) {
+    flex-basis: 124px;
+    width: 124px !important;
+    max-width: 124px;
+  }
+
+  .ai-app-root.is-chat .ai-course-context-bar :deep(.el-select__wrapper) {
+    min-height: 40px;
   }
 
   .ai-profile-workspace {
@@ -4997,17 +5057,17 @@ onUnmounted(() => {
 
   .ai-app-left-rail {
     position: absolute !important;
-    inset: 0 auto 0 0;
+    inset: 0;
     z-index: 2200;
-    width: min(86vw, 320px) !important;
-    max-width: calc(100vw - 44px);
-    min-width: min(86vw, 320px);
+    width: 100% !important;
+    max-width: none;
+    min-width: 100%;
     overflow: hidden;
     background: #fff;
     border: 0;
-    border-right: 1px solid #dce4ee;
-    border-radius: 0 16px 16px 0;
-    box-shadow: 18px 0 44px rgb(30 45 70 / 18%);
+    border-right: 0;
+    border-radius: 0;
+    box-shadow: none;
     transform: translateX(0);
     visibility: visible;
     transition:
@@ -5016,8 +5076,8 @@ onUnmounted(() => {
   }
 
   .ai-app-left-rail.is-collapsed {
-    width: min(86vw, 320px) !important;
-    min-width: min(86vw, 320px);
+    width: 100% !important;
+    min-width: 100%;
     pointer-events: none;
     transform: translateX(-105%);
     visibility: hidden;
@@ -5075,21 +5135,31 @@ onUnmounted(() => {
   }
 
   .ai-app-root.is-chat .ai-chat-workbench {
-    gap: 0;
-    padding: 8px;
+    gap: 0 !important;
+    padding: 0 !important;
+  }
+
+  .ai-app-root.is-chat .ai-chat-dialog-panel {
+    background: #f5f7fb !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   .quick-chat-toolbar {
-    gap: 8px;
-    align-items: stretch;
-    flex-direction: column;
-    padding: 10px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px;
+    align-items: center;
+    padding: 2px 6px 4px;
   }
 
   .quick-chat-tools-left {
     flex-wrap: nowrap;
-    width: 100%;
-    padding-bottom: 2px;
+    width: auto;
+    gap: 4px;
     overflow-x: auto;
     overscroll-behavior-x: contain;
     scrollbar-width: none;
@@ -5101,8 +5171,28 @@ onUnmounted(() => {
 
   .quick-chat-chip {
     flex: 0 0 auto;
-    max-width: min(220px, 72vw);
+    position: relative;
+    z-index: 0;
+    max-width: min(132px, 36vw);
     min-height: 44px;
+    padding: 0 8px;
+    background: transparent;
+    border: 0;
+    border-radius: 12px;
+  }
+
+  .quick-chat-chip::before {
+    position: absolute;
+    inset: 5px 0;
+    z-index: -1;
+    content: "";
+    background: #f1f3f7;
+    border: 1px solid transparent;
+    border-radius: 12px;
+  }
+
+  .quick-chat-chip--interactive.is-selected::before {
+    background: rgb(47 111 203 / 10%);
   }
 
   .quick-chat-chip--static {
@@ -5110,13 +5200,21 @@ onUnmounted(() => {
   }
 
   .quick-chat-tools-right {
-    justify-content: space-between;
-    width: 100%;
+    gap: 2px;
+    justify-content: flex-end;
+    width: auto;
   }
 
   .quick-chat-model-trigger {
     min-height: 44px;
-    max-width: min(180px, 48vw);
+    max-width: 60px;
+    padding: 0 4px;
+    font-size: 12px;
+  }
+
+  .quick-chat-icon-button,
+  .quick-chat-send-button {
+    border-radius: 12px;
   }
 
   .quick-attachment-remove {
@@ -5143,9 +5241,9 @@ onUnmounted(() => {
 
 @media (max-width: 390px) {
   .ai-app-root.is-chat .ai-course-context-bar {
-    gap: 6px 8px;
-    margin-inline: 6px;
-    padding-inline: 8px;
+    gap: 4px;
+    margin-inline: 0;
+    padding-inline: 6px;
   }
 }
 

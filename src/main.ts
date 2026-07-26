@@ -178,6 +178,12 @@ function applyNativeWebViewRuntime() {
   if (isMiniProgram) {
     root.classList.add("qiming-mini-program-webview");
     root.dataset.qimingMiniProgram = "true";
+    sessionStorage.removeItem("qimingNativeStatusTop");
+    localStorage.removeItem("qimingNativeStatusTop");
+    root.style.setProperty("--pure-safe-area-top", "0px");
+    root.style.setProperty("--qiming-native-safe-top", "0px");
+    root.style.setProperty("--qiming-native-status-top", "0px");
+    root.style.setProperty("--qiming-native-statusbar-offset", "0px");
     const initialRoute = readCurrentHashRouteInfo();
     document.title = resolveMiniProgramDocumentTitle(
       initialRoute.path,
@@ -300,7 +306,7 @@ function applyNativeWebViewRuntime() {
   );
 
   const statusTop = normalizeNativeStatusbarTop(
-    nativeStatusTop,
+    isMiniProgram ? "" : nativeStatusTop,
     isAndroidNative ? 6 : 0
   );
   if (statusTop > 0) {

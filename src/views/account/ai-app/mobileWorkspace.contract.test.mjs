@@ -34,6 +34,18 @@ const globalStyles = await readFile(
   new URL("../../../style/index.scss", import.meta.url),
   "utf8"
 );
+const mainRuntime = await readFile(
+  new URL("../../../main.ts", import.meta.url),
+  "utf8"
+);
+const layoutShell = await readFile(
+  new URL("../../../layout/index.vue", import.meta.url),
+  "utf8"
+);
+const layContent = await readFile(
+  new URL("../../../layout/components/lay-content/index.vue", import.meta.url),
+  "utf8"
+);
 const assistantFloatButton = await readFile(
   new URL(
     "../../../components/AiScreenCapture/FloatButton.vue",
@@ -111,11 +123,11 @@ test("phone chat uses a full-width Doubao-style conversation shell", () => {
   );
   assert.match(
     chatModule,
-    /@media \(max-width: 768px\)[\s\S]*\.ai-chat-course-head \{[\s\S]*display: none[\s\S]*\.ai-chat-composer-shell \{[\s\S]*padding: 8px !important;[\s\S]*border-top/
+    /@media \(max-width: 768px\)[\s\S]*\.ai-chat-course-head \{[\s\S]*display: none[\s\S]*\.ai-chat-composer-shell \{[\s\S]*padding: 6px !important;[\s\S]*border-top/
   );
   assert.match(
     workbench,
-    /\.quick-chat-toolbar \{[\s\S]*flex-direction: column/
+    /\.quick-chat-toolbar \{[\s\S]*display: grid;[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto/
   );
 });
 
@@ -125,10 +137,57 @@ test("native runtime drawer overrides the old fixed compact rail", () => {
     /\.ai-app-root\.is-compact-viewport[\s\S]*\.ai-app-left-rail \{[\s\S]*position: absolute !important;[\s\S]*z-index: 2200 !important/
   );
   assert.match(
+    workbench,
+    /\.ai-app-left-rail \{[\s\S]*inset: 0;[\s\S]*width: 100% !important;[\s\S]*max-width: none;[\s\S]*border-radius: 0;[\s\S]*box-shadow: none/
+  );
+  assert.match(
+    globalStyles,
+    /\.ai-app-root\.is-compact-viewport[\s\S]*\.ai-app-left-rail \{[\s\S]*inset: 0 !important;[\s\S]*width: 100% !important;[\s\S]*max-width: none !important;[\s\S]*border-radius: 0 !important;[\s\S]*box-shadow: none !important/
+  );
+  assert.match(
     globalStyles,
     /\.ai-app-root\.is-compact-viewport[\s\S]*\.ai-app-left-rail\.is-collapsed[\s\S]*translateX\(-105%\) !important;[\s\S]*visibility: hidden !important/
   );
   assert.match(workbench, /\.ai-course-drawer-scrim \{[\s\S]*z-index: 2190/);
+});
+
+test("mobile AI workspace is neutral, edge-to-edge and content dense", () => {
+  assert.doesNotMatch(globalStyles, /rgb\(253 229 250 \/ 68%\)|#fff4fb/);
+  assert.match(
+    globalStyles,
+    /\.ai-app-root[\s\S]*background: var\(--ai-app-shell-bg, #f3f6fa\) !important/
+  );
+  assert.match(
+    globalStyles,
+    /qiming-mini-program-webview\.ua-mobile[\s\S]*\.main-content\.ai-app-root \{[\s\S]*max-width: 100vw !important;[\s\S]*margin: 0 !important/
+  );
+  assert.match(
+    mainRuntime,
+    /if \(isMiniProgram\) \{[\s\S]*removeItem\("qimingNativeStatusTop"\)[\s\S]*--pure-safe-area-top[\s\S]*"0px"/
+  );
+  assert.match(
+    layoutShell,
+    /miniProgramNativeTitleRoutes[\s\S]*"\/account\/ai-app"[\s\S]*"\/ai-app\/workspace"/
+  );
+  assert.match(layContent, /usesMiniProgramNativeTitle[\s\S]*paddingTop: "0"/);
+  assert.match(chatModule, /class="chat-message-list w-full min-w-0"/);
+  assert.match(
+    chatModule,
+    /@media \(max-width: 768px\)[\s\S]*\.message-stack\.is-system \{[\s\S]*width: calc\(100% - 38px\)[\s\S]*max-width: calc\(100% - 38px\)[\s\S]*\.message-bubble-system \{[\s\S]*padding: 2px 0;[\s\S]*background: transparent;[\s\S]*border: 0;[\s\S]*box-shadow: none/
+  );
+  assert.match(
+    workbench,
+    /\.ai-app-root\.is-chat \.ai-chat-workbench \{[\s\S]*padding: 0 !important;[\s\S]*\.ai-chat-dialog-panel \{[\s\S]*border-radius: 0 !important;[\s\S]*box-shadow: none !important/
+  );
+  assert.match(
+    workbench,
+    /\.ai-app-root\.is-chat \.ai-course-context-bar \{[\s\S]*flex-direction: row;[\s\S]*flex-wrap: nowrap;[\s\S]*overflow-x: auto/
+  );
+  assert.match(
+    workbench,
+    /selectedAgentDisplayLabel[\s\S]*label === "LearningAssistant"[\s\S]*\? "学习助手"/
+  );
+  assert.match(workbench, /随时提问，输入 @ 提及课程或文件/);
 });
 
 test("learning profile keeps the learner figure and content at natural height", () => {
@@ -155,6 +214,14 @@ test("embedded runtimes use the MP4 human and keep it above bottom controls", ()
   assert.ok(floatingHumanMount);
   assert.doesNotMatch(floatingHumanMount, /v-if=/);
   assert.match(
+    floatingHumanMount,
+    /v-show="!isCompactViewport \|\| sidebarCollapsed"/
+  );
+  assert.match(
+    floatingHumanMount,
+    /:size="isCompactViewport \? \(activeCourse \? 56 : 80\) : 88"/
+  );
+  assert.match(
     workbench,
     /if \(document\.hidden\) \{[\s\S]*floatingHumanRef\.value\?\.pauseRender\?\.\(\);[\s\S]*floatingHumanRef\.value\?\.resumeRender\?\.\(\);/
   );
@@ -166,6 +233,7 @@ test("embedded runtimes use the MP4 human and keep it above bottom controls", ()
     /querySelectorAll<HTMLElement>\(props\.avoidSelector\)/
   );
   assert.match(floatingHuman, /new ResizeObserver\(handleResize\)/);
+  assert.match(floatingHuman, /Math\.min\(112, Math\.max\(56/);
   assert.match(assistantFloatButton, /getVisibleAiComposer/);
   assert.match(
     assistantFloatButton,
@@ -179,7 +247,7 @@ test("embedded runtimes use the MP4 human and keep it above bottom controls", ()
   assert.match(assistantFloatButton, /scheduleBottomAvoidanceRebind\(\)/);
   assert.match(
     floatingHuman,
-    /window\.innerHeight - bubbleSize - reservedBottom/
+    /window\.innerHeight - bubbleSize(?:\.value)? - reservedBottom/
   );
   assert.match(floatingHuman, /:poster="fallbackPoster"/);
   assert.match(
@@ -191,5 +259,9 @@ test("embedded runtimes use the MP4 human and keep it above bottom controls", ()
   assert.match(
     workbench,
     /avoid-selector="\.ai-mobile-composer-surface, \.nav-mobile-container"/
+  );
+  assert.match(
+    chatModule,
+    /\.speech-control,[\s\S]*\.assistant-action-row \{[\s\S]*margin-left: 68px;/
   );
 });

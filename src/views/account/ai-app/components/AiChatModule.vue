@@ -23,7 +23,7 @@
         appear
         name="chat-list"
         tag="div"
-        class="w-full min-w-0 space-y-5 pb-10"
+        class="chat-message-list w-full min-w-0"
       >
         <div
           v-for="msg in visibleMessages"
@@ -651,6 +651,7 @@
             />
             <el-button
               v-else
+              v-show="input.trim()"
               type="primary"
               :icon="Promotion"
               :disabled="!input.trim() || modelReady === false"
@@ -2081,6 +2082,13 @@ onBeforeUnmount(() => {
   width: 100%;
 }
 
+.chat-message-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding-bottom: 40px;
+}
+
 .chat-message-row.is-user {
   justify-content: flex-end;
 }
@@ -3165,11 +3173,11 @@ onBeforeUnmount(() => {
   }
 
   .ai-chat-course-head {
-    display: none;
+    display: none !important;
   }
 
   .ai-chat-message-scroll {
-    padding: 12px 10px 16px !important;
+    padding: 8px 8px 12px !important;
   }
 
   .ai-chat-message-scroll :deep(.el-scrollbar__view) {
@@ -3179,7 +3187,7 @@ onBeforeUnmount(() => {
 
   .ai-chat-composer-shell {
     flex: 0 0 auto;
-    padding: 8px !important;
+    padding: 6px !important;
     background: #fff;
     border-top: 1px solid #e5eaf1;
   }
@@ -3192,8 +3200,8 @@ onBeforeUnmount(() => {
 
   .ai-chat-composer__input-row {
     gap: 6px;
-    min-height: 58px;
-    padding: 7px;
+    min-height: 56px;
+    padding: 6px;
   }
 
   .ai-chat-composer__input-row :deep(.el-button) {
@@ -3214,8 +3222,9 @@ onBeforeUnmount(() => {
   .ai-chat-toolbar {
     flex-wrap: nowrap !important;
     justify-content: flex-start !important;
-    gap: 6px !important;
-    padding: 6px 8px 8px !important;
+    gap: 4px !important;
+    min-height: 44px;
+    padding: 0 6px !important;
     overflow-x: auto;
     overscroll-behavior-x: contain;
     background: #fff !important;
@@ -3229,6 +3238,7 @@ onBeforeUnmount(() => {
   .chat-toolbar-left {
     flex: 0 0 auto;
     flex-wrap: nowrap !important;
+    gap: 4px;
     overflow: visible;
   }
 
@@ -3243,8 +3253,32 @@ onBeforeUnmount(() => {
 
   .chat-toolbar-chip {
     flex: 0 0 auto;
-    max-width: min(190px, 62vw);
-    padding-inline: 12px;
+    position: relative;
+    z-index: 0;
+    max-width: min(146px, 42vw);
+    min-height: 44px;
+    padding-inline: 8px;
+    font-size: 12px;
+    background: transparent;
+    border: 0;
+    border-radius: 12px;
+  }
+
+  .chat-toolbar-chip::before {
+    position: absolute;
+    inset: 5px 0;
+    z-index: -1;
+    content: "";
+    background: #f3f5f8;
+    border-radius: 12px;
+  }
+
+  .chat-toolbar-chip--active::before {
+    background: #eef6ff;
+  }
+
+  .chat-toolbar-chip--interactive::before {
+    background: #f8fafc;
   }
 
   .chat-toolbar-chip--static {
@@ -3253,8 +3287,19 @@ onBeforeUnmount(() => {
 
   .ai-chat-model-trigger {
     flex: 0 0 auto;
-    max-width: min(150px, 46vw);
+    max-width: 86px;
     min-height: 44px;
+    font-size: 12px;
+  }
+
+  .chat-message-list {
+    gap: 12px;
+    padding-bottom: 16px;
+  }
+
+  .speech-control,
+  .assistant-action-row {
+    margin-left: 68px;
   }
 
   .chat-message-row {
@@ -3262,13 +3307,17 @@ onBeforeUnmount(() => {
   }
 
   .message-avatar {
-    width: 36px !important;
-    height: 36px !important;
+    width: 32px !important;
+    height: 32px !important;
   }
 
-  .message-stack,
+  .message-stack.is-system {
+    width: calc(100% - 38px);
+    max-width: calc(100% - 38px);
+  }
+
   .message-stack.is-user {
-    max-width: calc(100% - 44px);
+    max-width: 86%;
   }
 
   .message-bubble {
@@ -3278,8 +3327,25 @@ onBeforeUnmount(() => {
   }
 
   .message-bubble-system {
-    border-radius: 16px;
-    box-shadow: 0 6px 18px rgb(44 58 87 / 7%);
+    padding: 2px 0;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .chat-message-row.is-system:hover .message-bubble {
+    transform: none;
+  }
+
+  .markdown-content {
+    line-height: 1.62;
+  }
+
+  .markdown-content :deep(p),
+  .markdown-content :deep(ul),
+  .markdown-content :deep(ol) {
+    margin-bottom: 9px;
   }
 
   .message-bubble-user {

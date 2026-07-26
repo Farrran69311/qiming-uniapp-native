@@ -48,7 +48,7 @@
                   :key="conv.id"
                   type="button"
                   :style="{ transitionDelay: `${index * 50}ms` }"
-                  class="relative w-full box-border overflow-hidden px-3 py-3 rounded-xl bg-transparent text-left hover:bg-white cursor-pointer group transition-all duration-200 hover:shadow-sm hover:border-gray-200 border border-transparent"
+                  class="ai-sidebar__conversation relative w-full box-border overflow-hidden px-3 py-3 rounded-xl bg-transparent text-left hover:bg-white cursor-pointer group transition-all duration-200 hover:shadow-sm hover:border-gray-200 border border-transparent"
                   @click="emit('select-chat', conv)"
                 >
                   <div
@@ -91,7 +91,7 @@
             v-for="conv in recentHistory"
             :key="'recent-' + conv.id"
             type="button"
-            class="relative w-full box-border overflow-hidden px-3 py-2.5 rounded-xl bg-transparent text-left hover:bg-white cursor-pointer group transition-all duration-200 border border-transparent hover:border-gray-100"
+            class="ai-sidebar__conversation relative w-full box-border overflow-hidden px-3 py-2.5 rounded-xl bg-transparent text-left hover:bg-white cursor-pointer group transition-all duration-200 border border-transparent hover:border-gray-100"
             @click="emit('select-chat', conv)"
           >
             <div class="flex items-center justify-between gap-2">
