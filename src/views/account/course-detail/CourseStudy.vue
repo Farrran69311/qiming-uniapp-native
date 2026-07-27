@@ -132,7 +132,10 @@
                 <div class="pulse-ring" />
               </div>
               <div class="ai-info">
-                <span class="ai-title">AI 智能助教</span>
+                <div class="ai-title-row">
+                  <span class="ai-title">AI 智能助教</span>
+                  <span class="ai-generated-chip">AI生成</span>
+                </div>
                 <span class="ai-status">
                   <span class="status-dot" />
                   在线 · 随时为您解答
@@ -328,6 +331,11 @@
             </div>
           </div>
 
+          <div class="ai-generation-notice" role="note">
+            <span class="notice-ai-mark" aria-hidden="true">AI</span>
+            <span>内容由人工智能生成，仅供学习参考</span>
+          </div>
+
           <div class="dialog-body">
             <el-scrollbar ref="chatScrollRef">
               <div class="chat-container">
@@ -368,11 +376,21 @@
                       <div v-if="message.role === 'user'" class="message-text">
                         {{ message.content }}
                       </div>
-                      <div
-                        v-else
-                        class="message-text ai-text"
-                        v-html="parseMarkdown(message.content)"
-                      />
+                      <template v-else>
+                        <div
+                          class="ai-response-meta"
+                          aria-label="以下内容由人工智能生成"
+                        >
+                          <span class="ai-response-mark" aria-hidden="true"
+                            >AI</span
+                          >
+                          <span>人工智能生成</span>
+                        </div>
+                        <div
+                          class="message-text ai-text"
+                          v-html="parseMarkdown(message.content)"
+                        />
+                      </template>
                     </div>
                   </div>
                   <div v-if="isTyping" class="message-row ai">
@@ -1123,10 +1141,29 @@ $shadow-xl:
     flex-direction: column;
     gap: 4px;
 
+    .ai-title-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
     .ai-title {
       font-size: 16px;
       font-weight: 700;
       color: #fff;
+    }
+
+    .ai-generated-chip {
+      padding: 2px 6px;
+      font-size: 10px;
+      font-weight: 600;
+      line-height: 1.3;
+      color: #ecfdf5;
+      white-space: nowrap;
+      background: rgb(255 255 255 / 12%);
+      border: 1px solid rgb(255 255 255 / 24%);
+      border-radius: 5px;
     }
 
     .ai-status {
@@ -1615,6 +1652,41 @@ $shadow-xl:
   }
 }
 
+.ai-generation-notice {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+  align-items: center;
+  min-height: 40px;
+  padding: 8px 24px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #365f5b;
+  background: #f0fdfa;
+  border-bottom: 1px solid #ccfbf1;
+
+  .notice-ai-mark {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    color: #fff;
+    background: $primary;
+    border-radius: 6px;
+  }
+
+  .dark & {
+    color: #b7ddd7;
+    background: rgb(15 118 110 / 12%);
+    border-bottom-color: rgb(94 234 212 / 12%);
+  }
+}
+
 .dialog-body {
   flex: 1;
   overflow: hidden;
@@ -1743,6 +1815,41 @@ $shadow-xl:
   .message-content {
     max-width: 80%;
     padding: 14px 18px;
+
+    .ai-response-meta {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      margin-bottom: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1.3;
+      color: $gray-500;
+
+      .ai-response-mark {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 18px;
+        height: 18px;
+        font-size: 9px;
+        font-weight: 700;
+        color: $primary-dark;
+        background: rgb(15 118 110 / 10%);
+        border: 1px solid rgb(15 118 110 / 14%);
+        border-radius: 5px;
+      }
+
+      .dark & {
+        color: $gray-400;
+
+        .ai-response-mark {
+          color: #99f6e4;
+          background: rgb(45 212 191 / 12%);
+          border-color: rgb(94 234 212 / 16%);
+        }
+      }
+    }
 
     .message-text {
       font-size: 14px;
@@ -2093,6 +2200,12 @@ $shadow-xl:
 
   .dialog-header {
     padding: 16px;
+  }
+
+  .ai-generation-notice {
+    min-height: 38px;
+    padding: 8px 16px;
+    font-size: 12px;
   }
 
   .dialog-header .header-actions .header-btn {
