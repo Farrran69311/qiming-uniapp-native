@@ -6,12 +6,15 @@
         class="login-overlay"
         @click.self="emit('update:visible', false)"
       >
-        <div class="login-card" :class="{ shake: isShaking }">
+        <div
+          class="login-card"
+          :class="{ shake: isShaking, 'legal-card': activeLegalDocument }"
+        >
           <!--   关闭按钮   -->
           <button
             type="button"
             class="close-btn"
-            aria-label="关闭登录窗口"
+            aria-label="关闭登录弹窗"
             @click="emit('update:visible', false)"
           >
             <svg viewBox="0 0 24 24" width="18" height="18">
@@ -22,8 +25,15 @@
             </svg>
           </button>
 
+          <LoginLegalDocument
+            v-if="activeLegalDocument"
+            :type="activeLegalDocument"
+            @back="activeLegalDocument = null"
+            @accept="handleLegalDocumentAccepted"
+          />
+
           <!-- 登录表单 -->
-          <template v-if="!isRegister">
+          <template v-else-if="!isRegister">
             <h2 class="card-title">欢迎登录</h2>
 
             <!-- 账号输入 -->
@@ -125,6 +135,36 @@
               </div>
               <p v-if="errors.password" class="error-text">
                 {{ errors.password }}
+              </p>
+            </div>
+
+            <div class="agreement-field" :class="{ error: errors.agreement }">
+              <input
+                id="login-agreement"
+                v-model="agreementAccepted"
+                type="checkbox"
+                :aria-describedby="
+                  errors.agreement ? 'login-agreement-error' : undefined
+                "
+                @change="handleAgreementChange"
+              />
+              <div class="agreement-copy">
+                <label for="login-agreement">我已阅读并同意</label>
+                <button type="button" @click="openLegalDocument('terms')">
+                  《用户服务协议》
+                </button>
+                <span>和</span>
+                <button type="button" @click="openLegalDocument('privacy')">
+                  《隐私政策》
+                </button>
+              </div>
+              <p
+                v-if="errors.agreement"
+                id="login-agreement-error"
+                class="agreement-error"
+                role="alert"
+              >
+                {{ errors.agreement }}
               </p>
             </div>
 
@@ -345,6 +385,36 @@
               </p>
             </div>
 
+            <div class="agreement-field" :class="{ error: errors.agreement }">
+              <input
+                id="register-agreement"
+                v-model="agreementAccepted"
+                type="checkbox"
+                :aria-describedby="
+                  errors.agreement ? 'register-agreement-error' : undefined
+                "
+                @change="handleAgreementChange"
+              />
+              <div class="agreement-copy">
+                <label for="register-agreement">我已阅读并同意</label>
+                <button type="button" @click="openLegalDocument('terms')">
+                  《用户服务协议》
+                </button>
+                <span>和</span>
+                <button type="button" @click="openLegalDocument('privacy')">
+                  《隐私政策》
+                </button>
+              </div>
+              <p
+                v-if="errors.agreement"
+                id="register-agreement-error"
+                class="agreement-error"
+                role="alert"
+              >
+                {{ errors.agreement }}
+              </p>
+            </div>
+
             <!-- 注册按钮 -->
             <button
               type="button"
@@ -389,6 +459,9 @@ import { message } from "@/utils/message";
 import { useI18n } from "vue-i18n";
 import { userRegister, userLogin, getUserDetail } from "@/api/user";
 import { setToken, getToken, removeToken } from "@/utils/auth";
+import LoginLegalDocument from "@/components/LoginLegalDocument.vue";
+import type { LoginLegalDocumentType } from "@/components/loginLegalDocuments";
+import { grantPrivacyConsent, hasPrivacyConsent } from "@/utils/privacyConsent";
 
 const rolesForRoleType = (roleType?: number) => {
   switch (Number(roleType)) {
@@ -418,6 +491,8 @@ const emit = defineEmits<{
 const { t } = useI18n();
 
 const isRegister = ref(false);
+const activeLegalDocument = ref<LoginLegalDocumentType | null>(null);
+const agreementAccepted = ref(hasPrivacyConsent());
 
 // 输入引用
 const phoneInputRef = ref<HTMLInputElement | null>(null);
@@ -473,7 +548,8 @@ const errors = reactive({
   password: "",
   registerPhone: "",
   registerPassword: "",
-  confirmPassword: ""
+  confirmPassword: "",
+  agreement: ""
 });
 
 // 清除错误
@@ -481,6 +557,31 @@ const clearErrors = () => {
   Object.keys(errors).forEach(key => {
     errors[key as keyof typeof errors] = "";
   });
+};
+
+const openLegalDocument = (type: LoginLegalDocumentType) => {
+  activeLegalDocument.value = type;
+};
+
+const handleLegalDocumentAccepted = () => {
+  agreementAccepted.value = true;
+  errors.agreement = "";
+  activeLegalDocument.value = null;
+};
+
+const handleAgreementChange = () => {
+  if (agreementAccepted.value) errors.agreement = "";
+};
+
+const ensureAgreementAccepted = () => {
+  if (!agreementAccepted.value) {
+    errors.agreement = "请先阅读并同意用户服务协议和隐私政策";
+    triggerShake();
+    return false;
+  }
+
+  grantPrivacyConsent();
+  return true;
 };
 
 // 获取用户详细信息
@@ -524,6 +625,7 @@ const fetchUserDetail = async () => {
 // 密码登录
 const handlePasswordLogin = async () => {
   clearErrors();
+  if (!ensureAgreementAccepted()) return;
 
   if (!loginForm.username) {
     errors.phone = "请输入账号";
@@ -585,6 +687,7 @@ const handlePasswordLogin = async () => {
 // 注册处理
 const handleRegister = async () => {
   clearErrors();
+  if (!ensureAgreementAccepted()) return;
 
   if (!registerForm.phone) {
     errors.registerPhone = "请输入手机号";
@@ -661,6 +764,8 @@ const resetForm = () => {
   registerForm.password = "";
   registerForm.confirmPassword = "";
   isRegister.value = false;
+  activeLegalDocument.value = null;
+  agreementAccepted.value = hasPrivacyConsent();
   clearErrors();
 };
 
@@ -668,7 +773,10 @@ const resetForm = () => {
 watch(
   () => props.visible,
   val => {
-    if (!val) {
+    if (val) {
+      agreementAccepted.value = hasPrivacyConsent();
+      activeLegalDocument.value = null;
+    } else {
       setTimeout(resetForm, 300);
     }
   }
@@ -698,10 +806,18 @@ watch(
 .login-card {
   position: relative;
   width: 380px;
+  max-height: calc(100dvh - 132px);
   padding: 36px 32px;
+  overflow-y: auto;
   background: #fff;
   border-radius: 20px;
   box-shadow: 0 25px 50px -12px rgb(0 0 0 / 25%);
+
+  &.legal-card {
+    width: min(680px, calc(100vw - 40px));
+    padding: 0;
+    overflow: hidden;
+  }
 }
 
 /* 关闭按钮 */
@@ -709,6 +825,7 @@ watch(
   position: absolute;
   top: 16px;
   right: 16px;
+  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -870,6 +987,65 @@ watch(
   color: #ff6b6b;
 }
 
+.agreement-field {
+  position: relative;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 0 8px;
+  align-items: start;
+  padding: 3px 2px;
+  margin: 2px 0 10px;
+
+  input {
+    width: 16px;
+    height: 16px;
+    margin-top: 2px;
+    cursor: pointer;
+    accent-color: #3498db;
+  }
+
+  &.error input {
+    outline: 2px solid rgb(255 107 107 / 24%);
+    outline-offset: 2px;
+  }
+}
+
+.agreement-copy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #7f8a98;
+
+  label {
+    cursor: pointer;
+  }
+
+  button {
+    padding: 0;
+    color: #368cc6;
+    cursor: pointer;
+    background: transparent;
+    border: 0;
+
+    &:hover,
+    &:focus-visible {
+      color: #1f6faa;
+      text-decoration: underline;
+      outline: none;
+    }
+  }
+}
+
+.agreement-error {
+  grid-column: 2;
+  margin: 3px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #ff6b6b;
+}
+
 /* 提交按钮 */
 .submit-btn {
   display: flex;
@@ -959,8 +1135,14 @@ watch(
   .login-card {
     width: 100%;
     max-width: 320px;
+    max-height: calc(100dvh - 32px);
     padding: 24px 20px;
     border-radius: 16px;
+
+    &.legal-card {
+      max-width: 560px;
+      padding: 0;
+    }
   }
 
   .card-title {
@@ -994,6 +1176,10 @@ watch(
     margin-top: 4px;
     font-size: 15px;
     border-radius: 12px;
+  }
+
+  .agreement-field {
+    margin-bottom: 8px;
   }
 
   .footer-link {

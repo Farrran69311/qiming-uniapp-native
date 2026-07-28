@@ -13,7 +13,7 @@ import { useVxeTable } from "@/plugins/vxeTable";
 import { useElementPlus } from "@/plugins/elementPlus";
 import { injectResponsiveStorage } from "@/utils/responsive";
 import { registerPwa } from "@/utils/pwa";
-import { initClarity } from "@/utils/clarity";
+import { initPrivacyAwareAnalytics } from "@/utils/privacyAwareAnalytics";
 import { userKey, type DataInfo } from "@/utils/auth";
 
 import Table from "@pureadmin/table";
@@ -655,11 +655,12 @@ import "tippy.js/themes/light.css";
 import VueTippy from "vue-tippy";
 app.use(VueTippy);
 
+initPrivacyAwareAnalytics();
+
 getPlatformConfig(app).then(async config => {
   setupStore(app);
   useAppStoreHook().refreshUA();
   registerPwa();
-  initClarity();
   app.use(router);
   await router.isReady();
   injectResponsiveStorage(app, config);
